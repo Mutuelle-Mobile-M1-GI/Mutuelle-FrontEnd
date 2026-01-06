@@ -15,13 +15,22 @@ import { useAuth } from "../../hooks/useAuth";
 import { 
   useMutuelleConfig, 
   useUpdateMutuelleConfig, 
-  useCreateNewExercise 
+  useCreateNewExercise, 
+  useUpsertTiers
 } from "../../hooks/useConfig"; // ✅ Import des mutations
 import { useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { MutuelleConfig } from "../../types/config.types";
 import ExerciseModal from "../../components/ExerciseModal";
 
+// 🦊 AJOUT: Interface pour les tranches
+interface Tier {
+  id?: string;
+  min_amount: number;
+  max_amount: number;
+  coefficient: number;
+  max_cap?: number | null;
+}
 interface ConfigModalProps {
   visible: boolean;
   onClose: () => void;
@@ -60,6 +69,7 @@ const ConfigModal = ({
       setLocalLoading(false);
     }
   };
+ 
 
   const isLoading = loading || localLoading;
 
@@ -125,6 +135,7 @@ export default function SettingsScreen() {
   const createExerciseMutation = useCreateNewExercise();
   const [exerciseModalVisible, setExerciseModalVisible] = useState(false);
 
+  
   // ✅ CRÉATION NOUVEL EXERCICE CORRIGÉE
   const handleCreateNewExercise = () => {
     setExerciseModalVisible(true);
@@ -174,79 +185,119 @@ export default function SettingsScreen() {
     });
     setModalVisible(true);
   };
-
-  // ✅ VRAIE SAUVEGARDE !
+// ✅ VRAIE SAUVEGARDE (Config Générale + Tranches locales)
   const handleConfigSave = async (value: string) => {
     if (!currentConfigField) return;
     
     try {
-      // Convertir la valeur selon le type
       const parsedValue = currentConfigField.type === "number" 
-        ? parseFloat(value) 
+        ? parseFloat(value.replace(',', '.')) 
         : value;
 
-      // Préparer l'objet de mise à jour
+      // 1️⃣ CAS : Mise à jour d'un coefficient de tranche (Local)
+      if (currentConfigField.key.toString().startsWith('tier_')) {
+        const index = parseInt(currentConfigField.key.toString().split('_')[1]);
+        
+        const updatedTiers = [...editableTiers];
+        updatedTiers[index] = {
+          ...updatedTiers[index],
+          coefficient: parsedValue as number
+        };
+        
+        setEditableTiers(updatedTiers);
+        setModalVisible(false);
+        setCurrentConfigField(null);
+        return; // On s'arrête ici car ce n'est pas encore envoyé au backend
+      }
+
+      // 2️⃣ CAS : Mise à jour de la configuration générale (Backend)
       const configUpdate = {
         [currentConfigField.key]: parsedValue
       };
 
-      console.log(`Sauvegarde ${currentConfigField.key}:`, parsedValue);
-      const idconf=config?.id
-
-      // ✅ APPEL CORRIGÉ : Passer un objet avec les deux paramètres
       await updateConfigMutation.mutateAsync({
         configUpdates: configUpdate,
         idconf: config?.id || '1'
       });
 
-
-      // Succès
       Alert.alert(
         "Succès", 
         `${currentConfigField.title} mis à jour avec succès !`,
         [{ text: "OK" }]
       );
 
-      // Fermer le modal
       setModalVisible(false);
       setCurrentConfigField(null);
 
     } catch (error: any) {
       console.error("Erreur sauvegarde config:", error);
-      throw error; // Re-throw pour que le modal gère l'erreur
+      throw error;
     }
   };
+const { mutateAsync: upsertTiers } = useUpsertTiers();
+// Assure-toi que ce hook est appelé en haut du composant
 
+  const handleExerciseSubmit = async (exerciseData: any) => {
+  try {
+    console.log("Étape 1: Création de l'exercice...");
 
- const handleExerciseSubmit = async (exerciseData: any) => {
-    try {
-      console.log("Création exercice avec données:", exerciseData);
-      
-      await createExerciseMutation.mutateAsync(exerciseData);
-      
-      Alert.alert("Succès", "Nouvel exercice créé avec succès !");
-      setExerciseModalVisible(false);
-    } catch (error: any) {
-      console.error("Erreur création exercice:", error);
-      
-      let errorMessage = "Impossible de créer le nouvel exercice";
-      
-      if (error.response?.data) {
-        const errorData = error.response.data;
-        if (typeof errorData === 'object') {
-          // Extraire les erreurs de validation
-          const errorMessages = Object.entries(errorData)
-            .map(([field, messages]) => `${field}: ${Array.isArray(messages) ? messages.join(', ') : messages}`)
-            .join('\n');
-          errorMessage = errorMessages || errorMessage;
-        }
+    // 1. Créer l'exercice. 
+    // On envoie une liste vide [] pour emprunt_tiers pour passer la validation 
+    // "champ obligatoire" sans envoyer de dictionnaire (dict)
+    const newExercise = await createExerciseMutation.mutateAsync({
+      ...exerciseData,
+      emprunt_tiers: [] 
+    });
+
+    console.log("Étape 2: Exercice créé avec ID:", newExercise.id);
+    console.log("Étape 3: Envoi des coefficients...");
+
+    // 2. Préparer les tranches avec l'ID de l'exercice que Django vient de renvoyer
+    const tiersWithExerciseId = editableTiers.map(tier => ({
+      min_amount: tier.min_amount,
+      max_amount: tier.max_amount,
+      coefficient: tier.coefficient,
+      max_cap: tier.max_cap,
+      exercise: newExercise.id // ✅ On lie chaque tranche à l'ID de l'exercice
+    }));
+
+    // 3. Envoyer les tranches au backend via le hook upsertTiers
+    // (qui boucle sur createEmpruntTier pour faire les POST)
+    await upsertTiers(tiersWithExerciseId);
+
+    // ✅ Tout est terminé avec succès
+    Alert.alert(
+      "Succès", 
+      "L'exercice et ses coefficients ont été configurés avec succès !",
+      [{ text: "Super" }]
+    );
+
+    setExerciseModalVisible(false);
+    refetchConfig(); // Rafraîchir l'affichage global
+
+  } catch (error: any) {
+    console.error("Erreur complète du processus:", error);
+
+    let errorMessage = "Une erreur est survenue lors de la configuration.";
+
+    // Extraction propre de l'erreur Django
+    if (error.response?.data) {
+      const errorData = error.response.data;
+      if (typeof errorData === 'object') {
+        errorMessage = Object.entries(errorData)
+          .map(([field, messages]) => {
+            const msg = Array.isArray(messages) ? messages.join(', ') : messages;
+            return `${field}: ${msg}`;
+          })
+          .join('\n');
+      } else {
+        errorMessage = String(errorData);
       }
-      
-      Alert.alert("Erreur", errorMessage);
-      throw error; // Pour que le modal garde l'état loading
     }
-  };
 
+    Alert.alert("Erreur de configuration", errorMessage);
+  }
+};
   const configItems = config ? [
     {
       key: "montant_inscription" as keyof MutuelleConfig,
@@ -267,18 +318,35 @@ export default function SettingsScreen() {
       icon: "trending-up-outline",
     },
     {
-      key: "coefficient_emprunt_max" as keyof MutuelleConfig,
-      title: "Coefficient emprunt max",
-      value: `${config.coefficient_emprunt_max}x`,
-      icon: "calculator-outline",
-    },
-    {
       key: "duree_exercice_mois" as keyof MutuelleConfig,
       title: "Durée exercice",
       value: `${config.duree_exercice_mois} mois`,
       icon: "calendar-outline",
     },
   ] : [];
+// À l'intérieur du composant ExerciseModal
+const [editableTiers, setEditableTiers] = useState([
+  { min_amount: 0, max_amount: 500000, coefficient: 5, max_cap: 2000000 },
+  { min_amount: 500001, max_amount: 1000000, coefficient: 4, max_cap: null },
+  { min_amount: 1000001, max_amount: 1500000, coefficient: 3, max_cap: null },
+  { min_amount: 1500001, max_amount: 2000000, coefficient: 2, max_cap: null },
+  { min_amount: 2000001, max_amount: 2500000, coefficient: 1.5, max_cap: null },
+]);
+
+
+
+// Fonction pour ouvrir le modal de modification d'une tranche
+const openTierModal = (index: number) => {
+  const tier = editableTiers[index];
+  setCurrentConfigField({
+    // On utilise un index ou une clé fictive car ce n'est pas dans MutuelleConfig
+    key: `tier_${index}` as any, 
+    title: `Tranche ${tier.min_amount / 1000}k - ${tier.max_amount / 1000}k`,
+    value: tier.coefficient,
+    type: "number",
+  });
+  setModalVisible(true);
+};
 
   if (configLoading) {
     return (
@@ -350,7 +418,34 @@ export default function SettingsScreen() {
             </TouchableOpacity>
           ))}
         </View>
-
+  {/* Section Coefficients avec le style identique à Configuration Mutuelle */}
+<View style={styles.section}>
+  <Text style={styles.sectionTitle}>Coefficients d'emprunt par tranches</Text>
+  
+  {editableTiers.map((tier, index) => (
+    <TouchableOpacity 
+      key={index} 
+      style={styles.settingItem} // Style identique au haut
+      onPress={() => openTierModal(index)} // Ouvre le modal pour cette tranche
+    >
+      <View style={styles.settingItemLeft}>
+        <View style={styles.settingIcon}>
+          <Ionicons name="layers-outline" size={20} color={COLORS.primary} />
+        </View>
+        <View style={styles.settingInfo}>
+          <Text style={styles.settingTitle}>
+            {tier.min_amount / 1000}k - {tier.max_amount / 1000}k FCFA
+          </Text>
+          <Text style={styles.settingValue}>
+            Multiplicateur : {tier.coefficient}x 
+            {tier.max_cap ? ` (Plafond: ${tier.max_cap.toLocaleString()} FCFA)` : ''}
+          </Text>
+        </View>
+      </View>
+      <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
+    </TouchableOpacity>
+  ))}
+</View>
         {/* ✅ NOUVEL EXERCICE */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Exercices</Text>
@@ -452,6 +547,36 @@ export default function SettingsScreen() {
 }
 
 const styles = StyleSheet.create({
+  tierCard: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    backgroundColor: '#F8FAFC', // Fond légèrement différent du blanc pur du haut
+    padding: SPACING.md, 
+    borderRadius: BORDER_RADIUS.md, 
+    marginBottom: SPACING.sm, 
+    borderLeftWidth: 4, 
+    borderLeftColor: COLORS.primary, // La barre bleue sur le côté
+    // Pas d'ombre (shadow) pour rester plat contrairement aux cartes du haut
+  },
+  tierInfo: { 
+    flex: 1 
+  },
+  tierRange: { 
+    fontSize: FONT_SIZES.md, 
+    fontWeight: '700', 
+    color: COLORS.text 
+  },
+  tierCoef: { 
+    fontSize: FONT_SIZES.sm, 
+    color: COLORS.textSecondary, 
+    marginTop: 2 
+  },
+  tierCap: { 
+    fontSize: FONT_SIZES.sm, 
+    color: COLORS.primary, 
+    fontStyle: 'italic', 
+    marginTop: 2 
+  },
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
