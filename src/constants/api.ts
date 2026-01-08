@@ -1,8 +1,9 @@
+
 // Point d'entrée centralisé pour toutes les URLs d'API
 
 import { createLoan } from "../services/loan.service";
 
-export const API_BASE_URL = "http://172.20.10.6:8000/api";
+export const API_BASE_URL = "http://192.168.186.242:8000/api";
 
 export const API_ENDPOINTS = {
   // Auth
