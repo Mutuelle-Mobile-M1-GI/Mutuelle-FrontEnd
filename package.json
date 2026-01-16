@@ -21,7 +21,7 @@
     "@tanstack/react-query": "^5.80.0",
     "axios": "^1.9.0",
     "date-fns": "^4.1.0",
-    "expo": "~54.0.29",
+    "expo": "~54.0.31",
     "expo-blur": "~15.0.8",
     "expo-haptics": "~15.0.8",
     "expo-image-picker": "~17.0.10",

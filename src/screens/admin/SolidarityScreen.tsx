@@ -265,7 +265,7 @@ export default function SolidarityScreen() {
 
       // On utilise les valeurs arrondies pour la comparaison d'égalité
       const isComplete = montantAttenduRounded > 0 && montantPaye >= montantAttenduRounded;
-      const montantRestant = montantAttenduRounded > 0 ? Math.max(0, montantAttenduRounded - moncd desktoptantPaye) : 0;
+      const montantRestant = montantAttenduRounded > 0 ? Math.max(0, montantAttenduRounded - montantPaye) : 0;
 
       return {
         id: member.id,
