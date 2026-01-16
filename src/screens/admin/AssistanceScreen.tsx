@@ -264,8 +264,15 @@ export default function AssistanceScreen() {
 
   // Calculs financiers
   const dispoFonds = socialFund?.montant_total || 0;
-  const montantAssistance = selectedType?.montant || parseFloat(amount) || 0;
-  const fondsOk = montantAssistance <= dispoFonds && montantAssistance > 0;
+  const montantAssistance = useMemo(() => {
+    // On privilégie le montant saisi si c'est un nombre valide, sinon on prend le montant du type
+    const parsed = Number(String(amount).replace(/\s+/g, "").replace(',','.'));
+    if (!isNaN(parsed) && parsed > 0) return parsed;
+    return selectedType?.montant || 0;
+  }, [amount, selectedType]);
+  const resteFonds = dispoFonds - montantAssistance;
+  const manque = resteFonds < 0 ? Math.abs(resteFonds) : 0;
+  const fondsOk = montantAssistance > 0 && resteFonds >= 0;
 
   // Statistiques
   const stats = useMemo(() => {
@@ -281,7 +288,7 @@ export default function AssistanceScreen() {
 
   // Filtres pour les sélecteurs du modal
   const filteredMembers = useMemo(() => {
-    if (!searchMember.trim()) return members;
+    if (!searchMember.trim()) return members.slice(0, 5);
     
     return members.filter((member) => {
       const searchStr = [
@@ -291,16 +298,16 @@ export default function AssistanceScreen() {
       ].filter(Boolean).join(" ").toLowerCase();
       
       return searchStr.includes(searchMember.toLowerCase());
-    });
+    }).slice(0, 8);
   }, [members, searchMember]);
 
   const filteredTypes = useMemo(() => {
-    if (!searchType.trim()) return types;
+    if (!searchType.trim()) return types.slice(0, 5);
     
     return types.filter((type) => {
       const searchStr = [type.nom, type.description].filter(Boolean).join(" ").toLowerCase();
       return searchStr.includes(searchType.toLowerCase());
-    });
+    }).slice(0, 8);
   }, [types, searchType]);
 
   // Actions
@@ -573,7 +580,7 @@ export default function AssistanceScreen() {
                       </View>
                     ) : (
                       <View style={styles.simpleSelectorContainer}>
-                        {filteredMembers.map((member) => (
+                        {filteredMembers.slice(0, 4).map((member) => (
                           <TouchableOpacity
                             key={member.id}
                             style={[
@@ -642,7 +649,7 @@ export default function AssistanceScreen() {
                       </View>
                     ) : (
                       <View style={styles.simpleSelectorContainer}>
-                        {filteredTypes.map((type) => (
+                        {filteredTypes.slice(0, 4).map((type) => (
                           <TouchableOpacity
                             key={type.id}
                             style={[
@@ -692,20 +699,28 @@ export default function AssistanceScreen() {
                       placeholderTextColor={COLORS.textLight}
                     />
                     <View style={styles.fundStatus}>
-                      <Ionicons 
-                        name={fondsOk ? "checkmark-circle" : "alert-circle"} 
-                        size={16} 
-                        color={fondsOk ? COLORS.success : COLORS.error} 
-                      />
-                      <Text style={[styles.fundStatusText, { 
-                        color: fondsOk ? COLORS.success : COLORS.error 
-                      }]}>
-                        {fondsOk
-                          ? `Fonds suffisant (${formatCurrency(dispoFonds)})`
-                          : `Fonds insuffisant (${formatCurrency(dispoFonds)})`
-                        }
-                      </Text>
-                    </View>
+                      <View style={styles.fundRow}>
+                        <Text style={styles.fundLabel}>Montant demandé:</Text>
+                        <Text style={styles.fundValue}>{formatCurrency(montantAssistance)}</Text>
+                      </View>
+
+                      <View style={styles.fundRow}>
+                        <Text style={styles.fundLabel}>Fonds disponibles:</Text>
+                        <Text style={[styles.fundValue, { color: dispoFonds >= montantAssistance ? COLORS.success : COLORS.error }]}>{formatCurrency(dispoFonds)}</Text>
+                      </View>
+
+                      <View style={styles.fundRow}>
+                        <Text style={styles.fundLabel}>Reste après paiement:</Text>
+                        <Text style={[styles.fundValue, { color: resteFonds >= 0 ? COLORS.success : COLORS.error }]}>{formatCurrency(resteFonds)}</Text>
+                      </View>
+
+                      {(!fondsOk && manque > 0) && (
+                        <View style={styles.fundWarning}>
+                          <Ionicons name="alert-circle" size={16} color={COLORS.error} />
+                          <Text style={[styles.fundWarningText, { color: COLORS.error }]}>Il manque {formatCurrency(manque)}</Text>
+                        </View>
+                      )}
+                    </View> 
                   </View>
 
                   {/* Justification */}
@@ -1260,14 +1275,32 @@ const styles = StyleSheet.create({
     textAlignVertical: "top",
   },
   fundStatus: {
-    flexDirection: "row",
-    alignItems: "center",
     marginTop: SPACING.sm,
     gap: SPACING.xs,
   },
-  fundStatusText: {
+  fundRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: SPACING.xs,
+  },
+  fundLabel: {
     fontSize: FONT_SIZES.sm,
-    fontWeight: "600",
+    color: COLORS.textSecondary,
+  },
+  fundValue: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: "700",
+  },
+  fundWarning: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.xs,
+    marginTop: SPACING.xs,
+  },
+  fundWarningText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: "700",
   },
 
   // Modal Actions

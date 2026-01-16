@@ -254,10 +254,18 @@ export default function SolidarityScreen() {
   // Membres avec progression
   const membersWithProgress: MemberWithProgress[] = useMemo(() => {
     return members.map(member => {
-      const montantPaye = memberPaymentsMap[member.id] || 0;
-      const pourcentageComplete = montantAttendu > 0 ? (montantPaye / montantAttendu) * 100 : 0;
-      const isComplete = montantPaye >= montantAttendu && montantAttendu > 0;
-      const montantRestant = Math.max(0, montantAttendu - montantPaye);
+      // Normalisation pour éviter les problèmes d'imprécision flottante
+      const montantPayeRaw = memberPaymentsMap[member.id] || 0;
+      const montantPaye = Math.round(montantPayeRaw);
+      const montantAttenduRounded = Math.round(montantAttendu);
+
+      const pourcentageComplete = montantAttenduRounded > 0
+        ? Math.max(0, Math.min(Math.round((montantPaye / montantAttenduRounded) * 100), 100))
+        : 0;
+
+      // On utilise les valeurs arrondies pour la comparaison d'égalité
+      const isComplete = montantAttenduRounded > 0 && montantPaye >= montantAttenduRounded;
+      const montantRestant = montantAttenduRounded > 0 ? Math.max(0, montantAttenduRounded - moncd desktoptantPaye) : 0;
 
       return {
         id: member.id,
