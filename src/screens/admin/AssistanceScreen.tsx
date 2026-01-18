@@ -16,7 +16,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
-import { useAssistances, useCreateAssistance, useAssistanceTypes } from "../../hooks/useAssistance";
+import { useAssistances, useAssistance, useCreateAssistances, useCreateAssistance, useAssistanceType } from "../../hooks/useAssistance";
 import { useMembers } from "../../hooks/useMember";
 import { useSocialFundCurrent } from "../../hooks/useSolidarity";
 import { Assistance } from "../../types/assistance.types";
@@ -206,10 +206,10 @@ export default function AssistanceScreen() {
   const [searchType, setSearchType] = useState("");
 
   // Hooks de données
-  const { data: assistancesData, isLoading, isError, refetch } = useAssistances();
-  const createAssistance = useCreateAssistance();
+  const { data: assistancesData, isLoading, isError, refetch } = useAssistance();
+  const createAssistance = useCreateAssistances();
   const { data: membersData, isLoading: loadingMembers } = useMembers({ statut: "EN_REGLE" });
-  const { data: typesData, isLoading: loadingTypes } = useAssistanceTypes();
+  const { data: typesData, isLoading: loadingTypes } = useAssistanceType();
   const { data: socialFund } = useSocialFundCurrent();
   const navigation = useNavigation();
 

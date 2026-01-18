@@ -10,6 +10,31 @@ export const fetchAssistances = async (accessToken: string, params?: Record<stri
   return data;
 };
 
+
+export const fetchAssistance = async (accessToken: string, params?: Record<string, any>): Promise<Assistance[]> => {
+  const { data } = await axios.get<Assistance[]>(API_BASE_URL + API_ENDPOINTS.assistances, {
+    params,
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  return data;
+};
+
+
+export const createAssistances = async (payload: any, accessToken: string): Promise<Assistance> => {
+  const { data } = await axios.post<Assistance>(API_BASE_URL + API_ENDPOINTS.assistances, payload, {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  return data;
+};
+
+
+export const fetchAssistanceType = async (accessToken: string): Promise<any[]> => {
+  const { data } = await axios.get<any[]>(API_BASE_URL + API_ENDPOINTS.assistanceTypes, {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  return data;
+};
+
 export const createAssistance = async (payload: any, accessToken: string): Promise<Assistance> => {
   const { data } = await axios.post<Assistance>(API_BASE_URL + API_ENDPOINTS.assistanceTypes, payload, {
     headers: { Authorization: `Bearer ${accessToken}` }
