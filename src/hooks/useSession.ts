@@ -38,11 +38,20 @@ export function useCurrentSession() {
     queryFn: async () => {
       const token = await getStoredAccessToken();
       if (!token) throw new Error("Token manquant");
-      const { data } = await axios.get(
-        API_BASE_URL + API_ENDPOINTS.sessionCurrent,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      return data;
+      try {
+        const { data } = await axios.get(
+          API_BASE_URL + API_ENDPOINTS.sessionCurrent,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        return data;
+      } catch (error: any) {
+        // Si le serveur retourne 404 (aucune session en cours), retourner null
+        if (error?.response?.status === 404) {
+          return null;
+        }
+        // Pour les autres erreurs, les relancer
+        throw error;
+      }
     },
   });
 }
