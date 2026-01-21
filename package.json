@@ -22,7 +22,11 @@
     "axios": "^1.9.0",
     "date-fns": "^4.1.0",
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
     "expo": "~54.0.29",
+=======
+    "expo": "~54.0.31",
+>>>>>>> Stashed changes
 =======
     "expo": "~54.0.31",
 >>>>>>> Stashed changes
