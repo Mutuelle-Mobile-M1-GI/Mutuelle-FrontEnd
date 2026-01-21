@@ -205,7 +205,7 @@ export default function SolidarityScreen() {
 
   // Hooks de données
   const { data: solidarityPaymentsData, isLoading: loadingSolidarity, isError: errorSolidarity, refetch: refetchSolidarity } = useSolidarityPayments();
-  const { data: socialFund, isLoading: loadingFund, isError: errorFund } = useSocialFundCurrent();
+  const { data: socialFund, isLoading: loadingFund, isError: errorFund, refetch: refetchSocialFund } = useSocialFundCurrent();
   const { data: membersData, isLoading: loadingMembers, isError: errorMembers } = useMembers();
   const { data: currentSession, isLoading: loadingSession, isError: errorSession } = useCurrentSession();
   const { data: currentConfig, isLoading: loadingConfig, isError: errorConfig } = useMutuelleConfig();
@@ -254,10 +254,18 @@ export default function SolidarityScreen() {
   // Membres avec progression
   const membersWithProgress: MemberWithProgress[] = useMemo(() => {
     return members.map(member => {
-      const montantPaye = memberPaymentsMap[member.id] || 0;
-      const pourcentageComplete = montantAttendu > 0 ? (montantPaye / montantAttendu) * 100 : 0;
-      const isComplete = montantPaye >= montantAttendu && montantAttendu > 0;
-      const montantRestant = Math.max(0, montantAttendu - montantPaye);
+      // Normalisation pour éviter les problèmes d'imprécision flottante
+      const montantPayeRaw = memberPaymentsMap[member.id] || 0;
+      const montantPaye = Math.round(montantPayeRaw);
+      const montantAttenduRounded = Math.round(montantAttendu);
+
+      const pourcentageComplete = montantAttenduRounded > 0
+        ? Math.max(0, Math.min(Math.round((montantPaye / montantAttenduRounded) * 100), 100))
+        : 0;
+
+      // On utilise les valeurs arrondies pour la comparaison d'égalité
+      const isComplete = montantAttenduRounded > 0 && montantPaye >= montantAttenduRounded;
+      const montantRestant = montantAttenduRounded > 0 ? Math.max(0, montantAttenduRounded - montantPaye) : 0;
 
       return {
         id: member.id,
@@ -340,6 +348,7 @@ export default function SolidarityScreen() {
     try {
       await Promise.all([
         refetchSolidarity(),
+        refetchSocialFund(),
       ]);
     } catch (error) {
       console.error("Erreur lors du rafraîchissement:", error);
