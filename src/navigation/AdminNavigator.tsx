@@ -31,8 +31,8 @@ export default function AdminNavigator() {
       }}
     >
       {/* Tab Navigator principal */}
-      <Stack.Screen 
-        name="MainTabs" 
+      <Stack.Screen
+        name="MainTabs"
         component={TabNavigator}
         options={{
           presentation: "card",
@@ -40,8 +40,8 @@ export default function AdminNavigator() {
       />
       
       {/* 🆕 Pages des modules admin */}
-      <Stack.Screen 
-        name="InscriptionsScreen" 
+      <Stack.Screen
+        name="InscriptionsScreen"
         component={InscriptionsScreen}
         options={{
           presentation: "card",
@@ -49,9 +49,9 @@ export default function AdminNavigator() {
           title: "Gestion des Inscriptions",
         }}
       />
-      
-      <Stack.Screen 
-        name="SavingsScreen" 
+
+      <Stack.Screen
+        name="SavingsScreen"
         component={SavingsScreen}
         options={{
           presentation: "card",
@@ -59,9 +59,9 @@ export default function AdminNavigator() {
           title: "Gestion des Épargnes",
         }}
       />
-      
-      <Stack.Screen 
-        name="AssistanceScreen" 
+
+      <Stack.Screen
+        name="AssistanceScreen"
         component={AssistanceScreen}
         options={{
           presentation: "card",
@@ -69,9 +69,9 @@ export default function AdminNavigator() {
           title: "Gestion des Assistances",
         }}
       />
-      
-      <Stack.Screen 
-        name="SolidarityScreen" 
+
+      <Stack.Screen
+        name="SolidarityScreen"
         component={SolidarityScreen}
         options={{
           presentation: "card",
@@ -79,9 +79,9 @@ export default function AdminNavigator() {
           title: "Fonds Social & Solidarité",
         }}
       />
-      
-      <Stack.Screen 
-        name="LoansScreen" 
+
+      <Stack.Screen
+        name="LoansScreen"
         component={LoansScreen}
         options={{
           presentation: "card",
@@ -89,9 +89,9 @@ export default function AdminNavigator() {
           title: "Gestion des Emprunts",
         }}
       />
-      
-      <Stack.Screen 
-        name="RepaymentsScreen" 
+
+      <Stack.Screen
+        name="RepaymentsScreen"
         component={RepaymentsScreen}
         options={{
           presentation: "card",
@@ -101,8 +101,8 @@ export default function AdminNavigator() {
       />
 
       {/* Screens partagés et modaux */}
-      <Stack.Screen 
-        name="Profile" 
+      <Stack.Screen
+        name="Profile"
         component={ProfileScreen}
         options={{
           presentation: "modal",
@@ -110,9 +110,9 @@ export default function AdminNavigator() {
           title: "Mon Profil",
         }}
       />
-      
-      <Stack.Screen 
-        name="Notifications" 
+
+      <Stack.Screen
+        name="Notifications"
         component={NotificationsScreen}
         options={{
           presentation: "modal",
@@ -120,9 +120,9 @@ export default function AdminNavigator() {
           title: "Notifications",
         }}
       />
-      
-      <Stack.Screen 
-        name="Chatbot" 
+
+      <Stack.Screen
+        name="Chatbot"
         component={ChatbotScreen}
         options={{
           presentation: "modal",
@@ -132,8 +132,8 @@ export default function AdminNavigator() {
       />
 
       {/* 🆕 Pin Screen */}
-      <Stack.Screen 
-        name="Pin" 
+      <Stack.Screen
+        name="Pin"
         component={(props) => <PinScreen {...props} mode="setup" />}
         options={{
           presentation: "modal",
@@ -141,9 +141,9 @@ export default function AdminNavigator() {
           title: "Code PIN",
         }}
       />
-      
-      <Stack.Screen 
-        name="MembersManagement" 
+
+      <Stack.Screen
+        name="MembersManagement"
         component={MembersManagementScreen}
         options={{
           presentation: "card",
@@ -152,7 +152,7 @@ export default function AdminNavigator() {
         }}
       />
 
-  <Stack.Screen name="Login" component={LoginScreen} />
+      <Stack.Screen name="Login" component={LoginScreen} />
     </Stack.Navigator>
   );
 }

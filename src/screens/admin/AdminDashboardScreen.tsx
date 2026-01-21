@@ -302,7 +302,7 @@ export default function AdminDashboardScreen() {
                    (user?.first_name && user?.last_name ? `${user.first_name} ${user.last_name}` : null) ||
                    user?.username || 
                    user?.email?.split('@')[0] || 
-                   "Administrateur";
+                   "Administraeur";
 
   return (
     <>
@@ -318,7 +318,7 @@ export default function AdminDashboardScreen() {
         {/* 🎯 Header moderne */}
         <View style={styles.header}>
           <View style={styles.headerLeft}>
-            <Text style={styles.greeting}>Bonjour,</Text>
+            <Text style={styles.greeting}>Bonjour </Text>
             <Text style={styles.userName}>{userName}</Text>
             <Text style={styles.userRole}>Administrateur</Text>
           </View>
@@ -439,7 +439,7 @@ export default function AdminDashboardScreen() {
               {currentSession.nombre_membres_inscrits || 0} membres
             </Text>
             <Text style={styles.sessionStatsText}>
-              {((currentSession.total_solidarite_collectee || 0) / 1000).toFixed(0)}k FCFA
+              {((currentSession.total_solidarite_collectee || 0) / 1000).toFixed(1)}k FCFA
             </Text>
           </View>
         </View>
