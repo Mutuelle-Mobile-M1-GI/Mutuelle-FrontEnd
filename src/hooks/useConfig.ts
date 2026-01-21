@@ -7,6 +7,28 @@ import {
 import { MutuelleConfig } from "../types/config.types";
 import { getStoredAccessToken } from "../services/auth.service";
 
+// ✅ Importe la nouvelle fonction en haut du fichier
+import {createEmpruntTier } from "../services/config.service";
+
+export const useUpsertTiers = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (tiers: any[]) => {
+      const token = await getStoredAccessToken();
+      if (!token) throw new Error("Token manquant");
+
+      // On boucle sur chaque tranche et on appelle notre service
+      const promises = tiers.map(tier => createEmpruntTier(tier, token));
+      
+      return Promise.all(promises);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["mutuelle-config"] });
+    },
+  });
+};
+
 // 📖 Query pour récupérer la config actuelle
 export function useMutuelleConfig() {
   return useQuery<MutuelleConfig>({

@@ -52,3 +52,15 @@ export const createNewExercise = async (
   );
   return data;
 };
+
+// Fonction pour créer une tranche (Tier)
+export const createEmpruntTier = async (tierData: any, token: string) => {
+  // ✅ Correction : Utilise API_BASE_URL pour être cohérent avec tes autres fonctions
+  const response = await axios.post(`${API_BASE_URL}/administration/emprunt-tiers/`, tierData, {
+    headers: { 
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+  });
+  return response.data;
+};

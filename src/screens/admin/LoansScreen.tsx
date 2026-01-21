@@ -27,6 +27,7 @@ import { Member } from "../../types/member.types";
 import { useNavigation } from "@react-navigation/native";
 import { useAdminDashboard } from "../../hooks/useDashboard";
 import { min } from "lodash";
+import { useMutuelleConfig } from "../../hooks/useConfig";
 // Feedback visuel et haptique
 import { Vibration } from 'react-native';
 
@@ -371,6 +372,26 @@ export default function LoansScreen() {
 
   const createLoan = useCreateLoan();
   const createRepayment = useCreateRepayment();
+  const { data: globalConfig } = useMutuelleConfig();
+
+  const loanCalculation = useMemo(() => {
+  const montantBrut = parseFloat(loanAmount.replace(',', '.')) || 0;
+  
+  // Ordre de priorité dynamique :
+  // 1. Taux spécifique à la session (si défini)
+  // 2. Taux global de la mutuelle (récupéré via useMutuelleConfig)
+  // 3. Valeur de secours (3%)
+  const taux = (
+    currentSession?.taux_interet_emprunt || 
+    globalConfig?.taux_interet
+  );
+  
+  const interet = (montantBrut * taux) / 100;
+  const net = montantBrut - interet;
+
+  return { brut: montantBrut, interet, net, taux };
+}, [loanAmount, currentSession, globalConfig]); // Ajoute globalConfig aux dépendances
+
   
 
   // 🔧 Protection et normalisation des données
@@ -556,57 +577,38 @@ export default function LoansScreen() {
     setShowRepaymentModal(true);
   };
 
-  const handleCreateLoan = () => {
-    if (!selectedMember) {
-      Alert.alert("Erreur", "Aucun membre sélectionné.");
-      return;
-    }
-  
-    if (!loanAmount.trim() || isNaN(Number(loanAmount)) || Number(loanAmount) <= 0) {
-      Alert.alert("Erreur", "Veuillez saisir un montant valide.");
-      return;
-    }
-  
-    const montant = Number(loanAmount);
-    const maxEmpruntable = selectedMember.donnees_financieres?.emprunt?.montant_max_empruntable || 0;
-    const liquiditesDisponibles = dashboardData?.tresor?.cumul_total_epargnes || 0;
-  
-    // Vérifications de sécurité
-    if (montant > maxEmpruntable) {
-      Alert.alert(
-        "Montant trop élevé",
-        `Le montant demandé (${formatCurrency(montant)}) dépasse le maximum empruntable pour ce membre (${formatCurrency(maxEmpruntable)}).`
-      );
-      return;
-    }
-  
-    if (montant > liquiditesDisponibles) {
-      Alert.alert(
-        "Liquidités insuffisantes",
-        `Le montant demandé (${formatCurrency(montant)}) dépasse les liquidités disponibles (${formatCurrency(liquiditesDisponibles)}).`
-      );
-      return;
-    }
-  
-    if (!currentSession?.id) {
-      Alert.alert("Erreur", "Aucune session courante disponible.");
-      return;
-    }
-  
-    // Confirmation si montant important
-    if (montant > maxEmpruntable * 0.8) {
-      Alert.alert(
-        "Confirmation",
-        `Vous vous apprêtez à accorder un emprunt de ${formatCurrency(montant)} à ${selectedMember.utilisateur?.nom_complet}. Continuer ?`,
-        [
-          { text: "Annuler", style: "cancel" },
-          { text: "Confirmer", onPress: createLoanAction }
-        ]
-      );
-    } else {
-      createLoanAction();
-    }
-  };
+ const handleCreateLoan = () => {
+  if (!selectedMember) {
+    Alert.alert("Erreur", "Sélectionnez un membre.");
+    return;
+  }
+
+  const brut = Number(loanAmount);
+  // On utilise la limite de tranche déjà calculée par le backend
+  const maxAutorise = selectedMember.donnees_financieres?.emprunt?.montant_max_empruntable || 0;
+
+  if (brut > maxAutorise) {
+    Alert.alert(
+      "Limite de tranche atteinte",
+      `Ce membre ne peut pas emprunter plus de ${formatCurrency(maxAutorise)} selon son épargne actuelle.`
+    );
+    return;
+  }
+
+  // Confirmation détaillée du décaissement
+  Alert.alert(
+    "Confirmation de décaissement",
+    `Membre : ${selectedMember.utilisateur?.nom_complet}\n\n` +
+    `Dette brute : ${formatCurrency(brut)}\n` +
+    `Intérêt retenu (${loanCalculation.taux}%) : -${formatCurrency(loanCalculation.interet)}\n` +
+    `---------------------------\n` +
+    `NET À DECAISSER : ${formatCurrency(loanCalculation.net)}`,
+    [
+      { text: "Annuler", style: "cancel" },
+      { text: "Valider le prêt", onPress: createLoanAction }
+    ]
+  );
+};
 
 
   const createLoanAction = () => {
@@ -1173,6 +1175,24 @@ export default function LoansScreen() {
   placeholderTextColor={COLORS.textLight}
 />
 
+{loanCalculation.brut > 0 && (
+  <View style={styles.calculationPreview}>
+    <View style={styles.calcRow}>
+      <Text style={styles.calcLabel}>Intérêts retenus :</Text>
+      <Text style={[styles.calcValue, { color: COLORS.error }]}>
+        - {formatCurrency(loanCalculation.interet)}
+      </Text>
+    </View>
+    
+    <View style={[styles.calcRow, styles.totalRow]}>
+      <Text style={styles.totalLabel}>NET À DÉCAISSER :</Text>
+      <Text style={styles.totalValue}>
+        {formatCurrency(loanCalculation.net)}
+      </Text>
+    </View>
+  </View>
+)}
+
                 <Text style={styles.inputLabel}>Notes (optionnel)</Text>
                 <TextInput
                   style={[styles.input, styles.textArea]}
@@ -1494,6 +1514,29 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: YELLOW_THEME.background,
   },
+  calculationPreview: {
+  backgroundColor: YELLOW_THEME.surfaceLight,
+  padding: 15,
+  borderRadius: BORDER_RADIUS.md,
+  marginTop: 15,
+  borderWidth: 1,
+  borderColor: YELLOW_THEME.border,
+},
+calcRow: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  marginBottom: 5,
+},
+totalRow: {
+  marginTop: 10,
+  paddingTop: 10,
+  borderTopWidth: 1,
+  borderTopColor: YELLOW_THEME.border,
+},
+calcLabel: { color: YELLOW_THEME.text, fontSize: 14 },
+calcValue: { fontWeight: '700' },
+totalLabel: { fontWeight: 'bold', color: YELLOW_THEME.textDark },
+totalValue: { fontWeight: 'bold', color: COLORS.success, fontSize: 18 },
 
   // Header
   header: {
