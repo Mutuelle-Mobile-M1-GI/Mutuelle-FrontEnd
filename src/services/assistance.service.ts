@@ -29,14 +29,8 @@ export const fetchAssistanceTypes = async (accessToken: string): Promise<any[]> 
     headers: { Authorization: `Bearer ${accessToken}` }
   });
 
-  // Normalise possible response shapes (array, paginated { results: [] }, or wrapped { data: [] })
-  if (Array.isArray(data)) return data;
-  if (data && Array.isArray(data.results)) return data.results;
-  if (data && Array.isArray(data.data)) return data.data;
-
-  // Unexpected shape — return empty array to avoid runtime errors
-  console.warn("fetchAssistanceTypes: unexpected response shape", data);
-  return [];
+ 
+  return data;
   };
 
   //export const deleteAssistanceType = async (id: string, accessToken: string): Promise<void> => {
