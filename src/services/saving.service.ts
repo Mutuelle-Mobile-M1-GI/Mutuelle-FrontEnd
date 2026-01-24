@@ -16,3 +16,12 @@ export const createSaving = async (payload: any, accessToken: string): Promise<S
   });
   return data;
 };
+
+// Dans services/saving.service.ts
+
+export const fetchSavingsStats = async (token: string) => {
+  const response = await axios.get(`${API_BASE_URL}/transactions/epargne-transactions/statistiques/`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return response.data;
+};

@@ -32,6 +32,7 @@ import { Renflouement } from "../../types/renflouement.types";
 import { Assistance } from "../../types/assistance.types";
 import { Member } from "../../types/member.types";
 import { useNavigation } from "@react-navigation/native";
+import { useSavingsStats } from "../../hooks/useSaving"; 
 
 const { width } = Dimensions.get("window");
 
@@ -150,6 +151,8 @@ const SectionHeader = ({ title, subtitle, icon, color, action }: SectionHeaderPr
     )}
   </View>
 );
+
+
 
 // 🎯 Modal détaillé
 interface DetailModalProps<T> {
@@ -285,6 +288,8 @@ export default function FinancialReportsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [activeModal, setActiveModal] = useState<string | null>(null);
 
+  const { data: serverStats, isLoading: loadingStats, refetch: refetchServerStats } = useSavingsStats();
+
   // 🔧 Hooks de données avec protection
   const { data: dashboard, isLoading, refetch } = useAdminDashboard();
   const { data: loansData, isLoading: loadingLoans } = useLoans();
@@ -325,13 +330,19 @@ export default function FinancialReportsScreen() {
     }).format(amount);
   };
 
-  // 🔧 Statistiques calculées avec protection COMPLÈTE
+// 🔧 Statistiques calculées avec protection COMPLÈTE
   const stats = useMemo((): CalculatedStats => {
+    // --- 1. DONNÉES DU SERVEUR (Hook useSavingsStats / Django) ---
+    const reelTresor = serverStats?.tresor_total ?? 0; 
+    const epargneGlobaleMembres = serverStats?.epargne_totale ?? 0;
+    const solidariteGlobale = serverStats?.solidarite_totale ?? 0; // Si dispo, sinon fallback
+
+    // --- 2. DONNÉES DU DASHBOARD ---
     const empruntsEnCours = dashboard?.emprunts_en_cours?.nombre ?? 0;
     const empruntsTotal = dashboard?.emprunts_en_cours?.montant_total_attendu ?? 0;
-    const tresorTotal = dashboard?.tresor?.cumul_total_epargnes ?? 0;
-    const fondsSocialTotal = dashboard?.fonds_social?.montant_total ?? 0;
+    const fondsSocialTotal = dashboard?.fonds_social?.montant_total ?? solidariteGlobale;
     
+    // --- 3. LOGIQUE MEMBRES ---
     const membresTotal = members.length;
     const membresEnRegle = members.filter(m => m?.statut === "EN_REGLE").length;
     const membresNonEnRegle = membresTotal - membresEnRegle;
@@ -343,7 +354,7 @@ export default function FinancialReportsScreen() {
       sum + (m?.donnees_financieres?.inscription?.montant_paye_inscription ?? 0), 0
     );
 
-    // Renflouements avec fallback sur dashboard si disponible
+    // --- 4. RENFLOUEMENTS & ASSISTANCES ---
     const renflouementDu = dashboard?.renflouements?.montants?.total_du ?? 
       renflouements.reduce((sum, r) => sum + (r?.montant_du ?? 0), 0);
     const renflouementPaye = dashboard?.renflouements?.montants?.total_paye ?? 
@@ -357,12 +368,14 @@ export default function FinancialReportsScreen() {
       .filter(a => a?.statut === "PAYEE")
       .reduce((sum, a) => sum + (a?.montant ?? 0), 0);
 
-    const situationNette = tresorTotal + fondsSocialTotal - empruntsTotal ;
+    // --- 5. CALCUL DE LA SITUATION NETTE (LA CORRECTION) ---
+    // Formule : (Cash en Caisse + Créances/Prêts à percevoir) - Dettes envers les membres (Épargnes)
+    const situationNette = (reelTresor + empruntsTotal) - epargneGlobaleMembres;
 
     return {
       empruntsEnCours,
-      empruntsTotal,
-      tresorTotal,
+      empruntsTotal,      // Argent "dehors"
+      tresorTotal: reelTresor, // Argent "dedans" (inclut les remboursements)
       fondsSocialTotal,
       membresTotal,
       membresEnRegle,
@@ -372,17 +385,23 @@ export default function FinancialReportsScreen() {
       renflouementDu,
       renflouementPaye,
       tauxRecouvrement,
-      situationNette,
+      situationNette,    // Bilan de santé réel
       assistancesPayees,
       assistancesTotales,
       montantAssistances,
     };
-  }, [dashboard, members, renflouements, assistances]);
+  }, [dashboard, serverStats, members, renflouements, assistances]);
 
+  // N'oublie pas de mettre à jour ton rafraîchissement également :
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      await refetch();
+      await Promise.all([
+        refetch(),             // Dashboard
+        refetchServerStats()   // Nouvelles Stats
+      ]);
+    } catch (error) {
+      console.error("Erreur de rafraîchissement:", error);
     } finally {
       setRefreshing(false);
     }
@@ -631,49 +650,49 @@ export default function FinancialReportsScreen() {
           </TouchableOpacity>
         </View>
       </LinearGradient>
+{/* Métriques principales - Version Corrigée */}
+<View style={styles.metricsGrid}>
+  <MetricCard
+    title="Trésor Total"
+    value={formatCurrency(stats.tresorTotal)}
+    subtitle="Liquidités en caisse" 
+    icon="wallet-outline"
+    gradient={[COLORS.primary, "#3A86FF"]}
+    trend={stats.tresorTotal > 0 ? "up" : "down"}
+    onPress={() => setActiveModal("members")}
+  />
+  
+  <MetricCard
+    title="Fonds Social"
+    value={formatCurrency(stats.fondsSocialTotal)}
+    subtitle="Réserve de solidarité"
+    icon="heart-outline"
+    gradient={[COLORS.success, "#57CC99"]}
+    trend="stable"
+  />
+</View>
 
-      {/* Métriques principales - Corrigées */}
-      <View style={styles.metricsGrid}>
-        <MetricCard
-          title="Trésor Total"
-          value={formatCurrency(stats.tresorTotal)}
-          subtitle="Cumul des épargnes"
-          icon="wallet"
-          gradient={[COLORS.primary, "#3A86FF"]}
-          trend="up"
-          onPress={() => setActiveModal("members")}
-        />
-        
-        <MetricCard
-          title="Fonds Social"
-          value={formatCurrency(stats.fondsSocialTotal)}
-          subtitle="Solidarité cumulée"
-          icon="heart"
-          gradient={[COLORS.success, "#57CC99"]}
-          trend="stable"
-        />
-      </View>
-
-      <View style={styles.metricsGrid}>
-        <MetricCard
-          title="Emprunts"
-          value={formatCurrency(stats.empruntsTotal)}
-          subtitle={`${stats.empruntsEnCours} en cours`}
-          icon="trending-down"
-          gradient={[COLORS.warning, "#FCBF49"]}
-          trend="down"
-          onPress={() => setActiveModal("loans")}
-        />
-        
-        <MetricCard
-          title="Situation Nette"
-          value={formatCurrency(stats.situationNette)}
-          subtitle="Bilan global"
-          icon={stats.situationNette >= 0 ? "trending-up" : "trending-down"}
-          gradient={stats.situationNette >= 0 ? [COLORS.grey, "#363737FF"] : [COLORS.error, "#F87171"]}
-          trend={stats.situationNette >= 0 ? "up" : "down"}
-        />
-      </View>
+<View style={styles.metricsGrid}>
+  <MetricCard
+    title="Emprunts"
+    value={formatCurrency(stats.empruntsTotal)}
+    subtitle={`${stats.empruntsEnCours} prêt(s) à recouvrer`}
+    icon="cash-outline"
+    gradient={[COLORS.warning, "#FCBF49"]}
+    trend="down"
+    onPress={() => setActiveModal("loans")}
+  />
+  
+  <MetricCard
+    title="Situation Nette"
+    value={formatCurrency(stats.situationNette)}
+    subtitle={stats.situationNette >= 0 ? "Bilan Excédentaire" : "Bilan Déficitaire"}
+    icon={stats.situationNette >= 0 ? "shield-checkmark-outline" : "alert-circle-outline"}
+    // Changement dynamique de couleur : Gris foncé si positif, Rouge vif si négatif
+    gradient={stats.situationNette >= 0 ? ["#4B5563", "#1F2937"] : [COLORS.error, "#B91C1C"]}
+    trend={stats.situationNette >= 0 ? "up" : "down"}
+  />
+</View>
 
       {/* Analyse des membres - Section corrigée */}
       <View style={styles.fullWidthSection}>
