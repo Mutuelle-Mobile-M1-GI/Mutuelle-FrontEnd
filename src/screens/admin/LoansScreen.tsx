@@ -596,18 +596,18 @@ export default function LoansScreen() {
   }
 
   // Confirmation détaillée du décaissement
-  Alert.alert(
-    "Confirmation de décaissement",
-    `Membre : ${selectedMember.utilisateur?.nom_complet}\n\n` +
-    `Dette brute : ${formatCurrency(brut)}\n` +
-    `Intérêt retenu (${loanCalculation.taux}%) : -${formatCurrency(loanCalculation.interet)}\n` +
-    `---------------------------\n` +
-    `NET À DECAISSER : ${formatCurrency(loanCalculation.net)}`,
-    [
-      { text: "Annuler", style: "cancel" },
-      { text: "Valider le prêt", onPress: createLoanAction }
-    ]
-  );
+ Alert.alert(
+  "Confirmation de décaissement",
+  `Membre : ${selectedMember.utilisateur?.nom_complet}\n\n` +
+  `Dette brute :\n${formatCurrency(brut)}\n\n` +
+  `Intérêt retenu (${loanCalculation.taux}%) :\n-${formatCurrency(loanCalculation.interet)}\n` +
+  `---------------------------\n` +
+  `NET À DÉCAISSER :\n${formatCurrency(loanCalculation.net)}`, // Saut de ligne avant le montant
+  [
+    { text: "Annuler", style: "cancel" },
+    { text: "Valider le prêt", onPress: createLoanAction }
+  ]
+);
 };
 
 
@@ -1177,22 +1177,25 @@ export default function LoansScreen() {
 
 {loanCalculation.brut > 0 && (
   <View style={styles.calculationPreview}>
-    <View style={styles.calcRow}>
-      <Text style={styles.calcLabel}>Intérêts retenus :</Text>
-      <Text style={[styles.calcValue, { color: COLORS.error }]}>
+    {/* Groupe Intérêts : On enlève styles.calcRow pour forcer le vertical */}
+    <View style={{ marginBottom: 10 }}>
+      <Text style={styles.calcLabel}>
+        Intérêts retenus ({loanCalculation.taux}%) :
+      </Text>
+      <Text style={[styles.calcValue, { color: COLORS.error, fontSize: 20 }]}>
         - {formatCurrency(loanCalculation.interet)}
       </Text>
     </View>
     
-    <View style={[styles.calcRow, styles.totalRow]}>
+    {/* Groupe Net : On enlève styles.calcRow et styles.totalRow */}
+    <View style={{ borderTopWidth: 1, borderTopColor: COLORS.border, paddingTop: 10 }}>
       <Text style={styles.totalLabel}>NET À DÉCAISSER :</Text>
-      <Text style={styles.totalValue}>
+      <Text style={[styles.totalValue, { fontSize: 26, marginTop: 5 }]}>
         {formatCurrency(loanCalculation.net)}
       </Text>
     </View>
   </View>
 )}
-
                 <Text style={styles.inputLabel}>Notes (optionnel)</Text>
                 <TextInput
                   style={[styles.input, styles.textArea]}
@@ -1527,6 +1530,26 @@ calcRow: {
   justifyContent: 'space-between',
   marginBottom: 5,
 },
+totalBlock: {
+    borderTopWidth: 1,
+    borderTopColor: YELLOW_THEME.border,
+    paddingTop: SPACING.sm,
+    marginTop: 5,
+    // On ne met pas de flexDirection row ici pour forcer l'empilement
+  },
+  totalLabel: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: 'bold',
+    color: YELLOW_THEME.textDark,
+    marginBottom: 4, // Petit espace avant le montant
+    textTransform: 'uppercase',
+  },
+  totalValueLarge: {
+    fontSize: 26, // Très grand pour bien voir le montant final
+    fontWeight: '900',
+    color: '#059669', // Vert émeraude
+    textAlign: 'left', // Aligné à gauche sous le label pour une lecture naturelle
+  },
 totalRow: {
   marginTop: 10,
   paddingTop: 10,
@@ -1604,6 +1627,7 @@ totalValue: { fontWeight: 'bold', color: COLORS.success, fontSize: 18 },
     fontSize: FONT_SIZES.xs,
     fontWeight: "600",
   },
+
 
   // Tab Content
   tabContent: {

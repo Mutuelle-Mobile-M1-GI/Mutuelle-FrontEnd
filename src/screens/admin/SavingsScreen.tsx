@@ -17,7 +17,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
-import { useSavings, useCreateSaving } from "../../hooks/useSaving";
+import { useSavings, useCreateSaving,useSavingsStats } from "../../hooks/useSaving";
 import { useMembers } from "../../hooks/useMember";
 import { useCurrentSession } from "../../hooks/useSession";
 import { COLORS, SPACING, BORDER_RADIUS, FONT_SIZES } from "../../constants/config";
@@ -285,9 +285,10 @@ export default function SavingsScreen() {
   const [selectedMemberDetail, setSelectedMemberDetail] = useState<MemberSavings | null>(null);
 
   // Hooks de données
-  const { data: savingsData, isLoading: loadingSavings, isError: errorSavings, refetch: refetchSavings } = useSavings();
   const { data: membersData, isLoading: loadingMembers, isError: errorMembers } = useMembers();
   const { data: currentSession, isLoading: loadingSession, isError: errorSession } = useCurrentSession();
+  const { data: savingsData, isLoading: loadingSavings, isError: errorSavings, refetch: refetchSavings } = useSavings();
+  const { data: serverStats, isLoading: loadingStats, refetch: refetchStats } = useSavingsStats(); // Ajout du hook stats
   const createSaving = useCreateSaving();
 
   // 🔧 Protection et normalisation des données
@@ -431,15 +432,15 @@ export default function SavingsScreen() {
   }, [memberSavings, savings]);
 
   // Actions
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    try {
-      await refetchSavings();
-    } catch (error) {
-      console.error("Erreur lors du rafraîchissement:", error);
-    }
-    setRefreshing(false);
-  };
+ const handleRefresh = async () => {
+  setRefreshing(true);
+  try {
+    await Promise.all([refetchSavings(), refetchStats()]); // Rafraîchit les deux en même temps
+  } catch (error) {
+    console.error("Erreur lors du rafraîchissement:", error);
+  }
+  setRefreshing(false);
+};
 
   const handleMemberPress = (member: MemberSavings) => {
     setSelectedMemberDetail(member);
@@ -505,20 +506,22 @@ export default function SavingsScreen() {
     setSavingNotes("");
   };
 
-  // État de chargement global
-  const isLoading = loadingSavings || loadingMembers || loadingSession;
-  const hasError = errorSavings || errorMembers || errorSession;
+ // 🎯 État de chargement global (inclut maintenant loadingStats)
+const isLoading = loadingSavings || loadingMembers || loadingSession || loadingStats;
 
-  // 🔧 Render du contenu selon l'onglet actif
+// 🎯 État d'erreur global (Vérifie si l'un des hooks a échoué)
+const hasError = errorSavings || errorMembers || errorSession || (serverStats === undefined && !loadingStats);
+
   const renderTabContent = () => {
-    if (isLoading) {
-      return (
-        <View style={styles.centerContainer}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
-          <Text style={styles.loadingText}>Chargement des données...</Text>
-        </View>
-      );
-    }
+  // AJOUT : Vérification spécifique pour les statistiques du serveur
+  if (isLoading || loadingStats) {
+    return (
+      <View style={styles.centerContainer}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+        <Text style={styles.loadingText}>Analyse financière en cours...</Text>
+      </View>
+    );
+  }
 
     if (hasError) {
       return (
@@ -537,63 +540,71 @@ export default function SavingsScreen() {
 
     switch (activeTab) {
       case 'overview':
-        return (
-          <View style={styles.tabContent}>
-            {/* Section statistiques */}
-            <View style={styles.statsSection}>
-              <Text style={styles.sectionTitle}>Statistiques globales</Text>
-              <View style={styles.statsGrid}>
-                <StatCard
-                  title="Épargne totale"
-                  value={formatCurrency(stats.total_epargne_globale)}
-                  icon="wallet"
-                  color="#B5179E"
-                  subtitle={`${stats.total_membres} membres`}
-                />
-              
-                <StatCard
-                  title="Moyenne/membre"
-                  value={formatCurrency(stats.moyenne_par_membre)}
-                  icon="trending-up"
-                  color={COLORS.primary}
-                  subtitle="Épargne moyenne"
-                />
-                <StatCard
-                  title="Transactions"
-                  value={stats.transactions_ce_mois.toString()}
-                  icon="swap-horizontal"
-                  color={COLORS.warning}
-                  subtitle="Ce mois-ci"
-                />
-              </View>
-            </View>
+  return (
+    <View style={styles.tabContent}>
+      <View style={styles.statsSection}>
+        <Text style={styles.sectionTitle}>Statistiques globales (Backend)</Text>
+        <View style={styles.statsGrid}>
+          {/* Épargne Totale : Somme des dépôts sans déduire les prêts */}
+          <StatCard
+            title="Épargne totale"
+            value={formatCurrency(serverStats?.epargne_totale || 0)}
+            icon="wallet"
+            color="#B5179E"
+            subtitle={`${serverStats?.total_membres || 0} membres`}
+          />
+        
+          {/* Trésor : Le cash réellement disponible en caisse */}
+          <StatCard
+            title="Trésor en Caisse"
+            value={formatCurrency(serverStats?.tresor_total || 0)}
+            icon="cash-outline"
+            color={serverStats?.tresor_total < 0 ? COLORS.error : COLORS.success}
+            subtitle="Liquidités réelles"
+          />
 
-            {/* Top épargnants */}
-            <View style={styles.topSaversSection}>
-              <Text style={styles.sectionTitle}>Top épargnants</Text>
-              {memberSavings.slice(0, 5).map((member, index) => (
-                <TouchableOpacity
-                  key={member.id}
-                  style={styles.topSaverCard}
-                  onPress={() => handleMemberPress(member)}
-                >
-                  <View style={styles.topSaverRank}>
-                    <Text style={styles.topSaverRankText}>{index + 1}</Text>
-                  </View>
-                  <View style={styles.topSaverInfo}>
-                    <Text style={styles.topSaverName}>{member.nom_complet}</Text>
-                    <Text style={styles.topSaverAmount}>
-                      {formatCurrency(member.total_epargne)}
-                    </Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
-                </TouchableOpacity>
-              ))}
+          <StatCard
+            title="Transactions"
+            value={serverStats?.transactions_ce_mois?.toString() || "0"}
+            icon="swap-horizontal"
+            color={COLORS.warning}
+            subtitle="Ce mois-ci"
+          />
+        </View>
+      </View>
+
+      {/* Top épargnants : Utilisation directe de la liste du serveur */}
+      <View style={styles.topSaversSection}>
+        <Text style={styles.sectionTitle}>Meilleurs épargnants</Text>
+        {serverStats?.top_epargnants?.map((member: any, index: number) => (
+          <TouchableOpacity
+            key={index}
+            style={styles.topSaverCard}
+          >
+            <View style={styles.topSaverRank}>
+              <Text style={styles.topSaverRankText}>{index + 1}</Text>
             </View>
-          </View>
+            <View style={styles.topSaverInfo}>
+              <Text style={styles.topSaverName}>{member.nom}</Text>
+              <Text style={styles.topSaverAmount}>
+                {formatCurrency(member.montant)}
+              </Text>
+            </View>
+            <Text style={styles.memberNumber}>{member.numero}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    </View>
+  );
+  
+case 'members':
+        // 1. On filtre les membres basés sur les stats du serveur (ceux qui ont les bons montants)
+        const membersFromStats = serverStats?.top_epargnants || [];
+        const searchedMembers = membersFromStats.filter((m: any) =>
+          m.nom.toLowerCase().includes(search.toLowerCase()) ||
+          m.numero.toLowerCase().includes(search.toLowerCase())
         );
 
-      case 'members':
         return (
           <View style={styles.tabContent}>
             {/* Section recherche */}
@@ -615,29 +626,55 @@ export default function SavingsScreen() {
               </View>
             </View>
 
-            {/* Liste des membres */}
-            {filteredMembers.length === 0 ? (
+            {/* Liste des membres basée sur le Hook Stats */}
+            {searchedMembers.length === 0 ? (
               <View style={styles.centerContainer}>
                 <Ionicons name="people-outline" size={64} color={COLORS.textLight} />
                 <Text style={styles.emptyTitle}>Aucun membre trouvé</Text>
                 <Text style={styles.emptyText}>
-                  {search ? "Aucun résultat pour votre recherche." : "Aucun membre disponible."}
+                  {search ? "Aucun résultat pour votre recherche." : "Aucun membre disponible avec une épargne."}
                 </Text>
               </View>
             ) : (
               <View style={styles.membersListContainer}>
                 <Text style={styles.sectionTitle}>
-                  Membres avec épargne ({filteredMembers.length})
+                  Membres et Effort d'Épargne ({searchedMembers.length})
                 </Text>
-                {filteredMembers.map((member) => (
-                  <View key={member.id} style={{ marginBottom: SPACING.md }}>
-                    <MemberSavingsCard
-                      member={member}
-                      onPress={() => handleMemberPress(member)}
-                      onAddSaving={() => handleAddSaving(member)}
-                    />
-                  </View>
-                ))}
+                {searchedMembers.map((statMember: any, index: number) => {
+                  // On essaie de retrouver l'objet membre complet pour les actions (ID, email, etc.)
+                  const fullMemberData = memberSavings.find(m => m.numero_membre === statMember.numero);
+                  
+                  return (
+                    <View key={index} style={{ marginBottom: SPACING.md }}>
+                      <MemberSavingsCard
+                        member={{
+                          // On fusionne : les montants exacts du serveur + les infos du membre local
+                          ...(fullMemberData || {}),
+                          id: fullMemberData?.id || index.toString(),
+                          nom_complet: statMember.nom,
+                          numero_membre: statMember.numero,
+                          total_epargne: statMember.montant, // Le chiffre magique de 300k
+                          total_depots: statMember.montant,
+                          total_retraits: fullMemberData?.total_retraits || 0,
+                          email: fullMemberData?.email || "",
+                          nombre_transactions: fullMemberData?.nombre_transactions || 0,
+                          statut: fullMemberData?.statut || "ACTIF",
+                        } as MemberSavings}
+                        onPress={() => {
+                          if (fullMemberData) handleMemberPress(fullMemberData);
+                        }}
+                        onAddSaving={() => {
+                          if (fullMemberData) {
+                            handleAddSaving({
+                              ...fullMemberData,
+                              total_epargne: statMember.montant
+                            });
+                          }
+                        }}
+                      />
+                    </View>
+                  );
+                })}
               </View>
             )}
           </View>
