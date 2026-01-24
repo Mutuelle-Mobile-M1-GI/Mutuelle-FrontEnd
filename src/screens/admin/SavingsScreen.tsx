@@ -376,6 +376,38 @@ export default function SavingsScreen() {
     );
   }, [memberSavings, search]);
 
+  // 🔧 Fusion intelligente : On utilise les montants du serveur + les infos profils locales
+  const finalMembersList = useMemo((): MemberSavings[] => {
+    // On récupère la liste complète calculée par Django
+    const serverList = (serverStats?.tous_les_membres as any[]) || [];
+    
+    return serverList.map((sMember): MemberSavings => {
+      // On cherche les infos complémentaires (email, etc.) dans le hook useMembers
+      const localInfo = members.find(m => m.id === sMember.id);
+      
+      return {
+        id: sMember.id,
+        numero_membre: sMember.numero,
+        nom_complet: sMember.nom,
+        email: localInfo?.utilisateur?.email || "",
+        statut: sMember.statut || "ACTIF",
+        total_epargne: sMember.montant, // Le montant exact du serveur (ex: 300 000)
+        total_depots: sMember.montant,
+        total_retraits: localInfo?.donnees_financieres?.emprunt?.montant_restant_a_rembourser || 0,
+        nombre_transactions: localInfo?.donnees_financieres?.epargne?.nombre_transactions || 0,
+        derniere_transaction: localInfo?.donnees_financieres?.epargne?.derniere_transaction_date,
+      };
+    });
+  }, [serverStats, members]);
+  // Filtrage pour la recherche
+ const searchedMembers = useMemo((): MemberSavings[] => {
+    if (!search.trim()) return finalMembersList;
+    return finalMembersList.filter((m: MemberSavings) =>
+      m.nom_complet.toLowerCase().includes(search.toLowerCase()) ||
+      m.numero_membre.toLowerCase().includes(search.toLowerCase())
+    );
+  }, [finalMembersList, search]);
+
   // Filtrage des transactions
   const filteredTransactions = useMemo(() => {
     let filtered = savings;
@@ -598,87 +630,61 @@ const hasError = errorSavings || errorMembers || errorSession || (serverStats ==
   );
   
 case 'members':
-        // 1. On filtre les membres basés sur les stats du serveur (ceux qui ont les bons montants)
-        const membersFromStats = serverStats?.top_epargnants || [];
-        const searchedMembers = membersFromStats.filter((m: any) =>
-          m.nom.toLowerCase().includes(search.toLowerCase()) ||
-          m.numero.toLowerCase().includes(search.toLowerCase())
-        );
+  return (
+    <View style={styles.tabContent}>
+      {/* Barre de recherche */}
+      <View style={styles.searchSection}>
+        <View style={styles.searchContainer}>
+          <Ionicons name="search" size={20} color={COLORS.textSecondary} />
+          <TextInput
+            style={styles.searchInput}
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Rechercher par nom ou numéro..."
+            placeholderTextColor={COLORS.textLight}
+          />
+          {search.length > 0 && (
+            <TouchableOpacity onPress={() => setSearch("")}>
+              <Ionicons name="close-circle" size={20} color={COLORS.textSecondary} />
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
 
-        return (
-          <View style={styles.tabContent}>
-            {/* Section recherche */}
-            <View style={styles.searchSection}>
-              <View style={styles.searchContainer}>
-                <Ionicons name="search" size={20} color={COLORS.textSecondary} />
-                <TextInput
-                  style={styles.searchInput}
-                  value={search}
-                  onChangeText={setSearch}
-                  placeholder="Rechercher un membre..."
-                  placeholderTextColor={COLORS.textLight}
-                />
-                {search.length > 0 && (
-                  <TouchableOpacity onPress={() => setSearch("")}>
-                    <Ionicons name="close-circle" size={20} color={COLORS.textSecondary} />
-                  </TouchableOpacity>
-                )}
-              </View>
+      {/* Liste des membres basée sur le répertoire complet du backend */}
+      {searchedMembers.length === 0 ? (
+        <View style={styles.centerContainer}>
+          <Ionicons name="people-outline" size={64} color={COLORS.textLight} />
+          <Text style={styles.emptyTitle}>Aucun membre trouvé</Text>
+          <Text style={styles.emptyText}>
+            {search ? "Essayez une autre recherche." : "La liste est vide."}
+          </Text>
+        </View>
+      ) : (
+        <ScrollView 
+          style={styles.membersListContainer} 
+          showsVerticalScrollIndicator={false}
+        >
+          <Text style={styles.sectionTitle}>
+            Répertoire des membres ({searchedMembers.length})
+          </Text>
+          
+          {/* Typage explicite (member: MemberSavings) pour éviter l'erreur TS */}
+          {searchedMembers.map((member: MemberSavings) => (
+            <View key={member.id} style={{ marginBottom: SPACING.md }}>
+              <MemberSavingsCard
+                member={member}
+                onPress={() => handleMemberPress(member)}
+                onAddSaving={() => handleAddSaving(member)}
+              />
             </View>
-
-            {/* Liste des membres basée sur le Hook Stats */}
-            {searchedMembers.length === 0 ? (
-              <View style={styles.centerContainer}>
-                <Ionicons name="people-outline" size={64} color={COLORS.textLight} />
-                <Text style={styles.emptyTitle}>Aucun membre trouvé</Text>
-                <Text style={styles.emptyText}>
-                  {search ? "Aucun résultat pour votre recherche." : "Aucun membre disponible avec une épargne."}
-                </Text>
-              </View>
-            ) : (
-              <View style={styles.membersListContainer}>
-                <Text style={styles.sectionTitle}>
-                  Membres et Effort d'Épargne ({searchedMembers.length})
-                </Text>
-                {searchedMembers.map((statMember: any, index: number) => {
-                  // On essaie de retrouver l'objet membre complet pour les actions (ID, email, etc.)
-                  const fullMemberData = memberSavings.find(m => m.numero_membre === statMember.numero);
-                  
-                  return (
-                    <View key={index} style={{ marginBottom: SPACING.md }}>
-                      <MemberSavingsCard
-                        member={{
-                          // On fusionne : les montants exacts du serveur + les infos du membre local
-                          ...(fullMemberData || {}),
-                          id: fullMemberData?.id || index.toString(),
-                          nom_complet: statMember.nom,
-                          numero_membre: statMember.numero,
-                          total_epargne: statMember.montant, // Le chiffre magique de 300k
-                          total_depots: statMember.montant,
-                          total_retraits: fullMemberData?.total_retraits || 0,
-                          email: fullMemberData?.email || "",
-                          nombre_transactions: fullMemberData?.nombre_transactions || 0,
-                          statut: fullMemberData?.statut || "ACTIF",
-                        } as MemberSavings}
-                        onPress={() => {
-                          if (fullMemberData) handleMemberPress(fullMemberData);
-                        }}
-                        onAddSaving={() => {
-                          if (fullMemberData) {
-                            handleAddSaving({
-                              ...fullMemberData,
-                              total_epargne: statMember.montant
-                            });
-                          }
-                        }}
-                      />
-                    </View>
-                  );
-                })}
-              </View>
-            )}
-          </View>
-        );
+          ))}
+          
+          <View style={{ height: 100 }} /> 
+        </ScrollView>
+      )}
+    </View>
+  );
 
       case 'transactions':
         return (

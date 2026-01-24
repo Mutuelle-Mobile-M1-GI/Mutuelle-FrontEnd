@@ -37,6 +37,6 @@ export function useSocialFundCurrent() {
       if (!token) throw new Error("Token manquant");
       return fetchSocialFundCurrent(token);
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: 0, // Forcer la refetch immédiate après invalidation
   });
 }

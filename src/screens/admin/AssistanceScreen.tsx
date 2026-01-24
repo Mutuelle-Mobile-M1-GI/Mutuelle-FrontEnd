@@ -16,7 +16,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
-import { useAssistances, useCreateAssistance, useAssistanceTypes } from "../../hooks/useAssistance";
+import { useAssistances, useAssistance, useCreateAssistances, useCreateAssistance, useAssistanceType } from "../../hooks/useAssistance";
 import { useMembers } from "../../hooks/useMember";
 import { useSocialFundCurrent } from "../../hooks/useSolidarity";
 import { Assistance } from "../../types/assistance.types";
@@ -206,10 +206,10 @@ export default function AssistanceScreen() {
   const [searchType, setSearchType] = useState("");
 
   // Hooks de données
-  const { data: assistancesData, isLoading, isError, refetch } = useAssistances();
-  const createAssistance = useCreateAssistance();
+  const { data: assistancesData, isLoading, isError, refetch } = useAssistance();
+  const createAssistance = useCreateAssistances();
   const { data: membersData, isLoading: loadingMembers } = useMembers({ statut: "EN_REGLE" });
-  const { data: typesData, isLoading: loadingTypes } = useAssistanceTypes();
+  const { data: typesData, isLoading: loadingTypes } = useAssistanceType();
   const { data: socialFund } = useSocialFundCurrent();
   const navigation = useNavigation();
 
@@ -264,8 +264,15 @@ export default function AssistanceScreen() {
 
   // Calculs financiers
   const dispoFonds = socialFund?.montant_total || 0;
-  const montantAssistance = selectedType?.montant || parseFloat(amount) || 0;
-  const fondsOk = montantAssistance <= dispoFonds && montantAssistance > 0;
+  const montantAssistance = useMemo(() => {
+    // On privilégie le montant saisi si c'est un nombre valide, sinon on prend le montant du type
+    const parsed = Number(String(amount).replace(/\s+/g, "").replace(',','.'));
+    if (!isNaN(parsed) && parsed > 0) return parsed;
+    return selectedType?.montant || 0;
+  }, [amount, selectedType]);
+  const resteFonds = dispoFonds - montantAssistance;
+  const manque = resteFonds < 0 ? Math.abs(resteFonds) : 0;
+  const fondsOk = montantAssistance > 0 && resteFonds >= 0;
 
   // Statistiques
   const stats = useMemo(() => {
@@ -692,20 +699,28 @@ export default function AssistanceScreen() {
                       placeholderTextColor={COLORS.textLight}
                     />
                     <View style={styles.fundStatus}>
-                      <Ionicons 
-                        name={fondsOk ? "checkmark-circle" : "alert-circle"} 
-                        size={16} 
-                        color={fondsOk ? COLORS.success : COLORS.error} 
-                      />
-                      <Text style={[styles.fundStatusText, { 
-                        color: fondsOk ? COLORS.success : COLORS.error 
-                      }]}>
-                        {fondsOk
-                          ? `Fonds suffisant (${formatCurrency(dispoFonds)})`
-                          : `Fonds insuffisant (${formatCurrency(dispoFonds)})`
-                        }
-                      </Text>
-                    </View>
+                      <View style={styles.fundRow}>
+                        <Text style={styles.fundLabel}>Montant demandé:</Text>
+                        <Text style={styles.fundValue}>{formatCurrency(montantAssistance)}</Text>
+                      </View>
+
+                      <View style={styles.fundRow}>
+                        <Text style={styles.fundLabel}>Fonds disponibles:</Text>
+                        <Text style={[styles.fundValue, { color: dispoFonds >= montantAssistance ? COLORS.success : COLORS.error }]}>{formatCurrency(dispoFonds)}</Text>
+                      </View>
+
+                      <View style={styles.fundRow}>
+                        <Text style={styles.fundLabel}>Reste après paiement:</Text>
+                        <Text style={[styles.fundValue, { color: resteFonds >= 0 ? COLORS.success : COLORS.error }]}>{formatCurrency(resteFonds)}</Text>
+                      </View>
+
+                      {(!fondsOk && manque > 0) && (
+                        <View style={styles.fundWarning}>
+                          <Ionicons name="alert-circle" size={16} color={COLORS.error} />
+                          <Text style={[styles.fundWarningText, { color: COLORS.error }]}>Il manque {formatCurrency(manque)}</Text>
+                        </View>
+                      )}
+                    </View> 
                   </View>
 
                   {/* Justification */}
@@ -1260,14 +1275,32 @@ const styles = StyleSheet.create({
     textAlignVertical: "top",
   },
   fundStatus: {
-    flexDirection: "row",
-    alignItems: "center",
     marginTop: SPACING.sm,
     gap: SPACING.xs,
   },
-  fundStatusText: {
+  fundRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: SPACING.xs,
+  },
+  fundLabel: {
     fontSize: FONT_SIZES.sm,
-    fontWeight: "600",
+    color: COLORS.textSecondary,
+  },
+  fundValue: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: "700",
+  },
+  fundWarning: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.xs,
+    marginTop: SPACING.xs,
+  },
+  fundWarningText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: "700",
   },
 
   // Modal Actions

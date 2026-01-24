@@ -299,10 +299,10 @@ export default function AdminDashboardScreen() {
   }
 
   const userName = user?.nom_complet || 
-                   (user?.first_name && user?.last_name ? `${user.first_name} ${user.last_name}` : null) ||
-                   user?.username || 
-                   user?.email?.split('@')[0] || 
-                   "Administraeur";
+                  (user?.first_name && user?.last_name ? `${user.first_name} ${user.last_name}` : null) ||
+                  user?.username || 
+                  user?.email?.split('@')[0] || 
+                  "Administraeur";
 
   return (
     <>
