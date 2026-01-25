@@ -15,6 +15,7 @@ import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from "../../constants/conf
 import { useMemberDetail, useMemberDetailByUser } from "../../hooks/useMember";
 import { useCurrentUser } from "../../hooks/useAuth";
 import { useMutuelleConfig } from "../../hooks/useConfig";
+import { useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -230,6 +231,7 @@ const FinancialSummary = ({ member, config }: any) => {
 export default function MemberDashboardScreen() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
+  const queryClient = useQueryClient();
   const { data: user } = useCurrentUser();
   const { data: member, isLoading, error, refetch } = useMemberDetailByUser(user?.id || "");
   const { data: config } = useMutuelleConfig();
@@ -241,8 +243,15 @@ export default function MemberDashboardScreen() {
   // Gestion du refresh
   const handleRefresh = async () => {
     setRefreshing(true);
-    await refetch();
-    setRefreshing(false);
+    try {
+      await refetch();
+      // ✅ AJOUTER ces lignes pour refresh les données utilisateur
+      queryClient.invalidateQueries({ queryKey: ["current-user"] });
+      queryClient.invalidateQueries({ queryKey: ["current-exercise"] });
+      queryClient.invalidateQueries({ queryKey: ["current-session"] });
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   // Navigation vers profil
@@ -302,7 +311,7 @@ export default function MemberDashboardScreen() {
   const firstName = userName.split(' ')[0] || "Membre";
   
   const inscriptionProgress = member.donnees_financieres?.inscription.pourcentage_inscription;
-  const solidarityProgress= (toNumber(member.donnees_financieres?.solidarite)|0)*100/(toNumber(config?.montant_solidarite)|0);
+  const solidarityProgress= (toNumber(member.donnees_financieres?.solidarite.montant_paye_session_courante)|0)*100/(toNumber(config?.montant_solidarite)|0);
   const epargneTotal = member.donnees_financieres?.epargne.epargne_totale;
   const interets = member.donnees_financieres?.epargne.montant_interets_separe;
   const maxEmpruntable = member.donnees_financieres?.emprunt.montant_max_empruntable;

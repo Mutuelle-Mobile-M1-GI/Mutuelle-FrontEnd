@@ -13,6 +13,7 @@ type AuthContextType = {
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   setFirstLogin: (value: boolean) => void;
+  updateUser: (updatedUser: User) => void;
 };
 
 const AuthContext = createContext<AuthContextType>({
@@ -22,6 +23,7 @@ const AuthContext = createContext<AuthContextType>({
   login: async () => {},
   logout: async () => {},
   setFirstLogin: () => {},
+  updateUser: () => {},
 });
 
 export const useAuthContext = () => useContext(AuthContext);
@@ -99,6 +101,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     setIsFirstLogin(value);
   };
 
+  const updateUserValue = (updatedUser: User) => {
+    console.log("Mise à jour de l'utilisateur dans AuthContext:", updatedUser);
+    setUser(updatedUser);
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -108,6 +115,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         login,
         logout,
         setFirstLogin: setFirstLoginValue,
+        updateUser: updateUserValue,
       }}
     >
       {children}

@@ -14,6 +14,7 @@ import {
 } from "../services/auth.service";
 import { User } from "../types/user.types";
 import { ASYNC_STORAGE_KEYS, PIN_LENGTH } from "../constants/config";
+import { useAuthContext } from "../context/AuthContext";
 
 // ---- Utilisateur courant (profil) ----
 export function useCurrentUser() {
@@ -99,11 +100,16 @@ export function usePin() {
 // ---- Edition/MAJ profil ----
 export function useUpdateProfile() {
   const queryClient = useQueryClient();
+  const { updateUser } = useAuthContext();
+  
   return useMutation({
     mutationFn: async ({ updates, accessToken }: { updates: Partial<User>; accessToken: string }) => {
       return updateProfile(updates, accessToken);
     },
-    onSuccess: async () => {
+    onSuccess: async (updatedUser) => {
+      // Mettre à jour le contexte d'authentification
+      updateUser(updatedUser);
+      // Invalider le cache React Query
       await queryClient.invalidateQueries({ queryKey: ["current-user"] });
     },
   });
