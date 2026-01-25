@@ -1032,7 +1032,8 @@ export default function LoansScreen() {
             <View style={styles.modalBody}>
               {/* Sélection membre */}
              {/* Sélection membre améliorée */}
-              <ScrollView style={styles.memberSelectionSection}>
+              <ScrollView style={[styles.memberSelectionSection, { maxHeight: 350 }]}
+  nestedScrollEnabled={true}>
                 <Text style={styles.inputLabel}>
                   Sélectionner un membre <Text style={styles.required}>*</Text>
                 </Text>
