@@ -129,7 +129,7 @@ const ConfigModal = ({
 export default function SettingsScreen() {
   const { logout, currentUserQuery } = useAuth();
   const { data: config, isLoading: configLoading, refetch: refetchConfig } = useMutuelleConfig();
-  
+  const [isTiersExpanded, setIsTiersExpanded] = useState(false);
   // ✅ MUTATIONS
   const updateConfigMutation = useUpdateMutuelleConfig();
   const createExerciseMutation = useCreateNewExercise();
@@ -418,34 +418,57 @@ const openTierModal = (index: number) => {
             </TouchableOpacity>
           ))}
         </View>
-  {/* Section Coefficients avec le style identique à Configuration Mutuelle */}
-<View style={styles.section}>
-  <Text style={styles.sectionTitle}>Coefficients d'emprunt par tranches</Text>
   
-  {editableTiers.map((tier, index) => (
-    <TouchableOpacity 
-      key={index} 
-      style={styles.settingItem} // Style identique au haut
-      onPress={() => openTierModal(index)} // Ouvre le modal pour cette tranche
-    >
-      <View style={styles.settingItemLeft}>
-        <View style={styles.settingIcon}>
-          <Ionicons name="layers-outline" size={20} color={COLORS.primary} />
-        </View>
-        <View style={styles.settingInfo}>
-          <Text style={styles.settingTitle}>
-            {tier.min_amount / 1000}k - {tier.max_amount / 1000}k FCFA
-          </Text>
-          <Text style={styles.settingValue}>
-            Multiplicateur : {tier.coefficient}x 
-            {tier.max_cap ? ` (Plafond: ${tier.max_cap.toLocaleString()} FCFA)` : ''}
-          </Text>
-        </View>
+
+{/* Section Coefficients d'emprunt par tranches */}
+<View style={styles.section}>
+  {/* Header : Style identique aux cartes du haut */}
+  <TouchableOpacity 
+    style={styles.settingItem} 
+    onPress={() => setIsTiersExpanded(!isTiersExpanded)}
+    activeOpacity={0.7}
+  >
+    <View style={styles.settingItemLeft}>
+      <View style={styles.settingIcon}>
+        <Ionicons name="layers-outline" size={20} color={COLORS.primary} />
       </View>
-      <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
-    </TouchableOpacity>
-  ))}
+      <View style={styles.settingInfo}>
+        <Text style={styles.settingTitle}>Coefficients d'emprunt</Text>
+        <Text style={styles.settingValue}>Par tranches de montant</Text>
+      </View>
+    </View>
+    <Ionicons 
+      name={isTiersExpanded ? "chevron-up" : "chevron-forward"} 
+      size={20} 
+      color={COLORS.textSecondary} 
+    />
+  </TouchableOpacity>
+
+  {/* Contenu déroulant : Vos éléments de tranches */}
+  {isTiersExpanded && (
+    <View style={{ marginTop: 8 }}> 
+      {editableTiers.map((tier, index) => (
+        <TouchableOpacity 
+          key={index} 
+          style={styles.tierCard} 
+          onPress={() => openTierModal(index)}
+        >
+          <View style={styles.tierInfo}>
+            <Text style={styles.tierRange}>
+              {tier.min_amount / 1000}k - {tier.max_amount / 1000}k FCFA
+            </Text>
+            <Text style={styles.tierCoef}>
+              Multiplicateur : <Text style={{ color: COLORS.primary, fontWeight: '700' }}>{tier.coefficient}x</Text>
+              {tier.max_cap ? ` • Plafond: ${tier.max_cap.toLocaleString()} FCFA` : ''}
+            </Text>
+          </View>
+          <Ionicons name="pencil-outline" size={16} color={COLORS.textSecondary} />
+        </TouchableOpacity>
+      ))}
+    </View>
+  )}
 </View>
+{/*modif*/}
         {/* ✅ NOUVEL EXERCICE */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Exercices</Text>
