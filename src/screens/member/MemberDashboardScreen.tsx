@@ -59,6 +59,52 @@ const formatDate = (dateStr: string) => {
   }
 };
 
+// 🏷️ Composant Badge de statut du membre
+const MemberStatusBadge = ({ status }: { status: 'EN_REGLE' | 'NON_EN_REGLE' | 'SUSPENDU' | 'NON_DEFINI' }) => {
+  const getConfig = () => {
+    switch (status) {
+      case 'EN_REGLE':
+        return { 
+          color: BLUE_THEME.success, 
+          icon: 'shield-checkmark', 
+          text: 'En Règle', 
+          bg: '#ECFDF5' 
+        };
+      case 'NON_EN_REGLE':
+        return { 
+          color: BLUE_THEME.error, 
+          icon: 'alert-circle', 
+          text: 'Non en Règle', 
+          bg: '#FEF2F2' 
+        };
+      case 'SUSPENDU':
+        return { 
+          color: BLUE_THEME.warning, 
+          icon: 'pause-circle', 
+          text: 'Suspendu', 
+          bg: '#FFFBEB' 
+        };
+      case 'NON_DEFINI':
+      default:
+        return { 
+          color: COLORS.textSecondary, 
+          icon: 'help-circle', 
+          text: 'Non Défini', 
+          bg: '#F3F4F6' 
+        };
+    }
+  };
+
+  const config = getConfig();
+
+  return (
+    <View style={[styles.statusBadge, { backgroundColor: config.bg }]}>
+      <Ionicons name={config.icon as any} size={16} color={config.color} />
+      <Text style={[styles.statusText, { color: config.color }]}>{config.text}</Text>
+    </View>
+  );
+};
+
 // 🏷️ Composant Badge de statut
 const StatusBadge = ({ status, type }: { status: boolean; type: 'inscription' | 'solidarite' | 'global' }) => {
   const getConfig = () => {
@@ -359,8 +405,8 @@ export default function MemberDashboardScreen() {
 
           {/* Statut global */}
           <View style={styles.globalStatus}>
-            <StatusBadge status={member.is_en_regle} type="global" />
-            <Text style={styles.memberNumber}>N° {member.numero_membre}</Text>
+            <MemberStatusBadge status={member.statut} />
+            <Text style={styles.memberNumber}>Na° {member.numero_membre}</Text>
           </View>
         </View>
       </LinearGradient>
@@ -464,7 +510,7 @@ export default function MemberDashboardScreen() {
             subtitle="Support et assistance"
             icon="chatbubble-ellipses"
             color={BLUE_THEME.accent}
-            onPress={() => Alert.alert("Contact", "Fonctionnalité à implémenter")}
+            // onPress={() => Alert.alert("Contact", "Fonctionnalité à implémenter")}
           />
 
           {!member.donnees_financieres?.inscription.inscription_complete && (
@@ -848,7 +894,7 @@ const styles = StyleSheet.create({
   quickActionCard: {
     marginBottom: SPACING.md,
     borderRadius: BORDER_RADIUS.lg,
-    elevation: 2,
+    // elevation: 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,

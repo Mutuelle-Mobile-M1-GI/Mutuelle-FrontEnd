@@ -10,6 +10,12 @@ export const fetchAssistances = async (accessToken: string, params?: Record<stri
   return data;
 };
 
+export const fetchAssistancesByMember = async (memberId: string, accessToken: string): Promise<any> => {
+  const { data } = await axios.get(API_BASE_URL + API_ENDPOINTS.assistancesByMember(memberId), {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  return data;
+};
 
 export const fetchAssistance = async (accessToken: string, params?: Record<string, any>): Promise<Assistance[]> => {
   const { data } = await axios.get<Assistance[]>(API_BASE_URL + API_ENDPOINTS.assistances, {

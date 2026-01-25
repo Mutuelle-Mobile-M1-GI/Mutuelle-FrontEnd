@@ -13,7 +13,15 @@ export default function AuthNavigator() {
       screenOptions={{ headerShown: false }}
     >
       <Stack.Screen name="Login" component={LoginScreen} />
-      <Stack.Screen name="Pin" component={PinScreen} />
+      <Stack.Screen 
+        name="Pin" 
+        component={() => <PinScreen mode="enter" />} 
+        options={{
+          presentation: "modal",
+          headerShown: false,
+          title: "Pin",
+        }}
+      />
       <Stack.Screen name="Home" component={HomeScreen} /> 
     </Stack.Navigator>
   );
