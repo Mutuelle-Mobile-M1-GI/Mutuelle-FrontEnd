@@ -15,6 +15,7 @@ import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from "../../constants/conf
 import { useMemberDetail, useMemberDetailByUser } from "../../hooks/useMember";
 import { useCurrentUser } from "../../hooks/useAuth";
 import { useMutuelleConfig } from "../../hooks/useConfig";
+import { useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -56,6 +57,52 @@ const formatDate = (dateStr: string) => {
   } catch {
     return "--";
   }
+};
+
+// 🏷️ Composant Badge de statut du membre
+const MemberStatusBadge = ({ status }: { status: 'EN_REGLE' | 'NON_EN_REGLE' | 'SUSPENDU' | 'NON_DEFINI' }) => {
+  const getConfig = () => {
+    switch (status) {
+      case 'EN_REGLE':
+        return { 
+          color: BLUE_THEME.success, 
+          icon: 'shield-checkmark', 
+          text: 'En Règle', 
+          bg: '#ECFDF5' 
+        };
+      case 'NON_EN_REGLE':
+        return { 
+          color: BLUE_THEME.error, 
+          icon: 'alert-circle', 
+          text: 'Non en Règle', 
+          bg: '#FEF2F2' 
+        };
+      case 'SUSPENDU':
+        return { 
+          color: BLUE_THEME.warning, 
+          icon: 'pause-circle', 
+          text: 'Suspendu', 
+          bg: '#FFFBEB' 
+        };
+      case 'NON_DEFINI':
+      default:
+        return { 
+          color: COLORS.textSecondary, 
+          icon: 'help-circle', 
+          text: 'Non Défini', 
+          bg: '#F3F4F6' 
+        };
+    }
+  };
+
+  const config = getConfig();
+
+  return (
+    <View style={[styles.statusBadge, { backgroundColor: config.bg }]}>
+      <Ionicons name={config.icon as any} size={16} color={config.color} />
+      <Text style={[styles.statusText, { color: config.color }]}>{config.text}</Text>
+    </View>
+  );
 };
 
 // 🏷️ Composant Badge de statut
@@ -230,6 +277,7 @@ const FinancialSummary = ({ member, config }: any) => {
 export default function MemberDashboardScreen() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
+  const queryClient = useQueryClient();
   const { data: user } = useCurrentUser();
   const { data: member, isLoading, error, refetch } = useMemberDetailByUser(user?.id || "");
   const { data: config } = useMutuelleConfig();
@@ -241,8 +289,15 @@ export default function MemberDashboardScreen() {
   // Gestion du refresh
   const handleRefresh = async () => {
     setRefreshing(true);
-    await refetch();
-    setRefreshing(false);
+    try {
+      await refetch();
+      // ✅ AJOUTER ces lignes pour refresh les données utilisateur
+      queryClient.invalidateQueries({ queryKey: ["current-user"] });
+      queryClient.invalidateQueries({ queryKey: ["current-exercise"] });
+      queryClient.invalidateQueries({ queryKey: ["current-session"] });
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   // Navigation vers profil
@@ -302,7 +357,7 @@ export default function MemberDashboardScreen() {
   const firstName = userName.split(' ')[0] || "Membre";
   
   const inscriptionProgress = member.donnees_financieres?.inscription.pourcentage_inscription;
-  const solidarityProgress= (toNumber(member.donnees_financieres?.solidarite)|0)*100/(toNumber(config?.montant_solidarite)|0);
+  const solidarityProgress= (toNumber(member.donnees_financieres?.solidarite.montant_paye_session_courante)|0)*100/(toNumber(config?.montant_solidarite)|0);
   const epargneTotal = member.donnees_financieres?.epargne.epargne_totale;
   const interets = member.donnees_financieres?.epargne.montant_interets_separe;
   const maxEmpruntable = member.donnees_financieres?.emprunt.montant_max_empruntable;
@@ -350,8 +405,8 @@ export default function MemberDashboardScreen() {
 
           {/* Statut global */}
           <View style={styles.globalStatus}>
-            <StatusBadge status={member.is_en_regle} type="global" />
-            <Text style={styles.memberNumber}>N° {member.numero_membre}</Text>
+            <MemberStatusBadge status={member.statut} />
+            <Text style={styles.memberNumber}>Na° {member.numero_membre}</Text>
           </View>
         </View>
       </LinearGradient>
@@ -455,7 +510,7 @@ export default function MemberDashboardScreen() {
             subtitle="Support et assistance"
             icon="chatbubble-ellipses"
             color={BLUE_THEME.accent}
-            onPress={() => Alert.alert("Contact", "Fonctionnalité à implémenter")}
+            // onPress={() => Alert.alert("Contact", "Fonctionnalité à implémenter")}
           />
 
           {!member.donnees_financieres?.inscription.inscription_complete && (
@@ -839,7 +894,7 @@ const styles = StyleSheet.create({
   quickActionCard: {
     marginBottom: SPACING.md,
     borderRadius: BORDER_RADIUS.lg,
-    elevation: 2,
+    // elevation: 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,

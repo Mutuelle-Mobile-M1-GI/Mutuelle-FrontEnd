@@ -145,8 +145,8 @@ export default function AdminDashboardScreen() {
   const navigationModules: NavigationModule[] = [
     {
       id: "inscriptions",
-      title: "Inscriptions",
-      subtitle: "Gérer les inscriptions",
+      title: "Membres",
+      subtitle: "Gérer les inscriptions des Membres",
       icon: "person-add",
       color: "#4361EE",
       gradientColors: ["#4361EE", "#3A86FF"],
@@ -207,9 +207,10 @@ export default function AdminDashboardScreen() {
     setRefreshing(true);
     try {
       await refetch();
-       // ✅ AJOUTER ces lignes pour refresh les nouvelles données
-    queryClient.invalidateQueries({ queryKey: ["current-exercise"] });
-    queryClient.invalidateQueries({ queryKey: ["current-session"] });
+      // ✅ AJOUTER ces lignes pour refresh les données utilisateur et autres
+      queryClient.invalidateQueries({ queryKey: ["current-user"] });
+      queryClient.invalidateQueries({ queryKey: ["current-exercise"] });
+      queryClient.invalidateQueries({ queryKey: ["current-session"] });
     } finally {
       setRefreshing(false);
     }
@@ -299,10 +300,10 @@ export default function AdminDashboardScreen() {
   }
 
   const userName = user?.nom_complet || 
-                   (user?.first_name && user?.last_name ? `${user.first_name} ${user.last_name}` : null) ||
-                   user?.username || 
-                   user?.email?.split('@')[0] || 
-                   "Administraeur";
+                  (user?.first_name && user?.last_name ? `${user.first_name} ${user.last_name}` : null) ||
+                  user?.username || 
+                  user?.email?.split('@')[0] || 
+                  "Administraeur";
 
   return (
     <>

@@ -41,17 +41,19 @@ export const fetchMemberByUserId = async (id: string, accessToken: string): Prom
   
   console.log("📡 Réponse API complète:", data);
   
-  // 🔧 CORRECTION: Extraire le premier membre des résultats
+  // 🔧 CORRECTION: Filtrer le membre dont l'utilisateur ID correspond
   if (!data.results || data.results.length === 0) {
     throw new Error("Aucun membre trouvé pour cet utilisateur");
   }
   
-  const member = data.results[0];
+  const member = data.results.find((m: Member) => m.utilisateur?.id === id) || data.results[0];
   console.log("✅ Membre extrait:", member);
   console.log("💰 Données financières:", member.donnees_financieres);
   
   return member;
 };
+
+
 export const fetchMemberFullData = async (id: string, accessToken: string) => {
   const { data } = await axios.get(API_BASE_URL + API_ENDPOINTS.memberFullData(id), {
     headers: { Authorization: `Bearer ${accessToken}` }

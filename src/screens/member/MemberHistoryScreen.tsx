@@ -12,6 +12,7 @@ import {
   StatusBar,
   Modal,
   TextInput,
+  Alert,
 } from "react-native";
 import { COLORS, SPACING, BORDER_RADIUS, FONT_SIZES } from "../../constants/config";
 import { Ionicons } from "@expo/vector-icons";
@@ -21,9 +22,15 @@ import { useLoans, useRepayments } from "../../hooks/useLoan";
 import { useCurrentSession } from "../../hooks/useSession";
 import { useSolidarityPayments } from "../../hooks/useSolidarity";
 import { useRenflouements } from "../../hooks/useRenflouement";
+import { useSavings } from "../../hooks/useSaving";
+import { useAssistancesByMember } from "../../hooks/useAssistance";
+import { useInscriptionPayments } from "../../hooks/useInscription";
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import BottomSheet from '@gorhom/bottom-sheet';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
+
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -114,7 +121,7 @@ const formatDateSmart = (dateStr: string) => {
 // 🏷️ Types pour timeline
 type TimelineItem = {
   id: string;
-  type: "emprunt" | "remboursement" | "solidarite" | "renflouement";
+  type: "emprunt" | "remboursement" | "solidarite" | "renflouement" | "epargne" | "assistance" | "paiement-inscription";
   date: string;
   amount: number;
   data: any;
@@ -151,6 +158,27 @@ const OPERATION_CONFIG = {
     color: PREMIUM_THEME.colors.error[500],
     gradient: PREMIUM_THEME.gradients.error,
     bgColor: PREMIUM_THEME.colors.error[50],
+  },
+  epargne: {
+    label: "Épargne",
+    icon: "wallet",
+    color: '#8B5CF6',
+    gradient: ['#8B5CF6', '#7C3AED'],
+    bgColor: '#F3E8FF',
+  },
+  assistance: {
+    label: "Assistance",
+    icon: "heart",
+    color: '#EC4899',
+    gradient: ['#EC4899', '#DB2777'],
+    bgColor: '#FCE7F3',
+  },
+  'paiement-inscription': {
+    label: "Paiement Inscription",
+    icon: "school",
+    color: '#06B6D4',
+    gradient: ['#06B6D4', '#0891B2'],
+    bgColor: '#ECFDFE',
   },
 };
 
@@ -247,6 +275,9 @@ const SearchAndFilters = ({
     { key: 'remboursement', label: 'Remboursements', icon: 'arrow-down-circle' },
     { key: 'solidarite', label: 'Solidarité', icon: 'people' },
     { key: 'renflouement', label: 'Renflouements', icon: 'refresh-circle' },
+    { key: 'epargne', label: 'Épargne', icon: 'wallet' },
+    { key: 'assistance', label: 'Assistances', icon: 'heart' },
+    { key: 'paiement-inscription', label: 'Inscription', icon: 'school' },
   ];
 
   return (
@@ -500,6 +531,35 @@ const PremiumBottomSheet = ({ item, onClose }: { item: TimelineItem | null; onCl
                   <DetailRow label="Notes" value={item.data.notes || 'Aucune note'} />
                 </>
               )}
+
+              {item.type === 'epargne' && (
+                <>
+                  <DetailRow label="Montant" value={formatMoney(item.data.montant)} />
+                  <DetailRow label="Type" value={item.data.type || 'Dépôt'} />
+                  <DetailRow label="Intérêts" value={formatMoney(item.data.montant_interet || 0)} />
+                  <DetailRow label="Session" value={item.data.session_nom || 'N/A'} />
+                  <DetailRow label="Notes" value={item.data.notes || 'Aucune note'} />
+                </>
+              )}
+
+              {item.type === 'assistance' && (
+                <>
+                  <DetailRow label="Montant" value={formatMoney(item.data.montant)} />
+                  <DetailRow label="Type" value={item.data.type_assistance || 'N/A'} />
+                  <DetailRow label="Statut" value={item.data.statut || 'N/A'} />
+                  <DetailRow label="Session" value={item.data.session_nom || 'N/A'} />
+                  <DetailRow label="Justification" value={item.data.justification || 'Aucune'} />
+                  <DetailRow label="Notes" value={item.data.notes || 'Aucune note'} />
+                </>
+              )}
+
+              {item.type === 'paiement-inscription' && (
+                <>
+                  <DetailRow label="Montant" value={formatMoney(item.data.montant)} />
+                  <DetailRow label="Session" value={item.data.session_nom || 'N/A'} />
+                  <DetailRow label="Notes" value={item.data.notes || 'Aucune note'} />
+                </>
+              )}
             </ScrollView>
           </LinearGradient>
         </View>
@@ -516,6 +576,295 @@ const DetailRow = ({ label, value }: { label: string; value: string }) => (
   </View>
 );
 
+// � Fonction d'export PDF - Historique complet par session
+const generateHistoryPDF = async (
+  member: any,
+  user: any,
+  timeline: TimelineItem[],
+  loansRaw: any,
+  repaymentsRaw: any,
+  solidarityRaw: any,
+  renflouementRaw: any,
+  savingsRaw: any,
+  assistancesRaw: any,
+  inscriptionPaymentsRaw: any
+) => {
+  try {
+    // Grouper les transactions par session
+    const transactionsBySession: { [key: string]: TimelineItem[] } = {};
+    const sessionNames: { [key: string]: string } = {};
+
+    timeline.forEach((item) => {
+      const sessionName = item.data?.session_nom || "Sans session";
+      if (!transactionsBySession[sessionName]) {
+        transactionsBySession[sessionName] = [];
+      }
+      transactionsBySession[sessionName].push(item);
+      sessionNames[sessionName] = sessionName;
+    });
+
+    // Fonction pour formater les montants
+    const formatCurrency = (amount: number | string | undefined): string => {
+      if (!amount) return "0 FCFA";
+      const num = typeof amount === "string" ? parseFloat(amount) : amount;
+      return `${num.toLocaleString("fr-FR")} FCFA`;
+    };
+
+    // Fonction pour obtenir les détails de la transaction
+    const getTransactionDetails = (item: TimelineItem): string => {
+      const config = OPERATION_CONFIG[item.type];
+      const baseInfo = `
+        <tr>
+          <td>${new Date(item.date).toLocaleDateString("fr-FR")}</td>
+          <td>${config.label}</td>
+          <td>${formatCurrency(item.amount)}</td>
+          <td>${item.data?.session_nom || "N/A"}</td>
+        </tr>
+      `;
+      return baseInfo;
+    };
+
+    // Construire le contenu HTML
+    let transactionsHtml = "";
+    Object.keys(transactionsBySession)
+      .sort()
+      .reverse()
+      .forEach((sessionName) => {
+        const items = transactionsBySession[sessionName];
+        const sessionTotal = items.reduce((sum, item) => sum + item.amount, 0);
+
+        transactionsHtml += `
+          <div class="session-section">
+            <h3 class="session-title">${sessionName}</h3>
+            <table class="transactions-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Type d'opération</th>
+                  <th>Montant</th>
+                  <th>Session</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${items.map((item) => getTransactionDetails(item)).join("")}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colspan="2" style="text-align: right; font-weight: bold;">Total Session:</td>
+                  <td style="font-weight: bold;">${formatCurrency(sessionTotal)}</td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        `;
+      });
+
+    const htmlContent = `
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <title>Historique Financier - ${member?.numero_membre}</title>
+          <style>
+            body { 
+              font-family: 'Calibri', 'Arial', sans-serif; 
+              margin: 20px;
+              color: #333;
+            }
+            .header { 
+              text-align: center; 
+              border-bottom: 3px solid #2563EB; 
+              padding-bottom: 20px; 
+              margin-bottom: 30px;
+            }
+            .title { 
+              color: #2563EB; 
+              font-size: 28px; 
+              font-weight: bold;
+              margin-bottom: 10px;
+            }
+            .subtitle { 
+              color: #666; 
+              font-size: 14px;
+              margin: 5px 0;
+            }
+            .member-info {
+              background-color: #F8FAFC;
+              border-left: 4px solid #2563EB;
+              padding: 15px;
+              margin-bottom: 30px;
+              border-radius: 4px;
+            }
+            .member-info-row {
+              display: flex;
+              margin: 8px 0;
+            }
+            .member-info-label {
+              font-weight: bold;
+              width: 150px;
+              color: #2563EB;
+            }
+            .member-info-value {
+              flex: 1;
+            }
+            .summary-section {
+              background-color: #EFF6FF;
+              border: 1px solid #BFDBFE;
+              padding: 15px;
+              margin-bottom: 30px;
+              border-radius: 4px;
+            }
+            .summary-grid {
+              display: flex;
+              gap: 20px;
+              flex-wrap: wrap;
+            }
+            .summary-item {
+              flex: 1;
+              min-width: 200px;
+            }
+            .summary-label {
+              color: #666;
+              font-size: 12px;
+              text-transform: uppercase;
+            }
+            .summary-value {
+              color: #2563EB;
+              font-size: 20px;
+              font-weight: bold;
+              margin-top: 5px;
+            }
+            .session-section {
+              margin-bottom: 30px;
+              page-break-inside: avoid;
+            }
+            .session-title {
+              color: #2563EB;
+              font-size: 16px;
+              font-weight: bold;
+              border-bottom: 2px solid #BFDBFE;
+              padding-bottom: 8px;
+              margin-bottom: 15px;
+            }
+            .transactions-table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-bottom: 15px;
+            }
+            .transactions-table thead {
+              background-color: #2563EB;
+              color: white;
+            }
+            .transactions-table th {
+              padding: 12px;
+              text-align: left;
+              font-weight: bold;
+              border: 1px solid #ddd;
+            }
+            .transactions-table td {
+              padding: 10px 12px;
+              border: 1px solid #E5E7EB;
+            }
+            .transactions-table tbody tr:nth-child(even) {
+              background-color: #F8FAFC;
+            }
+            .transactions-table tfoot {
+              background-color: #EFF6FF;
+              font-weight: bold;
+            }
+            .transactions-table tfoot td {
+              border-top: 2px solid #2563EB;
+              padding: 12px;
+            }
+            .footer {
+              margin-top: 40px;
+              padding-top: 20px;
+              border-top: 1px solid #ddd;
+              color: #666;
+              font-size: 12px;
+              text-align: center;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div class="title">HISTORIQUE FINANCIER DÉTAILLÉ</div>
+            <div class="subtitle">Mutuelle des Enseignants - ENSP Yaoundé</div>
+            <div class="subtitle">Membre: ${member?.numero_membre}</div>
+          </div>
+
+          <div class="member-info">
+            <div class="member-info-row">
+              <span class="member-info-label">Nom:</span>
+              <span class="member-info-value">${member?.utilisateur?.nom_complet || "N/A"}</span>
+            </div>
+            <div class="member-info-row">
+              <span class="member-info-label">Email:</span>
+              <span class="member-info-value">${member?.utilisateur?.email || "N/A"}</span>
+            </div>
+            <div class="member-info-row">
+              <span class="member-info-label">Numéro de membre:</span>
+              <span class="member-info-value">${member?.numero_membre || "N/A"}</span>
+            </div>
+            <div class="member-info-row">
+              <span class="member-info-label">Statut:</span>
+              <span class="member-info-value">${member?.statut || "N/A"}</span>
+            </div>
+            <div class="member-info-row">
+              <span class="member-info-label">Membre depuis:</span>
+              <span class="member-info-value">${new Date(member?.date_inscription).toLocaleDateString("fr-FR") || "N/A"}</span>
+            </div>
+          </div>
+
+          <div class="summary-section">
+            <h3 style="margin: 0 0 15px 0; color: #2563EB;">RÉSUMÉ FINANCIER</h3>
+            <div class="summary-grid">
+              <div class="summary-item">
+                <div class="summary-label">Patrimoine</div>
+                <div class="summary-value">${formatCurrency(member?.donnees_financieres?.resume_financier?.patrimoine_total)}</div>
+              </div>
+              <div class="summary-item">
+                <div class="summary-label">Obligations</div>
+                <div class="summary-value">${formatCurrency(member?.donnees_financieres?.resume_financier?.obligations_totales)}</div>
+              </div>
+              <div class="summary-item">
+                <div class="summary-label">Situation Nette</div>
+                <div class="summary-value" style="color: ${member?.donnees_financieres?.resume_financier?.situation_nette >= 0 ? '#10B981' : '#EF4444'}">${formatCurrency(member?.donnees_financieres?.resume_financier?.situation_nette)}</div>
+              </div>
+            </div>
+          </div>
+
+          <h2 style="color: #2563EB; border-bottom: 2px solid #2563EB; padding-bottom: 10px; margin-bottom: 20px;">
+            DÉTAIL DES TRANSACTIONS PAR SESSION
+          </h2>
+
+          ${transactionsHtml}
+
+          <div class="footer">
+            <p>Historique généré le ${new Date().toLocaleDateString("fr-FR")} à ${new Date().toLocaleTimeString("fr-FR")}</p>
+            <p>Ce document est confidentiel et réservé au membre.</p>
+          </div>
+        </body>
+      </html>
+    `;
+
+    const { uri } = await Print.printToFileAsync({
+      html: htmlContent,
+      base64: false,
+    });
+
+    await Sharing.shareAsync(uri, {
+      mimeType: "application/pdf",
+      dialogTitle: `Historique_${member?.numero_membre}_${new Date().toISOString().slice(0, 10)}.pdf`,
+    });
+
+    Alert.alert("Succès", "Historique exporté avec succès !");
+  } catch (error) {
+    console.error("Erreur export:", error);
+    Alert.alert("Erreur", "Impossible d'exporter l'historique");
+  }
+};
+
 // 📱 Composant principal
 export default function MemberHistoryScreen() {
   const insets = useSafeAreaInsets();
@@ -527,11 +876,15 @@ export default function MemberHistoryScreen() {
   const { data: repaymentsRaw, isLoading: loadingRepayments } = useRepayments({ membre: member?.id });
   const { data: solidarityRaw, isLoading: loadingSolidarity } = useSolidarityPayments({ membre: member?.id });
   const { data: renflouementRaw, isLoading: loadingRenfl } = useRenflouements({ membre: member?.id });
+  const { data: savingsRaw, isLoading: loadingSavings } = useSavings({ membre: member?.id });
+  const { data: assistancesRaw, isLoading: loadingAssistances } = useAssistancesByMember(member?.id || "");
+  const { data: inscriptionPaymentsRaw, isLoading: loadingInscriptionPayments } = useInscriptionPayments();
 
   // États locaux
   const [selectedItem, setSelectedItem] = useState<TimelineItem | null>(null);
   const [searchText, setSearchText] = useState("");
   const [selectedFilter, setSelectedFilter] = useState("all");
+  const [exporting, setExporting] = useState(false);
 
   // Normalisation et création de la timeline
   const timeline = useMemo(() => {
@@ -539,6 +892,8 @@ export default function MemberHistoryScreen() {
 
     // Emprunts
     const loans = Array.isArray(loansRaw) ? loansRaw : (loansRaw?.results ?? []);
+    const loanIds = new Set(loans.map((loan: any) => loan.id)); // Créer un set des IDs d'emprunts du membre
+    
     loans.forEach((loan: any) => {
       items.push({
         id: `loan-${loan.id}`,
@@ -550,16 +905,19 @@ export default function MemberHistoryScreen() {
       });
     });
 
-    // Remboursements
+    // Remboursements - Filtrer pour ne garder que ceux liés aux emprunts du membre
     const repayments = Array.isArray(repaymentsRaw) ? repaymentsRaw : (repaymentsRaw?.results ?? []);
     repayments.forEach((rep: any) => {
-      items.push({
-        id: `repayment-${rep.id}`,
-        type: "remboursement",
-        date: rep.date_remboursement,
-        amount: rep.montant,
-        data: rep,
-      });
+      // Vérifier que le remboursement correspond à un emprunt du membre connecté
+      if (loanIds.has(rep.emprunt)) {
+        items.push({
+          id: `repayment-${rep.id}`,
+          type: "remboursement",
+          date: rep.date_remboursement,
+          amount: rep.montant,
+          data: rep,
+        });
+      }
     });
 
     // Solidarités
@@ -588,9 +946,49 @@ export default function MemberHistoryScreen() {
       });
     });
 
+    // Épargnes
+    const savings = Array.isArray(savingsRaw) ? savingsRaw : (savingsRaw?.results ?? []);
+    savings.forEach((saving: any) => {
+      items.push({
+        id: `saving-${saving.id}`,
+        type: "epargne",
+        date: saving.date_transaction || saving.date_creation,
+        amount: saving.montant,
+        data: saving,
+        status: saving.type || "Dépôt",
+      });
+    });
+
+    // Assistances
+    const assistances = Array.isArray(assistancesRaw) ? assistancesRaw : (assistancesRaw?.assistances ?? []);
+    assistances.forEach((assistance: any) => {
+      items.push({
+        id: `assistance-${assistance.id}`,
+        type: "assistance",
+        date: assistance.date_paiement || assistance.date_demande,
+        amount: assistance.montant,
+        data: assistance,
+        status: assistance.statut,
+      });
+    });
+
+    // Paiements d'Inscription
+    const inscriptionPayments = Array.isArray(inscriptionPaymentsRaw) ? inscriptionPaymentsRaw : (inscriptionPaymentsRaw?.results ?? []);
+    // Filtrer pour obtenir uniquement les paiements du membre connecté
+    const memberInscriptionPayments = inscriptionPayments.filter((payment: any) => payment.membre === member?.id);
+    memberInscriptionPayments.forEach((payment: any) => {
+      items.push({
+        id: `inscription-${payment.id}`,
+        type: "paiement-inscription",
+        date: payment.date_paiement,
+        amount: parseFloat(payment.montant),
+        data: payment,
+      });
+    });
+
     // Tri par date décroissante
     return items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [loansRaw, repaymentsRaw, renflouementRaw, solidarityRaw]);
+  }, [loansRaw, repaymentsRaw, renflouementRaw, solidarityRaw, savingsRaw, assistancesRaw, inscriptionPaymentsRaw, member?.id]);
 
   // Filtrage et recherche
   const filteredTimeline = useMemo(() => {
@@ -621,7 +1019,7 @@ export default function MemberHistoryScreen() {
     return filtered;
   }, [timeline, selectedFilter, searchText]);
 
-  if (loadingMember || loadingLoans || loadingRepayments || loadingSolidarity || loadingRenfl) {
+  if (loadingMember || loadingLoans || loadingRepayments || loadingSolidarity || loadingRenfl || loadingSavings || loadingAssistances || loadingInscriptionPayments) {
     return (
       <View style={styles.loadingContainer}>
         <LinearGradient
@@ -677,10 +1075,43 @@ export default function MemberHistoryScreen() {
         colors={PREMIUM_THEME.gradients.primary}
         style={styles.header}
       >
-        <Text style={styles.headerTitle}>📊 Historique Détaillé</Text>
-        <Text style={styles.headerSubtitle}>
-          Toutes vos opérations financières
-        </Text>
+        <View style={styles.headerContent}>
+          <View style={styles.headerTextContainer}>
+            <Text style={styles.headerTitle}>📊 Historique Détaillé</Text>
+            <Text style={styles.headerSubtitle}>
+              Toutes vos opérations financières
+            </Text>
+          </View>
+          <TouchableOpacity 
+            style={styles.exportButton}
+            onPress={async () => {
+              setExporting(true);
+              try {
+                await generateHistoryPDF(
+                  member,
+                  user,
+                  timeline,
+                  loansRaw,
+                  repaymentsRaw,
+                  solidarityRaw,
+                  renflouementRaw,
+                  savingsRaw,
+                  assistancesRaw,
+                  inscriptionPaymentsRaw
+                );
+              } finally {
+                setExporting(false);
+              }
+            }}
+            disabled={exporting}
+          >
+            {exporting ? (
+              <ActivityIndicator size="small" color="white" />
+            ) : (
+              <Ionicons name="download" size={24} color="white" />
+            )}
+          </TouchableOpacity>
+        </View>
       </LinearGradient>
 
       <ScrollView 
@@ -831,6 +1262,14 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: BORDER_RADIUS.xl,
     borderBottomRightRadius: BORDER_RADIUS.xl,
   },
+  headerContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  headerTextContainer: {
+    flex: 1,
+  },
   headerTitle: {
     fontSize: FONT_SIZES.xxl,
     fontWeight: '700',
@@ -841,6 +1280,16 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.md,
     color: 'rgba(255,255,255,0.8)',
     fontWeight: '500',
+  },
+  exportButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
   },
 
   // ScrollView

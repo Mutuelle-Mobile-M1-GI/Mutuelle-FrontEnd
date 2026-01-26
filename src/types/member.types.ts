@@ -1,6 +1,6 @@
 import { User } from './user.types';
 
-export type MemberStatus = 'EN_REGLE' | 'NON_EN_REGLE' | 'SUSPENDU';
+export type MemberStatus = 'EN_REGLE' | 'NON_EN_REGLE' | 'SUSPENDU' | 'NON_DEFINI';
 
 export interface Member {
   id: string;

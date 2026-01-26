@@ -861,7 +861,7 @@ export default function InscriptionsScreen() {
             <Ionicons name="arrow-back" size={24} color="white" />
           </TouchableOpacity>
           <View style={styles.headerTextContainer}>
-            <Text style={styles.headerTitle}>Gestion des Inscriptions</Text>
+            <Text style={styles.headerTitle}>Gestion des Membres</Text>
             <Text style={styles.headerSubtitle}>Membres et paiements d'inscription</Text>
           </View>
         </View>
@@ -879,7 +879,7 @@ export default function InscriptionsScreen() {
           </View>
           <View style={styles.statItem}>
             <Text style={styles.statValue}>{stats.inscriptionsCompletes}</Text>
-            <Text style={styles.statLabel}>Complètes</Text>
+            <Text style={styles.statLabel}>Inscrits</Text>
           </View>
           <View style={styles.statItem}>
             <Text style={styles.statValue}>{(stats.totalInscriptions / 1000000).toFixed(1)}M</Text>
