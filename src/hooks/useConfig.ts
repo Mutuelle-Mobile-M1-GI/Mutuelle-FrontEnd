@@ -88,11 +88,17 @@ export function useCreateNewExercise() {
       if (!token) throw new Error("Token manquant");
       return createNewExercise(exerciseData, token);
     },
-    onSuccess: () => {
+    onSuccess: async () => {
       // Invalider le cache pour recharger les données
-      queryClient.invalidateQueries({ queryKey: ["mutuelle-config"] });
-      queryClient.invalidateQueries({ queryKey: ["exercices"] });
-      queryClient.invalidateQueries({ queryKey: ["admin-dashboard"] }); // ✅ Refresh le dashboard
+      await queryClient.invalidateQueries({ queryKey: ["mutuelle-config"] });
+      await queryClient.invalidateQueries({ queryKey: ["exercices"] });
+      await queryClient.invalidateQueries({ queryKey: ["current-exercise"] });
+      await queryClient.invalidateQueries({ queryKey: ["admin-dashboard"] });
+      // ✅ IMPORTANT : Refetch immédiatement les renflouements car ils sont créés avec le nouvel exercice
+      await queryClient.refetchQueries({ queryKey: ["renflouements"] });
+      await queryClient.refetchQueries({ queryKey: ["renflouement-stats"] });
+      // ✅ Invalider aussi les sessions et autres données liées à l'exercice
+      await queryClient.invalidateQueries({ queryKey: ["sessions"] });
     },
     onError: (error) => {
       console.error("Erreur création exercice:", error);

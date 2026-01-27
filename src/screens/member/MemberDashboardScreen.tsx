@@ -278,8 +278,8 @@ export default function MemberDashboardScreen() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
-  const { data: user } = useCurrentUser();
-  const { data: member, isLoading, error, refetch } = useMemberDetailByUser(user?.id || "");
+  const { data: user, isLoading: userLoading } = useCurrentUser();
+  const { data: member, isLoading, error, refetch } = useMemberDetailByUser(user?.id);
   const { data: config } = useMutuelleConfig();
   const { data: session } = useCurrentSession();
   const { data: exercise } = useCurrentExercise();
@@ -315,7 +315,7 @@ export default function MemberDashboardScreen() {
     navigation.navigate('Historique' as never);
   };
 
-  if (isLoading) {
+  if (isLoading || userLoading) {
     return (
       <View style={styles.loadingContainer}>
         <LinearGradient
@@ -341,9 +341,15 @@ export default function MemberDashboardScreen() {
           <Ionicons name="alert-circle" size={64} color={BLUE_THEME.error} />
           <Text style={styles.errorTitle}>Oups ! Une erreur s'est produite</Text>
           <Text style={styles.errorText}>
-            Impossible de charger vos informations financières.
+            {error?.message || 'Impossible de charger vos informations financières.'}
           </Text>
-          <TouchableOpacity onPress={refetch} style={styles.retryButton}>
+          <TouchableOpacity 
+            onPress={() => {
+              queryClient.invalidateQueries({ queryKey: ["member-by-user"] });
+              refetch();
+            }} 
+            style={styles.retryButton}
+          >
             <Ionicons name="refresh" size={20} color="white" />
             <Text style={styles.retryText}>Réessayer</Text>
           </TouchableOpacity>

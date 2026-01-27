@@ -27,15 +27,18 @@ export function useMemberDetail(id: string) {
     enabled: !!id,
   });
 }
-export function useMemberDetailByUser(id: string) {
+export function useMemberDetailByUser(id?: string) {
   return useQuery<Member>({
-    queryKey: ["member", id],
+    queryKey: ["member-by-user", id],
     queryFn: async () => {
+      if (!id) throw new Error("ID utilisateur manquant");
       const token = await getStoredAccessToken();
       if (!token) throw new Error("Token manquant");
       return fetchMemberByUserId(id, token);
     },
-    enabled: !!id,
+    enabled: !!id, // Ne lance la requête que si id est défini et non vide
+    retry: 2, // Réessayer 2 fois en cas d'erreur
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000), // Délai exponentiel
   });
 }
 

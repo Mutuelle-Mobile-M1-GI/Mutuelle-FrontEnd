@@ -277,7 +277,7 @@ export default function ExerciseModal({ visible, onClose, onSubmit, loading }: E
             )}
 
             {/* 🏷️ Statut */}
-            <View style={styles.inputGroup}>
+            {/* <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>
                 <Ionicons name="flag" size={16} color={COLORS.warning} /> Statut
               </Text>
@@ -300,7 +300,7 @@ export default function ExerciseModal({ visible, onClose, onSubmit, loading }: E
                   <Ionicons name="chevron-down" size={16} color={COLORS.textSecondary} />
                 </View>
               </TouchableOpacity>
-            </View>
+            </View> */}
 
             {/* 📄 Description */}
             <View style={styles.inputGroup}>

@@ -553,8 +553,8 @@ const { mutateAsync: upsertTiers } = useUpsertTiers();
     // ✅ Tout est terminé avec succès
     Alert.alert(
       "Succès", 
-      "L'exercice et ses coefficients ont été configurés avec succès !",
-      [{ text: "Super" }]
+      "L'exercice et ses paramêtres ont été configurés avec succès !",
+      [{ text: "OK" }]
     );
 
     setExerciseModalVisible(false);
@@ -771,6 +771,7 @@ const openTierModal = (index: number) => {
       ))}
     </View>
   )}
+</View>
 </View>
 {/*modif*/}
         {/* ✅ NOUVEL EXERCICE */}

@@ -12,6 +12,8 @@ import {
   Alert,
   Dimensions,
   ListRenderItem,
+  Platform,
+  KeyboardAvoidingView,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -22,12 +24,15 @@ import { COLORS, SPACING, BORDER_RADIUS, FONT_SIZES } from "../../constants/conf
 
 const { width } = Dimensions.get("window");
 
+// 🎯 Configuration de la pagination
+const ITEMS_PER_PAGE = 10;
+
 // 🎯 Type pour le modal
 type ModalState = boolean | string;
 
 // 🎯 Formatage monétaire sécurisé
 const formatCurrency = (amount: number | undefined | null): string => {
-  if ( isNaN(amount)) return "0 FCFA";
+  if (amount === undefined || amount === null || isNaN(amount)) return "0 FCFA";
   return new Intl.NumberFormat('fr-FR', {
     style: 'currency',
     currency: 'XAF',
@@ -199,6 +204,7 @@ export default function RenflouementScreen() {
   const [currentRenflouement, setCurrentRenflouement] = useState<Renflouement | null>(null);
   const [montant, setMontant] = useState("");
   const [notes, setNotes] = useState("");
+  const [displayedItems, setDisplayedItems] = useState(ITEMS_PER_PAGE);
 
   // Hooks
   const { data: stats, isLoading: loadingStats } = useRenflouementStats();
@@ -234,6 +240,22 @@ export default function RenflouementScreen() {
     });
   }, [renflouements, search]);
 
+  // Pagination
+  const paginatedRenflouements = useMemo(() => {
+    return filteredRenflouements.slice(0, displayedItems);
+  }, [filteredRenflouements, displayedItems]);
+
+  const hasMore = displayedItems < filteredRenflouements.length;
+
+  const loadMore = () => {
+    setDisplayedItems(prev => Math.min(prev + ITEMS_PER_PAGE, filteredRenflouements.length));
+  };
+
+  // Reset pagination when search changes
+  useMemo(() => {
+    setDisplayedItems(ITEMS_PER_PAGE);
+  }, [search]);
+
   // Actions
   const openPaymentModal = (renflouement: Renflouement) => {
     setCurrentRenflouement(renflouement);
@@ -254,6 +276,31 @@ export default function RenflouementScreen() {
       return;
     }
     if (!currentRenflouement) return;
+
+    const montantRestant = currentRenflouement.montant_restant || 0;
+
+    // Vérifier si le montant dépasse le montant attendu
+    if (montantNum > montantRestant) {
+      Alert.alert(
+        "Confirmation de paiement",
+        `Montant à payer :\n${formatCurrency(montantNum)}\n\n` +
+        `Montant restant :\n${formatCurrency(montantRestant)}\n\n` +
+        `Dépassement :\n+${formatCurrency(montantNum - montantRestant)}\n\n` +
+        `Voulez-vous continuer ?`,
+        [
+          { text: "Annuler", style: "cancel" },
+          { text: "Confirmer le paiement", onPress: submitPayment }
+        ]
+      );
+    } else {
+      submitPayment();
+    }
+  };
+
+  const submitPayment = () => {
+    if (!currentRenflouement) return;
+
+    const montantNum = Number(montant);
 
     createPayment.mutate(
       {
@@ -381,6 +428,17 @@ export default function RenflouementScreen() {
           </View>
         </View>
 
+        {/* Compteur de résultats */}
+        {!isLoading && !isError && filteredRenflouements.length > 0 && (
+          <View style={styles.resultsCounter}>
+            <Ionicons name="list" size={18} color={COLORS.primary} />
+            <Text style={styles.resultsCounterText}>
+              Affichage de <Text style={styles.resultsCounterBold}>{paginatedRenflouements.length}</Text> sur{' '}
+              <Text style={styles.resultsCounterBold}>{filteredRenflouements.length}</Text> résultat{filteredRenflouements.length > 1 ? 's' : ''}
+            </Text>
+          </View>
+        )}
+
         {/* Liste des renflouements */}
         {isLoading ? (
           <View style={styles.centerContainer}>
@@ -407,22 +465,41 @@ export default function RenflouementScreen() {
             </Text>
           </View>
         ) : (
-          <FlatList
-            data={filteredRenflouements}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => (
-              <RenflouementCard
-                item={item}
-                onPayment={openPaymentModal}
-                onDetails={openDetailsModal}
-              />
+          <>
+            <FlatList
+              data={paginatedRenflouements}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <RenflouementCard
+                  item={item}
+                  onPayment={openPaymentModal}
+                  onDetails={openDetailsModal}
+                />
+              )}
+              scrollEnabled={false}
+              ItemSeparatorComponent={() => <View style={{ height: SPACING.md }} />}
+            />
+
+            {/* Bouton "Voir plus" */}
+            {hasMore && (
+              <TouchableOpacity style={styles.loadMoreButton} onPress={loadMore}>
+                <LinearGradient
+                  colors={[COLORS.primary, "#3A86FF"]}
+                  style={styles.loadMoreGradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                >
+                  <Text style={styles.loadMoreText}>
+                    Voir plus ({filteredRenflouements.length - displayedItems} restant{filteredRenflouements.length - displayedItems > 1 ? 's' : ''})
+                  </Text>
+                  <Ionicons name="chevron-down" size={20} color="white" />
+                </LinearGradient>
+              </TouchableOpacity>
             )}
-            scrollEnabled={false}
-            ItemSeparatorComponent={() => <View style={{ height: SPACING.md }} />}
-          />
+          </>
         )}
 
-        <View style={{height:70}}></View>
+        <View style={{height: 70}}></View>
       </ScrollView>
 
       {/* Modal Paiement */}
@@ -433,7 +510,11 @@ export default function RenflouementScreen() {
         statusBarTranslucent
       >
         <BlurView intensity={20} style={StyleSheet.absoluteFillObject} />
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView 
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        >
           <View style={styles.modalContainer}>
             <LinearGradient
               colors={[COLORS.primary, "#3A86FF"]}
@@ -445,7 +526,11 @@ export default function RenflouementScreen() {
               </TouchableOpacity>
             </LinearGradient>
 
-            <ScrollView style={styles.modalBody}>
+            <ScrollView 
+              style={styles.modalBody} 
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
               <View style={styles.memberInfoSection}>
                 <Text style={styles.modalMemberName}>
                   {currentRenflouement?.membre_info?.nom_complet}
@@ -479,6 +564,7 @@ export default function RenflouementScreen() {
                   placeholder="Entrez le montant en FCFA"
                   keyboardType="numeric"
                   placeholderTextColor={COLORS.textLight}
+                  editable={!createPayment.isPending}
                 />
               </View>
 
@@ -491,33 +577,36 @@ export default function RenflouementScreen() {
                   placeholder="Ajouter une note..."
                   multiline
                   numberOfLines={3}
+                  textAlignVertical="top"
                   placeholderTextColor={COLORS.textLight}
+                  editable={!createPayment.isPending}
                 />
               </View>
-
-              <View style={styles.modalActions}>
-                <TouchableOpacity
-                  style={[styles.modalButton, styles.cancelButton]}
-                  onPress={closeModal}
-                >
-                  <Text style={styles.cancelButtonText}>Annuler</Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity
-                  style={[styles.modalButton, styles.confirmButton]}
-                  onPress={handleAddPayment}
-                  disabled={createPayment.isPending}
-                >
-                  {createPayment.isPending ? (
-                    <ActivityIndicator size="small" color="white" />
-                  ) : (
-                    <Text style={styles.confirmButtonText}>Valider</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
             </ScrollView>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={closeModal}
+                disabled={createPayment.isPending}
+              >
+                <Text style={styles.cancelButtonText}>Annuler</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[styles.modalButton, styles.confirmButton]}
+                onPress={handleAddPayment}
+                disabled={createPayment.isPending}
+              >
+                {createPayment.isPending ? (
+                  <ActivityIndicator size="small" color="white" />
+                ) : (
+                  <Text style={styles.confirmButtonText}>Valider</Text>
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Modal Détails */}
@@ -544,7 +633,7 @@ export default function RenflouementScreen() {
               </TouchableOpacity>
             </LinearGradient>
 
-            <ScrollView style={styles.modalBody}>
+            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
               <View style={styles.memberInfoSection}>
                 <Text style={styles.modalMemberName}>
                   {currentRenflouement?.membre_info?.nom_complet}
@@ -561,6 +650,7 @@ export default function RenflouementScreen() {
                     keyExtractor={(item) => item.id}
                     renderItem={renderPaymentItem}
                     showsVerticalScrollIndicator={false}
+                    scrollEnabled={false}
                     ItemSeparatorComponent={() => <View style={{ height: SPACING.sm }} />}
                   />
                 ) : (
@@ -585,15 +675,13 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.background,
   },
-
-  // Header
   header: {
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.xl,
     paddingBottom: SPACING.lg,
   },
   headerTitle: {
-    fontSize: FONT_SIZES.xxxl,
+    fontSize: FONT_SIZES.xxl,
     fontWeight: "bold",
     color: "white",
     marginBottom: SPACING.xs,
@@ -602,23 +690,16 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.md,
     color: "rgba(255,255,255,0.8)",
   },
-
-  // ScrollView
   scrollView: {
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: SPACING.xxl,
+    paddingBottom: SPACING.xl,
   },
 
-  // Sections
+  // Stats Section
   statsSection: {
-    paddingHorizontal: SPACING.lg,
-    marginTop: SPACING.lg,
-  },
-  searchSection: {
-    paddingHorizontal: SPACING.lg,
-    marginTop: SPACING.xl,
+    padding: SPACING.lg,
   },
   sectionTitle: {
     fontSize: FONT_SIZES.lg,
@@ -626,8 +707,9 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     marginBottom: SPACING.md,
   },
-
-  // Stats
+  loader: {
+    marginVertical: SPACING.xl,
+  },
   statsGrid: {
     gap: SPACING.md,
   },
@@ -636,12 +718,8 @@ const styles = StyleSheet.create({
     borderRadius: BORDER_RADIUS.lg,
     padding: SPACING.md,
     borderLeftWidth: 4,
-    borderWidth: 0,
-    shadowColor: COLORS.shadowLight,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
   statHeader: {
     flexDirection: "row",
@@ -666,14 +744,18 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: FONT_SIZES.xl,
     fontWeight: "bold",
+    marginBottom: SPACING.xs,
   },
   statSubtitle: {
     fontSize: FONT_SIZES.sm,
     color: COLORS.textSecondary,
-    marginTop: SPACING.xs,
   },
 
-  // Search
+  // Search Section
+  searchSection: {
+    paddingHorizontal: SPACING.lg,
+    marginBottom: SPACING.md,
+  },
   searchContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -691,21 +773,36 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md,
   },
 
+  // Results Counter
+  resultsCounter: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.sm,
+    backgroundColor: COLORS.primary + "10",
+    marginHorizontal: SPACING.lg,
+    marginBottom: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
+    gap: SPACING.sm,
+  },
+  resultsCounterText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textSecondary,
+  },
+  resultsCounterBold: {
+    fontWeight: "bold",
+    color: COLORS.primary,
+  },
+
   // Renflouement Card
   renflouementCard: {
     backgroundColor: COLORS.surface,
     borderRadius: BORDER_RADIUS.lg,
     padding: SPACING.md,
     marginHorizontal: SPACING.lg,
-    marginVertical:SPACING.lg,
     borderLeftWidth: 4,
     borderWidth: 1,
     borderColor: COLORS.border,
-    shadowColor: COLORS.shadowLight,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
   },
   cardHeader: {
     flexDirection: "row",
@@ -724,7 +821,8 @@ const styles = StyleSheet.create({
   },
   memberNumber: {
     fontSize: FONT_SIZES.sm,
-    color: COLORS.textSecondary,
+    color: COLORS.primary,
+    fontWeight: "500",
   },
   statusBadge: {
     paddingHorizontal: SPACING.sm,
@@ -733,11 +831,9 @@ const styles = StyleSheet.create({
   },
   statusText: {
     fontSize: FONT_SIZES.sm,
-    fontWeight: "bold",
     color: "white",
+    fontWeight: "600",
   },
-
-  // Financial Info
   financialInfo: {
     marginBottom: SPACING.md,
   },
@@ -753,11 +849,9 @@ const styles = StyleSheet.create({
   },
   financialValue: {
     fontSize: FONT_SIZES.sm,
-    fontWeight: "600",
     color: COLORS.text,
+    fontWeight: "600",
   },
-
-  // Progress
   progressContainer: {
     marginBottom: SPACING.md,
   },
@@ -773,19 +867,17 @@ const styles = StyleSheet.create({
     borderRadius: 3,
   },
   progressText: {
-    fontSize: FONT_SIZES.sm,
+    fontSize: FONT_SIZES.xs,
     color: COLORS.textSecondary,
     textAlign: "right",
   },
-
-  // Details Info
   detailsInfo: {
     marginBottom: SPACING.md,
+    gap: SPACING.xs,
   },
   detailRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: SPACING.xs,
     gap: SPACING.sm,
   },
   detailText: {
@@ -793,12 +885,10 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     flex: 1,
   },
-
-  // Recent Payments
   recentPayments: {
-    backgroundColor: COLORS.shadowLight,
-    borderRadius: BORDER_RADIUS.md,
+    backgroundColor: COLORS.background,
     padding: SPACING.sm,
+    borderRadius: BORDER_RADIUS.md,
     marginBottom: SPACING.md,
   },
   recentPaymentsTitle: {
@@ -811,22 +901,19 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: SPACING.xs,
+    paddingVertical: SPACING.xs,
   },
   paymentAmount: {
     fontSize: FONT_SIZES.sm,
-    fontWeight: "600",
     color: COLORS.success,
+    fontWeight: "600",
   },
   paymentDate: {
-    fontSize: FONT_SIZES.sm,
+    fontSize: FONT_SIZES.xs,
     color: COLORS.textSecondary,
   },
-
-  // Card Actions
   cardActions: {
     flexDirection: "row",
-    justifyContent: "space-between",
     gap: SPACING.sm,
   },
   actionButton: {
@@ -839,7 +926,7 @@ const styles = StyleSheet.create({
     gap: SPACING.xs,
   },
   detailsButton: {
-    backgroundColor: `${COLORS.primary}20`,
+    backgroundColor: COLORS.surface,
     borderWidth: 1,
     borderColor: COLORS.primary,
   },
@@ -856,7 +943,32 @@ const styles = StyleSheet.create({
     color: "white",
   },
 
-  // Center Container
+  // Load More Button
+  loadMoreButton: {
+    marginHorizontal: SPACING.lg,
+    marginTop: SPACING.lg,
+    borderRadius: BORDER_RADIUS.lg,
+    overflow: "hidden",
+    elevation: 3,
+    shadowColor: COLORS.shadowDark,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+  },
+  loadMoreGradient: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: SPACING.md,
+    gap: SPACING.sm,
+  },
+  loadMoreText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: "600",
+    color: "white",
+  },
+
+  // Center States
   centerContainer: {
     alignItems: "center",
     justifyContent: "center",
@@ -871,7 +983,7 @@ const styles = StyleSheet.create({
   errorTitle: {
     fontSize: FONT_SIZES.lg,
     fontWeight: "bold",
-    color: COLORS.error,
+    color: COLORS.text,
     marginTop: SPACING.md,
     marginBottom: SPACING.sm,
   },
@@ -884,11 +996,12 @@ const styles = StyleSheet.create({
   retryButton: {
     backgroundColor: COLORS.primary,
     paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.sm,
+    paddingVertical: SPACING.md,
     borderRadius: BORDER_RADIUS.md,
   },
   retryButtonText: {
     color: "white",
+    fontSize: FONT_SIZES.md,
     fontWeight: "600",
   },
   emptyTitle: {
@@ -903,11 +1016,8 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     textAlign: "center",
   },
-  loader: {
-    marginVertical: SPACING.lg,
-  },
 
-  // Modal
+  // Modal Styles
   modalOverlay: {
     flex: 1,
     justifyContent: "center",
@@ -917,8 +1027,8 @@ const styles = StyleSheet.create({
   modalContainer: {
     backgroundColor: COLORS.background,
     borderRadius: BORDER_RADIUS.xl,
-    width: "100%",
-    height: "60%",
+    width: width - SPACING.lg * 2,
+    maxHeight: "85%",
     overflow: "hidden",
     shadowColor: COLORS.shadowDark,
     shadowOffset: { width: 0, height: 10 },
@@ -934,38 +1044,40 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.lg,
   },
   modalTitle: {
-    fontSize: FONT_SIZES.xl,
+    fontSize: FONT_SIZES.lg,
     fontWeight: "bold",
     color: "white",
-    flex: 1,
   },
   modalBody: {
-    flex: 1,
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
+    padding: SPACING.lg,
+    maxHeight: 500,
   },
-
-  // Member Info in Modal
   memberInfoSection: {
-    backgroundColor: COLORS.shadowLight,
-    borderRadius: BORDER_RADIUS.md,
+    backgroundColor: COLORS.surface,
     padding: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
     marginBottom: SPACING.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
   modalMemberName: {
-    fontSize: FONT_SIZES.lg,
+    fontSize: FONT_SIZES.md,
     fontWeight: "bold",
     color: COLORS.text,
     marginBottom: SPACING.xs,
   },
   modalMemberNumber: {
-    fontSize: FONT_SIZES.md,
-    color: COLORS.textSecondary,
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.primary,
+    fontWeight: "500",
   },
-
-  // Financial Info in Modal
   modalFinancialInfo: {
+    backgroundColor: COLORS.surface,
+    padding: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
     marginBottom: SPACING.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
   modalFinancialRow: {
     flexDirection: "row",
@@ -974,7 +1086,7 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.sm,
   },
   modalFinancialLabel: {
-    fontSize: FONT_SIZES.md,
+    fontSize: FONT_SIZES.sm,
     color: COLORS.textSecondary,
   },
   modalFinancialValue: {
@@ -982,8 +1094,6 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     color: COLORS.text,
   },
-
-  // Input Section
   inputSection: {
     marginBottom: SPACING.lg,
   },
@@ -994,27 +1104,24 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.sm,
   },
   input: {
-    borderWidth: 1,
-    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
     borderRadius: BORDER_RADIUS.md,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
+    padding: SPACING.md,
     fontSize: FONT_SIZES.md,
     color: COLORS.text,
-    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
   textArea: {
     height: 80,
     textAlignVertical: "top",
   },
-
-  // Modal Actions
   modalActions: {
     flexDirection: "row",
-    justifyContent: "space-between",
+    padding: SPACING.lg,
     gap: SPACING.md,
-    marginTop: SPACING.lg,
-    marginBottom:SPACING.lg,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
   },
   modalButton: {
     flex: 1,
@@ -1024,32 +1131,30 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   cancelButton: {
-    backgroundColor: COLORS.shadowLight,
+    backgroundColor: COLORS.surface,
     borderWidth: 1,
     borderColor: COLORS.border,
-  },
-  confirmButton: {
-    backgroundColor: COLORS.primary,
   },
   cancelButtonText: {
     fontSize: FONT_SIZES.md,
     fontWeight: "600",
     color: COLORS.textSecondary,
   },
+  confirmButton: {
+    backgroundColor: COLORS.primary,
+  },
   confirmButtonText: {
     fontSize: FONT_SIZES.md,
     fontWeight: "600",
     color: "white",
   },
-
-  // Payment Details
   paymentsListContainer: {
-    flex: 1,
+    minHeight: 200,
   },
   paymentDetailCard: {
-    backgroundColor: COLORS.shadowLight,
-    borderRadius: BORDER_RADIUS.md,
+    backgroundColor: COLORS.surface,
     padding: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
     borderWidth: 1,
     borderColor: COLORS.border,
   },
@@ -1070,18 +1175,18 @@ const styles = StyleSheet.create({
   },
   paymentDetailSession: {
     fontSize: FONT_SIZES.sm,
-    color: COLORS.textSecondary,
+    color: COLORS.text,
     marginBottom: SPACING.xs,
   },
   paymentDetailNotes: {
     fontSize: FONT_SIZES.sm,
-    color: COLORS.text,
+    color: COLORS.textSecondary,
     fontStyle: "italic",
   },
   emptyPayments: {
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: SPACING.xxl,
+    paddingVertical: SPACING.xl,
   },
   emptyPaymentsText: {
     fontSize: FONT_SIZES.md,
