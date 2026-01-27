@@ -269,13 +269,15 @@ export default function RenflouementScreen() {
     setShowModal(`details-${renflouement.id}`);
   };
 
-  const handleAddPayment = () => {
-    const montantNum = Number(montant);
-    if (!montant || isNaN(montantNum) || montantNum <= 0) {
-      Alert.alert("Erreur", "Montant invalide.");
-      return;
-    }
-    if (!currentRenflouement) return;
+  // 1. Fonction qui déclenche l'alerte de confirmation
+const handleAddPayment = () => {
+  const montantNum = Number(montant);
+  
+  // Validation stricte (Point 6 de ta checklist)
+  if (!montant || isNaN(montantNum) || montantNum <= 0) {
+    Alert.alert("Champs invalides", "Veuillez saisir un montant correct avant de valider.");
+    return;
+  }
 
     const montantRestant = currentRenflouement.montant_restant || 0;
 
@@ -324,8 +326,36 @@ export default function RenflouementScreen() {
           );
         },
       }
-    );
-  };
+    ]
+  );
+};
+
+// 2. Fonction de traitement réel (Mutation)
+const processPayment = (montantFinal: number) => {
+  if (!currentRenflouement) return;
+
+  createPayment.mutate(
+    {
+      renflouement: currentRenflouement.id,
+      montant: montantFinal,
+      notes: notes.trim(),
+    },
+    {
+      onSuccess: () => {
+        setShowModal(false);
+        setMontant("");
+        setNotes("");
+        setCurrentRenflouement(null);
+        refetch();
+        // Feedback de succès (Point 7)
+        Alert.alert("Opération réussie", "Le paiement a bien été enregistré dans le fonds social.");
+      },
+      onError: (err: any) => {
+        Alert.alert("Échec du paiement", err?.response?.data?.error || "Une erreur est survenue.");
+      },
+    }
+  );
+};
 
   const closeModal = () => {
     setShowModal(false);

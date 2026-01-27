@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+  import React, { useState } from "react";
 import {
   View,
   Text,
@@ -748,6 +748,7 @@ const openTierModal = (index: number) => {
     />
   </TouchableOpacity>
 
+  </View>
   {/* Contenu déroulant : Vos éléments de tranches */}
   {isTiersExpanded && (
     <View style={{ marginTop: 8 }}> 
