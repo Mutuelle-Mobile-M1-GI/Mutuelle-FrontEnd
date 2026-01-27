@@ -322,49 +322,115 @@ export default function AssistanceScreen() {
     setSearchType("");
   };
 
-  const handleCreateAssistance = () => {
-    if (!selectedMember) {
-      Alert.alert("Erreur", "Veuillez sélectionner un membre.");
-      return;
-    }
-    if (!selectedType) {
-      Alert.alert("Erreur", "Veuillez sélectionner un type d'assistance.");
-      return;
-    }
-    if (!justification.trim()) {
-      Alert.alert("Erreur", "La justification est obligatoire.");
-      return;
-    }
-    if (!fondsOk) {
-      Alert.alert("Erreur", "Fonds social insuffisant ou montant invalide.");
-      return;
-    }
+ const handleCreateAssistance = () => {
+  // 1. Vérifications rapides avant même d'ouvrir l'alerte
+  if (!selectedMember?.id) {
+    Alert.alert("Erreur", "Veuillez sélectionner un membre.");
+    return;
+  }
 
-    createAssistance.mutate(
+  if (!selectedType?.id) {
+    Alert.alert("Erreur", "Veuillez sélectionner un type d'assistance.");
+    return;
+  }
+
+  if (!justification.trim()) {
+    Alert.alert("Erreur", "La justification est obligatoire.");
+    return;
+  }
+
+  const montantFinal = montantAssistance;
+
+  if (montantFinal <= 0 || isNaN(montantFinal)) {
+    Alert.alert("Erreur", "Montant invalide.");
+    return;
+  }
+
+  const fondsApres = dispoFonds - montantFinal;
+
+  if (fondsApres < 0) {
+    Alert.alert(
+      "Fonds insuffisants",
+      `Montant disponible : ${formatCurrency(dispoFonds)}\nMontant demandé : ${formatCurrency(montantFinal)}\n\nManque : ${formatCurrency(Math.abs(fondsApres))}`,
+      [{ text: "OK", style: "cancel" }]
+    );
+    return;
+  }
+
+  // 2. Récapitulatif clair et structuré
+  const nomMembre = selectedMember.utilisateur?.nom_complet || selectedMember.nom_complet || "—";
+
+  const recapMessage = [
+    `RÉCAPITULATIF DE LA DEMANDE`,
+    `────────────────`,
+    `Membre          : ${nomMembre}`,
+    `N° membre       : ${selectedMember.numero_membre || "—"}`,
+    `Type d'aide     : ${selectedType.nom}`,
+    `Montant         : ${formatCurrency(montantFinal)}`,
+    ``,
+    `Justification   : ${justification.trim().substring(0, 140)}${justification.length > 140 ? "..." : ""}`,
+    notes.trim() ? `Notes           : ${notes.trim().substring(0, 100)}${notes.length > 100 ? "..." : ""}` : "",
+    ``,
+    `Fonds actuels   : ${formatCurrency(dispoFonds)}`,
+    `Fonds après aide: ${formatCurrency(fondsApres)}`,
+    fondsApres === 0 ? `\n→ Fonds épuisés après cette aide` : "",
+  ].filter(Boolean).join("\n");
+
+  // 3. Affichage de la confirmation
+  Alert.alert(
+    "Confirmer la création ?",
+    recapMessage,
+    [
       {
-        membre: selectedMember.id,
-        type_assistance: selectedType.id,
-        montant: montantAssistance,
-        justification: justification.trim(),
-        notes: notes.trim(),
+        text: "Annuler",
+        style: "cancel",
       },
       {
-        onSuccess: () => {
-          setShowAddModal(false);
-          refetch();
-          Alert.alert("Succès", "Assistance enregistrée avec succès !");
-        },
-        onError: (err: any) => {
-          Alert.alert(
-            "Erreur",
-            err?.response?.data?.error || "Impossible d'enregistrer l'assistance."
-          );
-          console.log("REPONSE A LA CREATION : ",err)
-        },
-      }
-    );
-  };
+        text: "Valider et créer",
+        style: "default",
+        onPress: () => {
+          // ── On lance vraiment la création ici ────────────────────────
+          createAssistance.mutate(
+            {
+              membre: selectedMember.id,
+              type_assistance: selectedType.id,
+              montant: montantFinal,
+              justification: justification.trim(),
+              notes: notes.trim() || undefined,
+            },
+            {
+              onSuccess: () => {
+                setShowAddModal(false);
+                setSelectedMember(null);
+                setSelectedType(null);
+                setJustification("");
+                setNotes("");
+                setAmount("");
+                refetch(); // recharge la liste
+                // refetchSocialFund(); // si tu as le hook
 
+                Alert.alert(
+                  "Succès",
+                  `Assistance de ${formatCurrency(montantFinal)} enregistrée pour ${nomMembre} !`
+                );
+              },
+              onError: (err: any) => {
+                console.error("Erreur création assistance:", err);
+                const msg =
+                  err?.response?.data?.error ||
+                  err?.response?.data?.details ||
+                  err?.message ||
+                  "Impossible d'enregistrer l'assistance";
+                Alert.alert("Erreur", msg);
+              },
+            }
+          );
+        },
+      },
+    ],
+    { cancelable: true }
+  );
+};
   const closeModal = () => {
     setShowAddModal(false);
     setSelectedMember(null);
