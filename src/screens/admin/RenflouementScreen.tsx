@@ -326,7 +326,6 @@ const handleAddPayment = () => {
           );
         },
       }
-    ]
   );
 };
 

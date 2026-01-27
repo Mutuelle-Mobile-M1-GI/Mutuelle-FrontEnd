@@ -773,7 +773,6 @@ const openTierModal = (index: number) => {
     </View>
   )}
 </View>
-</View>
 {/*modif*/}
         {/* ✅ NOUVEL EXERCICE */}
         <View style={styles.section}>
