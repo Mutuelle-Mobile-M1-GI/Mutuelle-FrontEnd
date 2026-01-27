@@ -242,14 +242,21 @@ export default function SolidarityScreen() {
     return solidarityPayments.filter(payment => payment.session === currentSession.id);
   }, [solidarityPayments, currentSession?.id]);
 
-  // Map des montants payés par membre
-  const memberPaymentsMap = useMemo(() => {
-    const map: Record<string, number> = {};
-    sessionSolidarityPayments.forEach(payment => {
-      map[payment.membre] = (map[payment.membre] || 0) + (payment.montant || 0);
-    });
-    return map;
-  }, [sessionSolidarityPayments]);
+ const memberPaymentsMap = useMemo(() => {
+  const map: Record<string, number> = {};
+  
+  // Log pour voir ce qui arrive vraiment
+  console.log("solidarityPayments reçus:", solidarityPayments);
+  
+  solidarityPayments.forEach(payment => {
+    if (payment.session !== currentSession?.id) return;
+    const key = String(payment.membre);
+    map[key] = (map[key] || 0) + Number(payment.montant || 0);
+  });
+  
+  console.log("map reconstruit:", map);
+  return map;
+}, [solidarityPayments, currentSession?.id]);
 
   // Membres avec progression
   const membersWithProgress: MemberWithProgress[] = useMemo(() => {
@@ -366,67 +373,93 @@ export default function SolidarityScreen() {
   };
 
   const handleCreatePayment = () => {
-    if (!selectedMember) {
-      Alert.alert("Erreur", "Aucun membre sélectionné.");
-      return;
-    }
+  if (!selectedMember) {
+    Alert.alert("Erreur", "Aucun membre sélectionné.");
+    return;
+  }
 
-    if (!paymentAmount.trim() || isNaN(Number(paymentAmount)) || Number(paymentAmount) <= 0) {
-      Alert.alert("Erreur", "Veuillez saisir un montant valide.");
-      return;
-    }
+  if (!paymentAmount.trim() || isNaN(Number(paymentAmount)) || Number(paymentAmount) <= 0) {
+    Alert.alert("Erreur", "Veuillez saisir un montant valide (positif).");
+    return;
+  }
 
-    if (!currentSession?.id) {
-      Alert.alert("Erreur", "Aucune session courante disponible.");
-      return;
-    }
+  if (!currentSession?.id) {
+    Alert.alert("Erreur", "Aucune session courante disponible.");
+    return;
+  }
 
-    const montant = Number(paymentAmount);
-    if (montant > selectedMember.montant_restant * 2) {
-      Alert.alert(
-        "Confirmation",
-        `Le montant saisi (${formatCurrency(montant)}) est supérieur au montant restant (${formatCurrency(selectedMember.montant_restant)}). Continuer ?`,
-        [
-          { text: "Annuler", style: "cancel" },
-          { text: "Continuer", onPress: createPayment }
-        ]
-      );
-    } else {
-      createPayment();
-    }
-  };
+  const montantSaisi = Number(paymentAmount);
+  const montantAttendu = Math.round(currentConfig?.montant_solidarite || 0);
+  const dejaPaye = selectedMember.montant_paye;
+  const restantAvant = selectedMember.montant_restant;
+  const restantApres = Math.max(0, restantAvant - montantSaisi);
+  const nouveauTotalPaye = dejaPaye + montantSaisi;
 
-  const createPayment = () => {
-    if (!selectedMember || !currentSession?.id) return;
+  // Préparation du message récapitulatif
+  const message = [
+    `Membre : ${selectedMember.nom_complet}`,
+    `Numéro : ${selectedMember.numero_membre || "—"}`,
+    ``,
+    `Montant attendu : ${formatCurrency(montantAttendu)}`,
+    `Déjà payé     : ${formatCurrency(dejaPaye)}`,
+    `Restant avant : ${formatCurrency(restantAvant)}`,
+    `───────────────`,
+    `Paiement actuel : ${formatCurrency(montantSaisi)}`,
+    `Nouveau restant : ${formatCurrency(restantApres)}`,
+    restantApres === 0 ? `\n→ Contribution complète atteinte !` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
 
-    createSolidarityPayment.mutate(
+  Alert.alert(
+    "Confirmer le paiement de solidarité",
+    message,
+    [
       {
-        membre: selectedMember.id,
-        session: currentSession.id,
-        montant: Number(paymentAmount),
-        notes: paymentNotes.trim(),
+        text: "Annuler",
+        style: "cancel",
       },
       {
-        onSuccess: () => {
-          setShowPaymentModal(false);
-          setSelectedMember(null);
-          setPaymentAmount("");
-          setPaymentNotes("");
-          Alert.alert("Succès", "Paiement de solidarité enregistré avec succès !");
-        },
-        onError: (error: any) => {
-          console.error("Erreur création paiement:", error);
-          Alert.alert(
-            "Erreur",
-            error?.response?.data?.details || 
-            error?.response?.data?.error || 
-            "Impossible d'enregistrer le paiement."
+        text: "Confirmer & Enregistrer",
+        style: "default",
+        onPress: () => {
+          // On passe directement à la création (sans double vérification sur > 2x restant)
+          createSolidarityPayment.mutate(
+            {
+              membre: selectedMember.id,
+              session: currentSession.id,
+              montant: montantSaisi,
+              notes: paymentNotes.trim() || undefined,
+            },
+            {
+              onSuccess: () => {
+                setShowPaymentModal(false);
+                setSelectedMember(null);
+                setPaymentAmount("");
+                setPaymentNotes("");
+                Alert.alert(
+                  "Succès",
+                  `Paiement de ${formatCurrency(montantSaisi)} enregistré pour ${selectedMember.nom_complet} !`
+                );
+              },
+              onError: (error: any) => {
+                console.error("Erreur création paiement:", error);
+                const errMsg =
+                  error?.response?.data?.details ||
+                  error?.response?.data?.error ||
+                  error?.message ||
+                  "Impossible d'enregistrer le paiement.";
+                Alert.alert("Erreur", errMsg);
+              },
+            }
           );
         },
-      }
-    );
-  };
-
+      },
+    ],
+    { cancelable: true }
+  );
+};
+  
   const closeModal = () => {
     setShowPaymentModal(false);
     setSelectedMember(null);

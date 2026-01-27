@@ -247,38 +247,57 @@ export default function RenflouementScreen() {
     setShowModal(`details-${renflouement.id}`);
   };
 
-  const handleAddPayment = () => {
-    const montantNum = Number(montant);
-    if (!montant || isNaN(montantNum) || montantNum <= 0) {
-      Alert.alert("Erreur", "Montant invalide.");
-      return;
-    }
-    if (!currentRenflouement) return;
+  // 1. Fonction qui déclenche l'alerte de confirmation
+const handleAddPayment = () => {
+  const montantNum = Number(montant);
+  
+  // Validation stricte (Point 6 de ta checklist)
+  if (!montant || isNaN(montantNum) || montantNum <= 0) {
+    Alert.alert("Champs invalides", "Veuillez saisir un montant correct avant de valider.");
+    return;
+  }
 
-    createPayment.mutate(
-      {
-        renflouement: currentRenflouement.id,
-        montant: montantNum,
-        notes: notes.trim(),
-      },
-      {
-        onSuccess: () => {
-          setShowModal(false);
-          setMontant("");
-          setNotes("");
-          setCurrentRenflouement(null);
-          refetch();
-          Alert.alert("Succès", "Paiement ajouté avec succès !");
-        },
-        onError: (err: any) => {
-          Alert.alert(
-            "Erreur",
-            err?.response?.data?.error || "Impossible d'ajouter le paiement."
-          );
-        },
+  // Modale de confirmation native (Point 11 de ta checklist)
+  Alert.alert(
+    "Confirmer le paiement",
+    `Voulez-vous valider le paiement de ${montantNum.toLocaleString()} FCFA ?\n\nCette action est irréversible.`,
+    [
+      { text: "Modifier", style: "cancel" },
+      { 
+        text: "Confirmer", 
+        onPress: () => processPayment(montantNum),
+        style: "default"
       }
-    );
-  };
+    ]
+  );
+};
+
+// 2. Fonction de traitement réel (Mutation)
+const processPayment = (montantFinal: number) => {
+  if (!currentRenflouement) return;
+
+  createPayment.mutate(
+    {
+      renflouement: currentRenflouement.id,
+      montant: montantFinal,
+      notes: notes.trim(),
+    },
+    {
+      onSuccess: () => {
+        setShowModal(false);
+        setMontant("");
+        setNotes("");
+        setCurrentRenflouement(null);
+        refetch();
+        // Feedback de succès (Point 7)
+        Alert.alert("Opération réussie", "Le paiement a bien été enregistré dans le fonds social.");
+      },
+      onError: (err: any) => {
+        Alert.alert("Échec du paiement", err?.response?.data?.error || "Une erreur est survenue.");
+      },
+    }
+  );
+};
 
   const closeModal = () => {
     setShowModal(false);

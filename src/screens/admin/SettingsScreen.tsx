@@ -553,7 +553,7 @@ const { mutateAsync: upsertTiers } = useUpsertTiers();
     // ✅ Tout est terminé avec succès
     Alert.alert(
       "Succès", 
-      "L'exercice et ses coefficients ont été configurés avec succès !",
+      "L'exercice et parametres ont été configurés avec succès !",
       [{ text: "Super" }]
     );
 
@@ -748,6 +748,7 @@ const openTierModal = (index: number) => {
     />
   </TouchableOpacity>
 
+  </View>
   {/* Contenu déroulant : Vos éléments de tranches */}
   {isTiersExpanded && (
     <View style={{ marginTop: 8 }}> 
