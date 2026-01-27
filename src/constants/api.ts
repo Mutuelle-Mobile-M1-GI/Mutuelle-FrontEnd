@@ -2,7 +2,7 @@
 
 import { createLoan } from "../services/loan.service";
 
-export const API_BASE_URL = "http://192.168.0.154:8000/api";
+export const API_BASE_URL = "http://172.20.10.4:8000/api";
 
 export const API_ENDPOINTS = {
   // Auth

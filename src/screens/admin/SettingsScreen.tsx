@@ -277,22 +277,35 @@ const AssistanceModal = ({ visible, onClose, initialData, onSubmit, loading }) =
   );
 };
 // 3. Remplacez AssistanceManagerModal par cette version (avec suppression !)
-const AssistanceManagerModal = ({ visible, onClose, assistanceTypes, onAdd, onEdit, loading }) => {
+const AssistanceManagerModal = (props: any) => {
+  const { visible, onClose, assistanceTypes, onAdd, onEdit, loading } = props;
+  
   return (
     <Modal visible={visible} animationType="slide" transparent={false}>
-      <View style={{ flex: 1, backgroundColor: COLORS.background, paddingTop: 50 }}>
-        <View style={styles.modalHeader}>
-          <Text style={styles.modalTitle}>Gestion des Types d'Assistance</Text>
+      <View style={{ flex: 1, backgroundColor: COLORS.background || '#F8F9FA', paddingTop: 50 }}>
+        
+        {/* Header de la Modale */}
+        <View style={{
+          flexDirection: 'row', 
+          justifyContent: 'space-between', 
+          alignItems: 'center', 
+          paddingHorizontal: 20,
+          marginBottom: 10
+        }}>
+          <Text style={{ fontSize: 20, fontWeight: 'bold', color: COLORS.text }}>
+            Gestion des Types d'Assistance
+          </Text>
           <TouchableOpacity onPress={onClose}>
-            <Ionicons name="close" size={28} color={COLORS.textSecondary} />
+            <Ionicons name="close" size={28} color={COLORS.textSecondary || '#666'} />
           </TouchableOpacity>
         </View>
 
+        {/* Bouton Ajouter */}
         <TouchableOpacity
           style={{
             margin: 20,
             padding: 15,
-            backgroundColor: COLORS.primary + '20',
+            backgroundColor: (COLORS.primary || '#007AFF') + '20',
             borderRadius: 12,
             flexDirection: 'row',
             alignItems: 'center',
@@ -310,29 +323,31 @@ const AssistanceManagerModal = ({ visible, onClose, assistanceTypes, onAdd, onEd
           <ActivityIndicator size="large" color={COLORS.primary} style={{ marginTop: 50 }} />
         ) : (
           <ScrollView style={{ paddingHorizontal: 20 }}>
-            {assistanceTypes?.length === 0 ? (
+            {(!assistanceTypes || assistanceTypes.length === 0) ? (
               <Text style={{ textAlign: 'center', marginTop: 50, color: COLORS.textSecondary }}>
                 Aucun type d'assistance créé pour l'instant
               </Text>
             ) : (
-              assistanceTypes.map((type) => (
+              assistanceTypes.map((type: any) => (
                 <View
                   key={type.id}
                   style={{
                     flexDirection: 'row',
                     alignItems: 'center',
-                    backgroundColor: COLORS.surface,
+                    backgroundColor: COLORS.surface || '#FFF',
                     padding: 15,
                     borderRadius: 12,
                     marginBottom: 12,
+                    borderLeftWidth: 5,
+                    borderLeftColor: type.actif ? COLORS.success : COLORS.error
                   }}
                 >
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontSize: 16, fontWeight: 'bold' }}>{type.nom}</Text>
                     <Text style={{ color: COLORS.primary, fontSize: 15 }}>
-                      {type.montant.toLocaleString()} FCFA
+                      {type.montant?.toLocaleString()} FCFA
                     </Text>
-                    <Text style={{ fontSize: 12, color: type.actif ? COLORS.success : COLORS.error }}>
+                    <Text style={{ fontSize: 12, color: type.actif ? COLORS.success : COLORS.error, marginTop: 4 }}>
                       {type.actif ? "Actif" : "Inactif"}
                     </Text>
                   </View>
@@ -340,8 +355,6 @@ const AssistanceManagerModal = ({ visible, onClose, assistanceTypes, onAdd, onEd
                   <TouchableOpacity onPress={() => onEdit(type)} style={{ padding: 10 }}>
                     <Ionicons name="create-outline" size={24} color={COLORS.primary} />
                   </TouchableOpacity>
-
-    
                 </View>
               ))
             )}
