@@ -268,6 +268,7 @@ const handleAddPayment = () => {
         onPress: () => processPayment(montantNum),
         style: "default"
       }
+    ]
   );
 };
 
