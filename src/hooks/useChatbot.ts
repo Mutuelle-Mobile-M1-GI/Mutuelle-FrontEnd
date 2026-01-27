@@ -16,7 +16,7 @@ export function useChatbot() {
 
   // Hooks pour récupérer les données avec gestion d'erreurs
   const { data: user, isLoading: userLoading, error: userError } = useCurrentUser();
-  const { data: member, isLoading: loadingMember, error: errorMember, refetch } = useMemberDetailByUser(user?.id || "");
+  const { data: member, isLoading: loadingMember, error: errorMember, refetch } = useMemberDetailByUser(user?.id);
   const { data: dashboardData, error: dashboardError } = useAdminDashboard();
   const { data: sessionData, error: sessionError } = useCurrentSession();
   const { data: exerciseData, error: exerciseError } = useCurrentExercise();

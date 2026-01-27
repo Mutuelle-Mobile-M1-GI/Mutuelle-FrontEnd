@@ -29,6 +29,9 @@ import { useMutuelleConfig } from "../../hooks/useConfig";
 
 const { width } = Dimensions.get("window");
 
+// 🎯 Configuration de la pagination
+const ITEMS_PER_PAGE = 10;
+
 // 🎯 Types
 interface MemberWithProgress {
   id: string;
@@ -202,6 +205,7 @@ export default function SolidarityScreen() {
   const [paymentNotes, setPaymentNotes] = useState("");
   const [filterStatus, setFilterStatus] = useState<'all' | 'complete' | 'partial' | 'none'>('all');
   const [refreshing, setRefreshing] = useState(false);
+  const [displayedItems, setDisplayedItems] = useState(ITEMS_PER_PAGE);
 
   // Hooks de données
   const { data: solidarityPaymentsData, isLoading: loadingSolidarity, isError: errorSolidarity, refetch: refetchSolidarity } = useSolidarityPayments();
@@ -327,6 +331,22 @@ export default function SolidarityScreen() {
       return a.nom_complet.localeCompare(b.nom_complet);
     });
   }, [membersWithProgress, search, filterStatus]);
+
+  // Pagination
+  const paginatedMembers = useMemo(() => {
+    return filteredMembers.slice(0, displayedItems);
+  }, [filteredMembers, displayedItems]);
+
+  const hasMore = displayedItems < filteredMembers.length;
+
+  const loadMore = () => {
+    setDisplayedItems(prev => Math.min(prev + ITEMS_PER_PAGE, filteredMembers.length));
+  };
+
+  // Reset pagination when search or filter changes
+  useMemo(() => {
+    setDisplayedItems(ITEMS_PER_PAGE);
+  }, [search, filterStatus]);
 
   // Statistiques
   const stats: SolidarityStats = useMemo(() => {
@@ -603,7 +623,7 @@ export default function SolidarityScreen() {
             ) : (
               // Liste des membres
               <View style={styles.membersListContainer}>
-                {filteredMembers.map((member, index) => (
+                {paginatedMembers.map((member, index) => (
                   <View key={member.id} style={{ marginBottom: SPACING.md }}>
                     <MemberCard
                       member={member}
@@ -612,6 +632,24 @@ export default function SolidarityScreen() {
                     />
                   </View>
                 ))}
+
+                {/* Bouton "Voir plus" */}
+                {hasMore && (
+                  <TouchableOpacity style={styles.loadMoreButton} onPress={loadMore}>
+                    <LinearGradient
+                      colors={[COLORS.primary, "#3A86FF"]}
+                      style={styles.loadMoreGradient}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                    >
+                      <Text style={styles.loadMoreText}>
+                        Voir plus ({filteredMembers.length - displayedItems} restant{filteredMembers.length - displayedItems > 1 ? 's' : ''})
+                      </Text>
+                      <Ionicons name="chevron-down" size={20} color="white" />
+                    </LinearGradient>
+                  </TouchableOpacity>
+                )}
+
                 <View style={{ height: SPACING.xxl }} />
               </View>
             )}
@@ -1257,6 +1295,31 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
   },
   confirmButtonText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: "600",
+    color: "white",
+  },
+
+  // Pagination
+  loadMoreButton: {
+    marginTop: SPACING.lg,
+    marginBottom: SPACING.md,
+    borderRadius: BORDER_RADIUS.lg,
+    overflow: "hidden",
+    elevation: 3,
+    shadowColor: COLORS.shadowDark,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+  },
+  loadMoreGradient: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: SPACING.md,
+    gap: SPACING.sm,
+  },
+  loadMoreText: {
     fontSize: FONT_SIZES.md,
     fontWeight: "600",
     color: "white",

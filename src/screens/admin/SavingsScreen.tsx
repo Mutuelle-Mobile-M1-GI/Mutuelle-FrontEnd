@@ -575,7 +575,7 @@ const hasError = errorSavings || errorMembers || errorSession || (serverStats ==
   return (
     <View style={styles.tabContent}>
       <View style={styles.statsSection}>
-        <Text style={styles.sectionTitle}>Statistiques globales (Backend)</Text>
+        <Text style={styles.sectionTitle}>Statistiques globales</Text>
         <View style={styles.statsGrid}>
           {/* Épargne Totale : Somme des dépôts sans déduire les prêts */}
           <StatCard

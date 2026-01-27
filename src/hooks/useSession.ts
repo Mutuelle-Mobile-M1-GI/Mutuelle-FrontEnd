@@ -20,11 +20,14 @@ export function useCreateNewSession() {
       if (!token) throw new Error("Token manquant");
       return createNewSession(sessionData, token);
     },
-    onSuccess: () => {
-      // Invalider le cache pour recharger les données
-      queryClient.invalidateQueries({ queryKey: ["current-session"] });
-      queryClient.invalidateQueries({ queryKey: ["sessions"] });
-      queryClient.invalidateQueries({ queryKey: ["admin-dashboard"] });
+    onSuccess: async () => {
+      // Invalider et refetch le cache pour recharger les données
+      await queryClient.invalidateQueries({ queryKey: ["current-session"] });
+      await queryClient.invalidateQueries({ queryKey: ["sessions"] });
+      await queryClient.invalidateQueries({ queryKey: ["admin-dashboard"] });
+      // ✅ IMPORTANT : Refetch aussi les renflouements si ils dépendent de la session
+      await queryClient.refetchQueries({ queryKey: ["renflouements"] });
+      await queryClient.refetchQueries({ queryKey: ["renflouement-stats"] });
     },
     onError: (error) => {
       console.error("Erreur création session:", error);

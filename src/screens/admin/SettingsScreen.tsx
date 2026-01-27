@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+  import React, { useState } from "react";
 import {
   View,
   Text,
@@ -566,8 +566,8 @@ const { mutateAsync: upsertTiers } = useUpsertTiers();
     // ✅ Tout est terminé avec succès
     Alert.alert(
       "Succès", 
-      "L'exercice et parametres ont été configurés avec succès !",
-      [{ text: "Super" }]
+      "L'exercice et ses paramêtres ont été configurés avec succès !",
+      [{ text: "OK" }]
     );
 
     setExerciseModalVisible(false);

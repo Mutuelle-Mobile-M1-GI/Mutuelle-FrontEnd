@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   Dimensions,
   Platform,
+  KeyboardAvoidingView,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -21,10 +22,13 @@ import { useMembers, useMemberFinance } from "../../hooks/useMember";
 import { useCreateFullMember, useAddInscriptionPayment } from "../../hooks/useMember";
 import { useCurrentSession } from "../../hooks/useSession";
 import { Member, MemberFinancialData } from "../../types/member.types";
-import { Image } from "react-native"; // ✅ AJOUTER cette ligne
+import { Image } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 
 const { width } = Dimensions.get("window");
+
+// 🎯 Configuration de la pagination
+const ITEMS_PER_PAGE = 10;
 
 // 🎯 Composants de cartes financières
 interface FinancialCardProps {
@@ -265,240 +269,238 @@ const MemberDetailModal = ({ visible, member, onClose, financialData, loading }:
                 </View>
 
                 {/* Résumé financier ultra-complet */}
-<View style={styles.sectionContainer}>
-  <Text style={styles.sectionTitle}>
-    <Ionicons name="pie-chart" size={16} color={COLORS.primary} /> Résumé financier complet
-  </Text>
-  
-  {/* Vue d'ensemble */}
-  <View style={styles.summaryContainer}>
-    <View style={[styles.summaryCard, { backgroundColor: COLORS.success + "15" }]}>
-      <Ionicons name="trending-up" size={20} color={COLORS.success} />
-      <Text style={styles.summaryLabel}>Patrimoine</Text>
-      <Text style={[styles.summaryValue, { color: COLORS.success }]}>
-        {formatCurrency(financialData.resume_financier.patrimoine_total)}
-      </Text>
-    </View>
-    <View style={[styles.summaryCard, { backgroundColor: COLORS.error + "15" }]}>
-      <Ionicons name="trending-down" size={20} color={COLORS.error} />
-      <Text style={styles.summaryLabel}>Obligations</Text>
-      <Text style={[styles.summaryValue, { color: COLORS.error }]}>
-        {formatCurrency(financialData.resume_financier.obligations_totales)}
-      </Text>
-    </View>
-    <View style={[styles.summaryCard, { 
-      backgroundColor: financialData.resume_financier.situation_nette >= 0 ? COLORS.success + "15" : COLORS.error + "15" 
-    }]}>
-      <Ionicons 
-        name={financialData.resume_financier.situation_nette >= 0 ? "checkmark-circle" : "alert-circle"} 
-        size={20} 
-        color={financialData.resume_financier.situation_nette >= 0 ? COLORS.success : COLORS.error} 
-      />
-      <Text style={styles.summaryLabel}>Situation</Text>
-      <Text style={[styles.summaryValue, { 
-        color: financialData.resume_financier.situation_nette >= 0 ? COLORS.success : COLORS.error 
-      }]}>
-        {formatCurrency(financialData.resume_financier.situation_nette)}
-      </Text>
-    </View>
-  </View>
+                <View style={styles.sectionContainer}>
+                  <Text style={styles.sectionTitle}>
+                    <Ionicons name="pie-chart" size={16} color={COLORS.primary} /> Résumé financier complet
+                  </Text>
+                  
+                  {/* Vue d'ensemble */}
+                  <View style={styles.summaryContainer}>
+                    <View style={[styles.summaryCard, { backgroundColor: COLORS.success + "15" }]}>
+                      <Ionicons name="trending-up" size={20} color={COLORS.success} />
+                      <Text style={styles.summaryLabel}>Patrimoine</Text>
+                      <Text style={[styles.summaryValue, { color: COLORS.success }]}>
+                        {formatCurrency(financialData.resume_financier.patrimoine_total)}
+                      </Text>
+                    </View>
+                    <View style={[styles.summaryCard, { backgroundColor: COLORS.error + "15" }]}>
+                      <Ionicons name="trending-down" size={20} color={COLORS.error} />
+                      <Text style={styles.summaryLabel}>Obligations</Text>
+                      <Text style={[styles.summaryValue, { color: COLORS.error }]}>
+                        {formatCurrency(financialData.resume_financier.obligations_totales)}
+                      </Text>
+                    </View>
+                    <View style={[styles.summaryCard, { 
+                      backgroundColor: financialData.resume_financier.situation_nette >= 0 ? COLORS.success + "15" : COLORS.error + "15" 
+                    }]}>
+                      <Ionicons 
+                        name={financialData.resume_financier.situation_nette >= 0 ? "checkmark-circle" : "alert-circle"} 
+                        size={20} 
+                        color={financialData.resume_financier.situation_nette >= 0 ? COLORS.success : COLORS.error} 
+                      />
+                      <Text style={styles.summaryLabel}>Situation</Text>
+                      <Text style={[styles.summaryValue, { 
+                        color: financialData.resume_financier.situation_nette >= 0 ? COLORS.success : COLORS.error 
+                      }]}>
+                        {formatCurrency(financialData.resume_financier.situation_nette)}
+                      </Text>
+                    </View>
+                  </View>
 
-  {/* Détails par catégorie */}
-  <View style={styles.detailsGrid}>
-    
-    {/* Inscription détaillée */}
-    <View style={styles.detailCard}>
-      <View style={styles.detailHeader}>
-        <Ionicons name="card" size={16} color={COLORS.primary} />
-        <Text style={styles.detailTitle}>Inscription</Text>
-      </View>
-      <View style={styles.detailRow}>
-        <Text style={styles.detailLabel}>Total requis</Text>
-        <Text style={styles.detailValue}>{formatCurrency(financialData.inscription.montant_total_inscription)}</Text>
-      </View>
-      <View style={styles.detailRow}>
-        <Text style={styles.detailLabel}>Payé</Text>
-        <Text style={[styles.detailValue, { color: COLORS.success }]}>
-          {formatCurrency(financialData.inscription.montant_paye_inscription)}
-        </Text>
-      </View>
-      <View style={styles.detailRow}>
-        <Text style={styles.detailLabel}>Restant</Text>
-        <Text style={[styles.detailValue, { color: COLORS.warning }]}>
-          {formatCurrency(financialData.inscription.montant_restant_inscription)}
-        </Text>
-      </View>
-      <View style={styles.progressContainer}>
-        <View style={styles.progressTrack}>
-          <View style={[styles.progressBar, { 
-            width: `${financialData.inscription.pourcentage_inscription}%`, 
-            backgroundColor: financialData.inscription.inscription_complete ? COLORS.success : COLORS.warning 
-          }]} />
-        </View>
-        <Text style={styles.progressText}>{financialData.inscription.pourcentage_inscription.toFixed(1)}%</Text>
-      </View>
-    </View>
+                  {/* Détails par catégorie */}
+                  <View style={styles.detailsGrid}>
+                    
+                    {/* Inscription détaillée */}
+                    <View style={styles.detailCard}>
+                      <View style={styles.detailHeader}>
+                        <Ionicons name="card" size={16} color={COLORS.primary} />
+                        <Text style={styles.detailTitle}>Inscription</Text>
+                      </View>
+                      <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>Total requis</Text>
+                        <Text style={styles.detailValue}>{formatCurrency(financialData.inscription.montant_total_inscription)}</Text>
+                      </View>
+                      <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>Payé</Text>
+                        <Text style={[styles.detailValue, { color: COLORS.success }]}>
+                          {formatCurrency(financialData.inscription.montant_paye_inscription)}
+                        </Text>
+                      </View>
+                      <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>Restant</Text>
+                        <Text style={[styles.detailValue, { color: COLORS.warning }]}>
+                          {formatCurrency(financialData.inscription.montant_restant_inscription)}
+                        </Text>
+                      </View>
+                      <View style={styles.progressContainer}>
+                        <View style={styles.progressTrack}>
+                          <View style={[styles.progressBar, { 
+                            width: `${financialData.inscription.pourcentage_inscription}%`, 
+                            backgroundColor: financialData.inscription.inscription_complete ? COLORS.success : COLORS.warning 
+                          }]} />
+                        </View>
+                        <Text style={styles.progressText}>{financialData.inscription.pourcentage_inscription.toFixed(1)}%</Text>
+                      </View>
+                    </View>
 
-    {/* Épargne détaillée */}
-    <View style={styles.detailCard}>
-      <View style={styles.detailHeader}>
-        <Ionicons name="wallet" size={16} color={COLORS.primary} />
-        <Text style={styles.detailTitle}>Épargne</Text>
-      </View>
-      <View style={styles.detailRow}>
-        <Text style={styles.detailLabel}>Base</Text>
-        <Text style={styles.detailValue}>{formatCurrency(financialData.epargne.epargne_base)}</Text>
-      </View>
-      <View style={styles.detailRow}>
-        <Text style={styles.detailLabel}>Intérêts reçus</Text>
-        <Text style={[styles.detailValue, { color: COLORS.success }]}>
-          {formatCurrency(financialData.epargne.interets_recus)}
-        </Text>
-      </View>
-      <View style={styles.detailRow}>
-        <Text style={styles.detailLabel}>Retraits pour prêts</Text>
-        <Text style={[styles.detailValue, { color: COLORS.warning }]}>
-          {formatCurrency(financialData.epargne.retraits_pour_prets)}
-        </Text>
-      </View>
-      <View style={styles.detailRow}>
-        <Text style={[styles.detailLabel, { fontWeight: "bold" }]}>Total épargne</Text>
-        <Text style={[styles.detailValue, { fontWeight: "bold", color: COLORS.primary }]}>
-          {formatCurrency(financialData.epargne.epargne_totale)}
-        </Text>
-      </View>
-    </View>
+                    {/* Épargne détaillée */}
+                    <View style={styles.detailCard}>
+                      <View style={styles.detailHeader}>
+                        <Ionicons name="wallet" size={16} color={COLORS.primary} />
+                        <Text style={styles.detailTitle}>Épargne</Text>
+                      </View>
+                      <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>Base</Text>
+                        <Text style={styles.detailValue}>{formatCurrency(financialData.epargne.epargne_base)}</Text>
+                      </View>
+                      <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>Intérêts reçus</Text>
+                        <Text style={[styles.detailValue, { color: COLORS.success }]}>
+                          {formatCurrency(financialData.epargne.interets_recus)}
+                        </Text>
+                      </View>
+                      <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>Retraits pour prêts</Text>
+                        <Text style={[styles.detailValue, { color: COLORS.warning }]}>
+                          {formatCurrency(financialData.epargne.retraits_pour_prets)}
+                        </Text>
+                      </View>
+                      <View style={styles.detailRow}>
+                        <Text style={[styles.detailLabel, { fontWeight: "bold" }]}>Total épargne</Text>
+                        <Text style={[styles.detailValue, { fontWeight: "bold", color: COLORS.primary }]}>
+                          {formatCurrency(financialData.epargne.epargne_totale)}
+                        </Text>
+                      </View>
+                    </View>
 
-    {/* Emprunt (si applicable) */}
-    {(financialData.emprunt.a_emprunt_en_cours || financialData.emprunt.nombre_emprunts_total > 0) && (
-      <View style={styles.detailCard}>
-        <View style={styles.detailHeader}>
-          <Ionicons name="trending-down" size={16} color={COLORS.error} />
-          <Text style={styles.detailTitle}>Emprunts</Text>
-          {financialData.emprunt.a_emprunt_en_cours && (
-            <View style={styles.activeBadge}>
-              <Text style={styles.activeBadgeText}>ACTIF</Text>
-            </View>
-          )}
-        </View>
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>Nombre total</Text>
-          <Text style={styles.detailValue}>{financialData.emprunt.nombre_emprunts_total}</Text>
-        </View>
-        {financialData.emprunt.a_emprunt_en_cours && (
-          <>
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>En cours</Text>
-              <Text style={[styles.detailValue, { color: COLORS.error }]}>
-                {formatCurrency(financialData.emprunt.montant_emprunt_en_cours)}
-              </Text>
-            </View>
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Déjà remboursé</Text>
-              <Text style={[styles.detailValue, { color: COLORS.success }]}>
-                {formatCurrency(financialData.emprunt.montant_deja_rembourse)}
-              </Text>
-            </View>
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Restant à payer</Text>
-              <Text style={[styles.detailValue, { color: COLORS.error, fontWeight: "bold" }]}>
-                {formatCurrency(financialData.emprunt.montant_restant_a_rembourser)}
-              </Text>
-            </View>
-            <View style={styles.progressContainer}>
-              <View style={styles.progressTrack}>
-                <View style={[styles.progressBar, { 
-                  width: `${financialData.emprunt.pourcentage_rembourse}%`, 
-                  backgroundColor: COLORS.success 
-                }]} />
-              </View>
-              <Text style={styles.progressText}>{financialData.emprunt.pourcentage_rembourse}% remboursé</Text>
-            </View>
-          </>
-        )}
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>Max empruntable</Text>
-          <Text style={[styles.detailValue, { color: COLORS.primary }]}>
-            {formatCurrency(financialData.emprunt.montant_max_empruntable)}
-          </Text>
-        </View>
-      </View>
-    )}
+                    {/* Emprunt (si applicable) */}
+                    {(financialData.emprunt.a_emprunt_en_cours || financialData.emprunt.nombre_emprunts_total > 0) && (
+                      <View style={styles.detailCard}>
+                        <View style={styles.detailHeader}>
+                          <Ionicons name="trending-down" size={16} color={COLORS.error} />
+                          <Text style={styles.detailTitle}>Emprunts</Text>
+                          {financialData.emprunt.a_emprunt_en_cours && (
+                            <View style={styles.activeBadge}>
+                              <Text style={styles.activeBadgeText}>ACTIF</Text>
+                            </View>
+                          )}
+                        </View>
+                        <View style={styles.detailRow}>
+                          <Text style={styles.detailLabel}>Nombre total</Text>
+                          <Text style={styles.detailValue}>{financialData.emprunt.nombre_emprunts_total}</Text>
+                        </View>
+                        {financialData.emprunt.a_emprunt_en_cours && (
+                          <>
+                            <View style={styles.detailRow}>
+                              <Text style={styles.detailLabel}>En cours</Text>
+                              <Text style={[styles.detailValue, { color: COLORS.error }]}>
+                                {formatCurrency(financialData.emprunt.montant_emprunt_en_cours)}
+                              </Text>
+                            </View>
+                            <View style={styles.detailRow}>
+                              <Text style={styles.detailLabel}>Déjà remboursé</Text>
+                              <Text style={[styles.detailValue, { color: COLORS.success }]}>
+                                {formatCurrency(financialData.emprunt.montant_deja_rembourse)}
+                              </Text>
+                            </View>
+                            <View style={styles.detailRow}>
+                              <Text style={styles.detailLabel}>Restant à payer</Text>
+                              <Text style={[styles.detailValue, { color: COLORS.error, fontWeight: "bold" }]}>
+                                {formatCurrency(financialData.emprunt.montant_restant_a_rembourser)}
+                              </Text>
+                            </View>
+                            <View style={styles.progressContainer}>
+                              <View style={styles.progressTrack}>
+                                <View style={[styles.progressBar, { 
+                                  width: `${financialData.emprunt.pourcentage_rembourse}%`, 
+                                  backgroundColor: COLORS.success 
+                                }]} />
+                              </View>
+                              <Text style={styles.progressText}>{financialData.emprunt.pourcentage_rembourse}% remboursé</Text>
+                            </View>
+                          </>
+                        )}
+                        <View style={styles.detailRow}>
+                          <Text style={styles.detailLabel}>Max empruntable</Text>
+                          <Text style={[styles.detailValue, { color: COLORS.primary }]}>
+                            {formatCurrency(financialData.emprunt.montant_max_empruntable)}
+                          </Text>
+                        </View>
+                      </View>
+                    )}
 
-    {/* Renflouement (si applicable) */}
-    {(financialData.renflouement.nombre_renflouements > 0 || financialData.renflouement.solde_renflouement_du > 0) && (
-      <View style={styles.detailCard}>
-        <View style={styles.detailHeader}>
-          <Ionicons name="refresh-circle" size={16} color={COLORS.warning} />
-          <Text style={styles.detailTitle}>Renflouements</Text>
-          {!financialData.renflouement.renflouement_a_jour && (
-            <View style={[styles.activeBadge, { backgroundColor: COLORS.warning }]}>
-              <Text style={styles.activeBadgeText}>DÛ</Text>
-            </View>
-          )}
-        </View>
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>Nombre total</Text>
-          <Text style={styles.detailValue}>{financialData.renflouement.nombre_renflouements}</Text>
-        </View>
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>Total dû</Text>
-          <Text style={styles.detailValue}>{formatCurrency(financialData.renflouement.total_renflouement_du)}</Text>
-        </View>
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>Total payé</Text>
-          <Text style={[styles.detailValue, { color: COLORS.success }]}>
-            {formatCurrency(financialData.renflouement.total_renflouement_paye)}
-          </Text>
-        </View>
-        <View style={styles.detailRow}>
-          <Text style={[styles.detailLabel, { fontWeight: "bold" }]}>Solde restant</Text>
-          <Text style={[styles.detailValue, { 
-            fontWeight: "bold", 
-            color: financialData.renflouement.solde_renflouement_du > 0 ? COLORS.error : COLORS.success 
-          }]}>
-            {formatCurrency(financialData.renflouement.solde_renflouement_du)}
-          </Text>
-        </View>
-      </View>
-    )}
+                    {/* Renflouement (si applicable) */}
+                    {(financialData.renflouement.nombre_renflouements > 0 || financialData.renflouement.solde_renflouement_du > 0) && (
+                      <View style={styles.detailCard}>
+                        <View style={styles.detailHeader}>
+                          <Ionicons name="refresh-circle" size={16} color={COLORS.warning} />
+                          <Text style={styles.detailTitle}>Renflouements</Text>
+                          {!financialData.renflouement.renflouement_a_jour && (
+                            <View style={[styles.activeBadge, { backgroundColor: COLORS.warning }]}>
+                              <Text style={styles.activeBadgeText}>DÛ</Text>
+                            </View>
+                          )}
+                        </View>
+                        <View style={styles.detailRow}>
+                          <Text style={styles.detailLabel}>Nombre total</Text>
+                          <Text style={styles.detailValue}>{financialData.renflouement.nombre_renflouements}</Text>
+                        </View>
+                        <View style={styles.detailRow}>
+                          <Text style={styles.detailLabel}>Total dû</Text>
+                          <Text style={styles.detailValue}>{formatCurrency(financialData.renflouement.total_renflouement_du)}</Text>
+                        </View>
+                        <View style={styles.detailRow}>
+                          <Text style={styles.detailLabel}>Total payé</Text>
+                          <Text style={[styles.detailValue, { color: COLORS.success }]}>
+                            {formatCurrency(financialData.renflouement.total_renflouement_paye)}
+                          </Text>
+                        </View>
+                        <View style={styles.detailRow}>
+                          <Text style={[styles.detailLabel, { fontWeight: "bold" }]}>Solde restant</Text>
+                          <Text style={[styles.detailValue, { 
+                            fontWeight: "bold", 
+                            color: financialData.renflouement.solde_renflouement_du > 0 ? COLORS.error : COLORS.success 
+                          }]}>
+                            {formatCurrency(financialData.renflouement.solde_renflouement_du)}
+                          </Text>
+                        </View>
+                      </View>
+                    )}
 
-    {/* Solidarité détaillée */}
-    <View style={styles.detailCard}>
-      <View style={styles.detailHeader}>
-        <Ionicons name="heart" size={16} color={COLORS.primary} />
-        <Text style={styles.detailTitle}>Solidarité</Text>
-        {financialData.solidarite.solidarite_a_jour && (
-          <View style={[styles.activeBadge, { backgroundColor: COLORS.success }]}>
-            <Text style={styles.activeBadgeText}>À JOUR</Text>
-          </View>
-        )}
-      </View>
-      <View style={styles.detailRow}>
-        <Text style={styles.detailLabel}>Session actuelle</Text>
-        <Text style={styles.detailValue}>
-          {formatCurrency(financialData.solidarite.montant_paye_session_courante)} / {formatCurrency(financialData.solidarite.montant_solidarite_session_courante)}
-        </Text>
-      </View>
-      <View style={styles.detailRow}>
-        <Text style={styles.detailLabel}>Total payé</Text>
-        <Text style={[styles.detailValue, { color: COLORS.success }]}>
-          {formatCurrency(financialData.solidarite.total_solidarite_payee)}
-        </Text>
-      </View>
-      {financialData.solidarite.dette_solidarite_cumul > 0 && (
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>Dette cumulée</Text>
-          <Text style={[styles.detailValue, { color: COLORS.error }]}>
-            {formatCurrency(financialData.solidarite.dette_solidarite_cumul)}
-          </Text>
-        </View>
-      )}
-    </View>
-  </View>
-</View>
-
-              
+                    {/* Solidarité détaillée */}
+                    <View style={styles.detailCard}>
+                      <View style={styles.detailHeader}>
+                        <Ionicons name="heart" size={16} color={COLORS.primary} />
+                        <Text style={styles.detailTitle}>Solidarité</Text>
+                        {financialData.solidarite.solidarite_a_jour && (
+                          <View style={[styles.activeBadge, { backgroundColor: COLORS.success }]}>
+                            <Text style={styles.activeBadgeText}>À JOUR</Text>
+                          </View>
+                        )}
+                      </View>
+                      <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>Session actuelle</Text>
+                        <Text style={styles.detailValue}>
+                          {formatCurrency(financialData.solidarite.montant_paye_session_courante)} / {formatCurrency(financialData.solidarite.montant_solidarite_session_courante)}
+                        </Text>
+                      </View>
+                      <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>Total payé</Text>
+                        <Text style={[styles.detailValue, { color: COLORS.success }]}>
+                          {formatCurrency(financialData.solidarite.total_solidarite_payee)}
+                        </Text>
+                      </View>
+                      {financialData.solidarite.dette_solidarite_cumul > 0 && (
+                        <View style={styles.detailRow}>
+                          <Text style={styles.detailLabel}>Dette cumulée</Text>
+                          <Text style={[styles.detailValue, { color: COLORS.error }]}>
+                            {formatCurrency(financialData.solidarite.dette_solidarite_cumul)}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                </View>
               </>
             ) : (
               <View style={styles.errorContainer}>
@@ -580,7 +582,11 @@ const AddMemberModal = ({ visible, onClose, onSubmit, loading }: AddMemberModalP
   return (
     <Modal visible={visible} transparent animationType="slide" statusBarTranslucent>
       <BlurView intensity={20} style={StyleSheet.absoluteFillObject} />
-      <View style={styles.modalOverlay}>
+      <KeyboardAvoidingView 
+        style={styles.modalOverlay}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+      >
         <View style={styles.addModalContainer}>
           
           {/* Header */}
@@ -600,7 +606,7 @@ const AddMemberModal = ({ visible, onClose, onSubmit, loading }: AddMemberModalP
           </LinearGradient>
 
           {/* Formulaire */}
-          <ScrollView style={styles.addModalBody} showsVerticalScrollIndicator={false}>
+          <ScrollView style={styles.addModalBody} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
             
             {/* Sélecteur de photo */}
             <View style={styles.photoSection}>
@@ -729,7 +735,7 @@ const AddMemberModal = ({ visible, onClose, onSubmit, loading }: AddMemberModalP
             </TouchableOpacity>
           </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };
@@ -743,8 +749,8 @@ export default function InscriptionsScreen() {
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const [paymentAmount, setPaymentAmount] = useState("");
   const [paymentNotes, setPaymentNotes] = useState("");
+  const [displayedItems, setDisplayedItems] = useState(ITEMS_PER_PAGE);
   const navigation = useNavigation();
-
 
   // API hooks
   const { data: membersRaw, isLoading, refetch } = useMembers();
@@ -765,6 +771,22 @@ export default function InscriptionsScreen() {
       return searchStr.includes(search.toLowerCase());
     });
   }, [members, search]);
+
+  // Pagination
+  const paginatedMembers = useMemo(() => {
+    return filteredMembers.slice(0, displayedItems);
+  }, [filteredMembers, displayedItems]);
+
+  const hasMore = displayedItems < filteredMembers.length;
+
+  const loadMore = () => {
+    setDisplayedItems(prev => Math.min(prev + ITEMS_PER_PAGE, filteredMembers.length));
+  };
+
+  // Reset pagination when search changes
+  useMemo(() => {
+    setDisplayedItems(ITEMS_PER_PAGE);
+  }, [search]);
 
   const stats = useMemo(() => {
     return {
@@ -855,7 +877,7 @@ export default function InscriptionsScreen() {
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
       >
-        {/* ✅ AJOUTER le bouton back */}
+        {/* Bouton back */}
         <View style={styles.headerTop}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
             <Ionicons name="arrow-back" size={24} color="white" />
@@ -865,7 +887,6 @@ export default function InscriptionsScreen() {
             <Text style={styles.headerSubtitle}>Membres et paiements d'inscription</Text>
           </View>
         </View>
-        
         
         {/* Stats rapides */}
         <View style={styles.statsContainer}>
@@ -918,6 +939,17 @@ export default function InscriptionsScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* Compteur de résultats */}
+      {!isLoading && filteredMembers.length > 0 && (
+        <View style={styles.resultsCounter}>
+          <Ionicons name="people" size={18} color={COLORS.primary} />
+          <Text style={styles.resultsCounterText}>
+            Affichage de <Text style={styles.resultsCounterBold}>{paginatedMembers.length}</Text> sur{' '}
+            <Text style={styles.resultsCounterBold}>{filteredMembers.length}</Text> membre{filteredMembers.length > 1 ? 's' : ''}
+          </Text>
+        </View>
+      )}
+
       {/* Liste des membres */}
       <ScrollView style={styles.membersList} showsVerticalScrollIndicator={false}>
         {isLoading ? (
@@ -926,24 +958,43 @@ export default function InscriptionsScreen() {
             <Text style={styles.loadingText}>Chargement des membres...</Text>
           </View>
         ) : filteredMembers.length > 0 ? (
-          filteredMembers.map((member) => (
-            <MemberCard
-              key={member.id}
-              member={member}
-              onPress={() => {
-                setSelectedMember(member);
-                setShowDetailModal(true);
-              }}
-              onPayment={() => {
-                setSelectedMember(member);
-                setShowPaymentModal(true);
-              }}
-              onDetail={() => {
-                setSelectedMember(member);
-                setShowDetailModal(true);
-              }}
-            />
-          ))
+          <>
+            {paginatedMembers.map((member) => (
+              <MemberCard
+                key={member.id}
+                member={member}
+                onPress={() => {
+                  setSelectedMember(member);
+                  setShowDetailModal(true);
+                }}
+                onPayment={() => {
+                  setSelectedMember(member);
+                  setShowPaymentModal(true);
+                }}
+                onDetail={() => {
+                  setSelectedMember(member);
+                  setShowDetailModal(true);
+                }}
+              />
+            ))}
+
+            {/* Bouton "Voir plus" */}
+            {hasMore && (
+              <TouchableOpacity style={styles.loadMoreButton} onPress={loadMore}>
+                <LinearGradient
+                  colors={[COLORS.primary, "#3A86FF"]}
+                  style={styles.loadMoreGradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                >
+                  <Text style={styles.loadMoreText}>
+                    Voir plus ({filteredMembers.length - displayedItems} restant{filteredMembers.length - displayedItems > 1 ? 's' : ''})
+                  </Text>
+                  <Ionicons name="chevron-down" size={20} color="white" />
+                </LinearGradient>
+              </TouchableOpacity>
+            )}
+          </>
         ) : (
           <View style={styles.emptyContainer}>
             <Ionicons name="people-outline" size={64} color={COLORS.textLight} />
@@ -958,6 +1009,8 @@ export default function InscriptionsScreen() {
             )}
           </View>
         )}
+
+        <View style={{height: 70}}></View>
       </ScrollView>
 
       {/* Modals */}
@@ -982,7 +1035,11 @@ export default function InscriptionsScreen() {
       {/* Modal de paiement */}
       <Modal visible={showPaymentModal} transparent animationType="fade" statusBarTranslucent>
         <BlurView intensity={20} style={StyleSheet.absoluteFillObject} />
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView 
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        >
           <View style={styles.paymentModalContainer}>
             
             {/* Header */}
@@ -1007,7 +1064,7 @@ export default function InscriptionsScreen() {
             </LinearGradient>
 
             {/* Contenu */}
-            <View style={styles.paymentModalBody}>
+            <ScrollView style={styles.paymentModalBody} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
               {selectedMember && (
                 <>
                   {/* Info membre */}
@@ -1057,7 +1114,7 @@ export default function InscriptionsScreen() {
                   </View>
                 </>
               )}
-            </View>
+            </ScrollView>
 
             {/* Actions */}
             <View style={styles.paymentModalActions}>
@@ -1097,7 +1154,7 @@ export default function InscriptionsScreen() {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -1188,13 +1245,34 @@ const styles = StyleSheet.create({
   addButton: {
     borderRadius: BORDER_RADIUS.lg,
     overflow: "hidden",
-    marginBottom:12,
+    marginBottom: 12,
   },
   addButtonGradient: {
     width: 48,
     height: 48,
     alignItems: "center",
     justifyContent: "center",
+  },
+
+  // Results Counter
+  resultsCounter: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.sm,
+    backgroundColor: COLORS.primary + "10",
+    marginHorizontal: SPACING.lg,
+    marginBottom: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
+    gap: SPACING.sm,
+  },
+  resultsCounterText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textSecondary,
+  },
+  resultsCounterBold: {
+    fontWeight: "bold",
+    color: COLORS.primary,
   },
 
   // Liste des membres
@@ -1221,6 +1299,31 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     padding: SPACING.md,
+  },
+
+  // Load More Button
+  loadMoreButton: {
+    marginTop: SPACING.lg,
+    marginBottom: SPACING.md,
+    borderRadius: BORDER_RADIUS.lg,
+    overflow: "hidden",
+    elevation: 3,
+    shadowColor: COLORS.shadowDark,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+  },
+  loadMoreGradient: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: SPACING.md,
+    gap: SPACING.sm,
+  },
+  loadMoreText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: "600",
+    color: "white",
   },
 
   // Avatar
@@ -1550,7 +1653,7 @@ const styles = StyleSheet.create({
   summaryContainer: {
     flexDirection: "row",
     gap: SPACING.md,
-    marginBottom:15,
+    marginBottom: 15,
   },
   summaryCard: {
     flex: 1,
@@ -1688,7 +1791,6 @@ const styles = StyleSheet.create({
     marginTop: SPACING.xs,
     fontStyle: "italic",
     marginBottom: 15,
-
   },
 
   // Actions des modals
@@ -1705,7 +1807,6 @@ const styles = StyleSheet.create({
     gap: SPACING.md,
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
-    marginBottom:10,
   },
   cancelButton: {
     flex: 1,
@@ -1774,6 +1875,7 @@ const styles = StyleSheet.create({
   },
   paymentModalBody: {
     padding: SPACING.lg,
+    maxHeight: 400,
   },
 
   // Info membre dans modal paiement
@@ -1827,8 +1929,8 @@ const styles = StyleSheet.create({
   paymentFormSection: {
     gap: SPACING.md,
   },
-// ajout pour resume financier
 
+  // Ajout pour resume financier
   detailsGrid: {
     gap: SPACING.md,
   },

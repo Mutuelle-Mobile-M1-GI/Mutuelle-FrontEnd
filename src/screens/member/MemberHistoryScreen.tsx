@@ -34,7 +34,10 @@ import * as Sharing from 'expo-sharing';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-// 🎨 Design System Premium
+// � Configuration de la pagination
+const ITEMS_PER_PAGE = 10;
+
+// �🎨 Design System Premium
 const PREMIUM_THEME = {
   colors: {
     primary: {
@@ -871,7 +874,7 @@ export default function MemberHistoryScreen() {
   const { user } = useAuthContext();
   
   // Data hooks
-  const { data: member, isLoading: loadingMember, error: errorMember, refetch } = useMemberDetailByUser(user?.id || "");
+  const { data: member, isLoading: loadingMember, error: errorMember, refetch } = useMemberDetailByUser(user?.id);
   const { data: loansRaw, isLoading: loadingLoans } = useLoans({ membre: member?.id });
   const { data: repaymentsRaw, isLoading: loadingRepayments } = useRepayments({ membre: member?.id });
   const { data: solidarityRaw, isLoading: loadingSolidarity } = useSolidarityPayments({ membre: member?.id });
@@ -885,6 +888,7 @@ export default function MemberHistoryScreen() {
   const [searchText, setSearchText] = useState("");
   const [selectedFilter, setSelectedFilter] = useState("all");
   const [exporting, setExporting] = useState(false);
+  const [displayedItems, setDisplayedItems] = useState(ITEMS_PER_PAGE);
 
   // Normalisation et création de la timeline
   const timeline = useMemo(() => {
@@ -1018,6 +1022,22 @@ export default function MemberHistoryScreen() {
 
     return filtered;
   }, [timeline, selectedFilter, searchText]);
+
+  // 🎯 Pagination
+  const paginatedTimeline = useMemo(() => {
+    return filteredTimeline.slice(0, displayedItems);
+  }, [filteredTimeline, displayedItems]);
+
+  const hasMore = displayedItems < filteredTimeline.length;
+
+  const loadMore = () => {
+    setDisplayedItems(prev => Math.min(prev + ITEMS_PER_PAGE, filteredTimeline.length));
+  };
+
+  // Reset pagination when search or filter changes
+  useMemo(() => {
+    setDisplayedItems(ITEMS_PER_PAGE);
+  }, [searchText, selectedFilter]);
 
   if (loadingMember || loadingLoans || loadingRepayments || loadingSolidarity || loadingRenfl || loadingSavings || loadingAssistances || loadingInscriptionPayments) {
     return (
@@ -1153,19 +1173,38 @@ export default function MemberHistoryScreen() {
               </LinearGradient>
             </View>
           ) : (
-            <FlatList
-              data={filteredTimeline}
-              keyExtractor={(item) => item.id}
-              renderItem={({ item, index }) => (
-                <TimelineItemCard
-                  item={item}
-                  onPress={() => setSelectedItem(item)}
-                />
+            <>
+              <FlatList
+                data={paginatedTimeline}
+                keyExtractor={(item) => item.id}
+                renderItem={({ item, index }) => (
+                  <TimelineItemCard
+                    item={item}
+                    onPress={() => setSelectedItem(item)}
+                  />
+                )}
+                scrollEnabled={false}
+                contentContainerStyle={styles.timelineList}
+                ItemSeparatorComponent={() => <View style={{ height: SPACING.sm }} />}
+              />
+
+              {/* Bouton "Voir plus" */}
+              {hasMore && (
+                <TouchableOpacity style={styles.loadMoreButton} onPress={loadMore}>
+                  <LinearGradient
+                    colors={PREMIUM_THEME.gradients.primary}
+                    style={styles.loadMoreGradient}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                  >
+                    <Ionicons name="arrow-down" size={20} color="white" />
+                    <Text style={styles.loadMoreText}>
+                      Voir plus ({filteredTimeline.length - displayedItems} restant{filteredTimeline.length - displayedItems > 1 ? 's' : ''})
+                    </Text>
+                  </LinearGradient>
+                </TouchableOpacity>
               )}
-              scrollEnabled={false}
-              contentContainerStyle={styles.timelineList}
-              ItemSeparatorComponent={() => <View style={{ height: SPACING.sm }} />}
-            />
+            </>
           )}
         </View>
 
@@ -1625,6 +1664,32 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     flex: 1,
     marginLeft: SPACING.md,
+  },
+
+  // Load More Button
+  loadMoreButton: {
+    marginHorizontal: SPACING.lg,
+    marginVertical: SPACING.lg,
+    borderRadius: BORDER_RADIUS.lg,
+    overflow: 'hidden',
+    elevation: 3,
+    shadowColor: PREMIUM_THEME.colors.primary[500],
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+  },
+  loadMoreGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    gap: SPACING.sm,
+  },
+  loadMoreText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
+    color: 'white',
   },
 
   // Bottom spacing

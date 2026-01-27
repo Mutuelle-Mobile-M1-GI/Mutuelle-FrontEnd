@@ -12,6 +12,8 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
+  Platform,
+  KeyboardAvoidingView,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -20,7 +22,7 @@ import { COLORS, SPACING, BORDER_RADIUS, FONT_SIZES } from "../../constants/conf
 import { useAuthContext } from "../../context/AuthContext";
 import { useAdminDashboard } from "../../hooks/useDashboard";
 import { useMutuelleConfig } from "../../hooks/useConfig";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useFocusEffect } from "@react-navigation/native";
 // ✅ AJOUTER ces imports
 import { useCurrentExercise, useCurrentSession } from "../../hooks/useExercise";
 import { useQueryClient } from "@tanstack/react-query";
@@ -62,9 +64,13 @@ const NewSessionModal = ({ visible, onClose, onSubmit, loading }: NewSessionModa
   };
 
   return (
-    <Modal visible={visible} transparent animationType="fade">
-      <View style={styles.modalOverlay}>
-        <BlurView intensity={20} style={StyleSheet.absoluteFillObject} />
+    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent>
+      <BlurView intensity={20} style={StyleSheet.absoluteFillObject} />
+      <KeyboardAvoidingView 
+        style={styles.modalOverlay}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+      >
         <View style={styles.modalContent}>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>Nouvelle Session</Text>
@@ -73,7 +79,11 @@ const NewSessionModal = ({ visible, onClose, onSubmit, loading }: NewSessionModa
             </TouchableOpacity>
           </View>
 
-          <View style={styles.modalBody}>
+          <ScrollView 
+            style={styles.modalBody}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
             <Text style={styles.inputLabel}>Nom de la session</Text>
             <TextInput
               style={styles.input}
@@ -99,7 +109,7 @@ const NewSessionModal = ({ visible, onClose, onSubmit, loading }: NewSessionModa
               keyboardType="numeric"
             />
             <Text style={styles.helperText}>Montant par défaut: 45,000 FCFA</Text>
-          </View>
+          </ScrollView>
 
           <View style={styles.modalActions}>
             <TouchableOpacity style={styles.cancelButton} onPress={onClose}>
@@ -118,7 +128,7 @@ const NewSessionModal = ({ visible, onClose, onSubmit, loading }: NewSessionModa
             </TouchableOpacity>
           </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };
@@ -140,6 +150,27 @@ export default function AdminDashboardScreen() {
    // ✅ AJOUTER ces hooks ici
    const { data: currentExercise, isLoading: exerciseLoading } = useCurrentExercise();
    const { data: currentSession, isLoading: sessionLoading2 } = useCurrentSession();
+
+  // 🔄 AJOUTER : Actualiser les données quand on arrive sur la page
+  useFocusEffect(
+    React.useCallback(() => {
+      const refreshData = async () => {
+        try {
+          await refetch();
+          queryClient.invalidateQueries({ queryKey: ["current-user"] });
+          queryClient.invalidateQueries({ queryKey: ["current-exercise"] });
+          queryClient.invalidateQueries({ queryKey: ["current-session"] });
+          queryClient.invalidateQueries({ queryKey: ["admin-dashboard"] });
+          queryClient.invalidateQueries({ queryKey: ["tresor"] });
+          queryClient.invalidateQueries({ queryKey: ["fonds-social"] });
+        } catch (err) {
+          console.error("Erreur lors du refresh du dashboard:", err);
+        }
+      };
+
+      refreshData();
+    }, [refetch, queryClient])
+  );
 
   // 🎯 Modules de navigation organisés en grille
   const navigationModules: NavigationModule[] = [
