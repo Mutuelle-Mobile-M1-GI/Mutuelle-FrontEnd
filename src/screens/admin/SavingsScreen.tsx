@@ -27,6 +27,9 @@ import { useNavigation } from "@react-navigation/native";
 
 const { width } = Dimensions.get("window");
 
+// 🎯 Configuration de la pagination
+const ITEMS_PER_PAGE = 10;
+
 // 🎯 Types
 interface MemberSavings {
   id: string;
@@ -283,6 +286,8 @@ export default function SavingsScreen() {
   // Navigation
   const [showMemberDetail, setShowMemberDetail] = useState(false);
   const [selectedMemberDetail, setSelectedMemberDetail] = useState<MemberSavings | null>(null);
+  const [displayedItems, setDisplayedItems] = useState(ITEMS_PER_PAGE);
+  const [displayedTransactions, setDisplayedTransactions] = useState(ITEMS_PER_PAGE);
 
   // Hooks de données
   const { data: membersData, isLoading: loadingMembers, isError: errorMembers } = useMembers();
@@ -408,6 +413,22 @@ export default function SavingsScreen() {
     );
   }, [finalMembersList, search]);
 
+  // Pagination des membres
+  const paginatedMembers = useMemo(() => {
+    return searchedMembers.slice(0, displayedItems);
+  }, [searchedMembers, displayedItems]);
+
+  const hasMoreMembers = displayedItems < searchedMembers.length;
+
+  const loadMoreMembers = () => {
+    setDisplayedItems(prev => Math.min(prev + ITEMS_PER_PAGE, searchedMembers.length));
+  };
+
+  // Reset pagination when search changes
+  useMemo(() => {
+    setDisplayedItems(ITEMS_PER_PAGE);
+  }, [search]);
+
   // Filtrage des transactions
   const filteredTransactions = useMemo(() => {
     let filtered = savings;
@@ -436,6 +457,22 @@ export default function SavingsScreen() {
       new Date(b.date_transaction).getTime() - new Date(a.date_transaction).getTime()
     );
   }, [savings, transactionTypeFilter, search]);
+
+  // Pagination des transactions
+  const paginatedTransactions = useMemo(() => {
+    return filteredTransactions.slice(0, displayedTransactions);
+  }, [filteredTransactions, displayedTransactions]);
+
+  const hasMoreTransactions = displayedTransactions < filteredTransactions.length;
+
+  const loadMoreTransactions = () => {
+    setDisplayedTransactions(prev => Math.min(prev + ITEMS_PER_PAGE, filteredTransactions.length));
+  };
+
+  // Reset pagination when search or filter changes
+  useMemo(() => {
+    setDisplayedTransactions(ITEMS_PER_PAGE);
+  }, [search, transactionTypeFilter]);
 
   // Statistiques globales
   const stats: SavingsStats = useMemo(() => {
@@ -651,6 +688,17 @@ case 'members':
         </View>
       </View>
 
+      {/* Compteur de résultats */}
+      {!isLoading && searchedMembers.length > 0 && (
+        <View style={styles.resultsCounter}>
+          <Ionicons name="people" size={18} color={COLORS.primary} />
+          <Text style={styles.resultsCounterText}>
+            Affichage de <Text style={styles.resultsCounterBold}>{paginatedMembers.length}</Text> sur{' '}
+            <Text style={styles.resultsCounterBold}>{searchedMembers.length}</Text> membre{searchedMembers.length > 1 ? 's' : ''}
+          </Text>
+        </View>
+      )}
+
       {/* Liste des membres basée sur le répertoire complet du backend */}
       {searchedMembers.length === 0 ? (
         <View style={styles.centerContainer}>
@@ -670,7 +718,7 @@ case 'members':
           </Text>
           
           {/* Typage explicite (member: MemberSavings) pour éviter l'erreur TS */}
-          {searchedMembers.map((member: MemberSavings) => (
+          {paginatedMembers.map((member: MemberSavings) => (
             <View key={member.id} style={{ marginBottom: SPACING.md }}>
               <MemberSavingsCard
                 member={member}
@@ -679,6 +727,23 @@ case 'members':
               />
             </View>
           ))}
+          
+          {/* Bouton "Voir plus" */}
+          {hasMoreMembers && (
+            <TouchableOpacity style={styles.loadMoreButton} onPress={loadMoreMembers}>
+              <LinearGradient
+                colors={["#B5179E", "#F72585"]}
+                style={styles.loadMoreGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+              >
+                <Text style={styles.loadMoreText}>
+                  Voir plus ({searchedMembers.length - displayedItems} restant{searchedMembers.length - displayedItems > 1 ? 's' : ''})
+                </Text>
+                <Ionicons name="chevron-down" size={20} color="white" />
+              </LinearGradient>
+            </TouchableOpacity>
+          )}
           
           <View style={{ height: 100 }} /> 
         </ScrollView>
@@ -1657,6 +1722,45 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
   },
   addSavingModalButtonText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: "600",
+    color: "white",
+  },
+
+  // Pagination
+  resultsCounter: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    gap: SPACING.sm,
+    backgroundColor: COLORS.surface,
+    marginBottom: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  resultsCounterText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textSecondary,
+  },
+  resultsCounterBold: {
+    fontWeight: "bold",
+    color: COLORS.text,
+  },
+  loadMoreButton: {
+    marginTop: SPACING.md,
+    marginBottom: SPACING.xl,
+  },
+  loadMoreGradient: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
+    gap: SPACING.sm,
+  },
+  loadMoreText: {
     fontSize: FONT_SIZES.md,
     fontWeight: "600",
     color: "white",
