@@ -277,8 +277,16 @@ const AssistanceModal = ({ visible, onClose, initialData, onSubmit, loading }) =
   );
 };
 // 3. Remplacez AssistanceManagerModal par cette version (avec suppression !)
-const AssistanceManagerModal = (props: any) => {
-  const { visible, onClose, assistanceTypes, onAdd, onEdit, loading } = props;
+const AssistanceManagerModal = (props: any = {}) => { // Ajout du = {} ici
+  // On extrait avec des valeurs de secours pour TOUT
+  const { 
+    visible = false, 
+    onClose = () => {}, 
+    assistanceTypes = [], 
+    onAdd = () => {}, 
+    onEdit = () => {}, 
+    loading = false 
+  } = props || {};
   
   return (
     <Modal visible={visible} animationType="slide" transparent={false}>
@@ -364,6 +372,7 @@ const AssistanceManagerModal = (props: any) => {
     </Modal>
   );
 };
+
 
 export default function SettingsScreen() {
   const { logout, currentUserQuery } = useAuth();
@@ -877,22 +886,22 @@ const openTierModal = (index: number) => {
       )}
 
        {/* ✅ NOUVEAU Modal de création d'exercice */}
-       <ExerciseModal
+      <ExerciseModal
         visible={exerciseModalVisible}
         onClose={() => setExerciseModalVisible(false)}
         onSubmit={handleExerciseSubmit}
         loading={createExerciseMutation.isPending}
       />
        {/* MODAL 1: Liste des assistances (Le Manager) */}
-      <AssistanceManagerModal
-        visible={assistanceManagerVisible}
-        onClose={() => setAssistanceManagerVisible(false)}
-        assistanceTypes={typesQuery.data || []}
-        loading={typesQuery.isLoading}
-        onAdd={handleOpenAdd}
-        onEdit={handleOpenEdit}
-        //onDelete={handleDelete}
-      />
+    <AssistanceManagerModal
+    visible={assistanceManagerVisible}
+    onClose={() => setAssistanceManagerVisible(false)}
+    assistanceTypes={typesQuery.data || []} // Une seule fois, proprement
+    loading={typesQuery.isLoading}
+    onAdd={handleOpenAdd}
+    onEdit={handleOpenEdit}
+    // onDelete={handleDelete} // Garde-le en commentaire si tu n'as pas encore la fonction
+  />
 
       {/* MODAL 2: Le Formulaire (Créer/Modifier) - celui créé précédemment */}
       <AssistanceModal
