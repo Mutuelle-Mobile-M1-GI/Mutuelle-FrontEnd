@@ -1,16 +1,24 @@
 import React, { useEffect, useRef } from 'react';
-import { TouchableOpacity, StyleSheet, Animated, Easing, View } from 'react-native';
+import { TouchableOpacity, StyleSheet, Animated, Easing } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useQueryClient, useIsFetching } from '@tanstack/react-query';
+import { useAuth } from '../context/AuthContext'; // Importation de ton contexte d'authentification
 
 const GlobalRefreshButton = () => {
+  const { user } = useAuth(); // On récupère l'utilisateur connecté
   const queryClient = useQueryClient();
-  const isFetching = useIsFetching(); // 0 si rien ne charge, > 0 si une requête est en cours
+  const isFetching = useIsFetching(); 
   const spinValue = useRef(new Animated.Value(0)).current;
 
-  // Animation de rotation qui s'active quand isFetching > 0
+  // 1. Logique d'affichage : Si pas d'utilisateur (Login Screen), on ne rend rien
+  if (!user) {
+    return null;
+  }
+
+  // 2. Logique d'animation de rotation
   useEffect(() => {
     if (isFetching > 0) {
+      // Tourne en boucle tant que l'app récupère des données
       Animated.loop(
         Animated.timing(spinValue, {
           toValue: 1,
@@ -20,18 +28,19 @@ const GlobalRefreshButton = () => {
         })
       ).start();
     } else {
-      // On finit la rotation en douceur et on reset
+      // S'arrête proprement quand le chargement est fini
+      spinValue.stopAnimation();
       Animated.timing(spinValue, {
         toValue: 0,
         duration: 300,
         useNativeDriver: true,
-      }).stop();
-      spinValue.setValue(0);
+      }).start();
     }
   }, [isFetching]);
 
+  // 3. Action de rafraîchissement global
   const handleRefresh = () => {
-    // Invalide TOUTES les requêtes de l'app (Savings, Members, Stats, etc.)
+    // Force la mise à jour de tous les hooks useQuery actifs
     queryClient.invalidateQueries();
   };
 
@@ -45,7 +54,7 @@ const GlobalRefreshButton = () => {
       style={styles.container} 
       onPress={handleRefresh}
       activeOpacity={0.7}
-      disabled={isFetching > 0}
+      disabled={isFetching > 0} // Désactivé pendant le chargement pour éviter le spam
     >
       <Animated.View style={{ transform: [{ rotate: spin }] }}>
         <Ionicons name="refresh" size={26} color="white" />
@@ -57,12 +66,12 @@ const GlobalRefreshButton = () => {
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    bottom: 90, // Ajuste selon ta TabBar
+    bottom: 90,
     left: 20,
     width: 54,
     height: 54,
     borderRadius: 27,
-    backgroundColor: 'rgba(181, 23, 158, 0.5)', // Couleur #B5179E avec 50% d'opacité
+    backgroundColor: 'rgba(181, 23, 158, 0.6)', // Semi-transparent (60%)
     justifyContent: 'center',
     alignItems: 'center',
     elevation: 8,
@@ -70,7 +79,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 4.65,
-    zIndex: 9999, // Pour passer au-dessus de tout
+    zIndex: 9999, // Priorité d'affichage maximum
   },
 });
 
