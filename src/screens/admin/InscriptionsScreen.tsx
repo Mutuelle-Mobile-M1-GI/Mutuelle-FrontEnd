@@ -679,7 +679,7 @@ const AddMemberModal = ({ visible, onClose, onSubmit, loading }: AddMemberModalP
                   style={styles.textInput}
                   value={form.telephone}
                   onChangeText={(text) => setForm({ ...form, telephone: text })}
-                  placeholder="+237 6XX XXX XXX"
+                  placeholder="6XXXXXXXX"
                   keyboardType="phone-pad"
                   editable={!loading}
                 />
