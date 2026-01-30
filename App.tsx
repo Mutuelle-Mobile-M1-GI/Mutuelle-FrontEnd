@@ -1,4 +1,5 @@
 import React, { useEffect } from "react";
+import GlobalRefreshButton from "./src/components/GlobalRefreshButton";
 import { ThemeProvider } from "./src/context/ThemeContext";
 import { AuthProvider } from "./src/context/AuthContext";
 import { AppProvider } from "./src/context/AppContext";
@@ -8,6 +9,7 @@ import { NavigationContainer } from "@react-navigation/native";
 import AppNavigator from "./src/navigation/AppNavigator";
 import { StatusBar } from "expo-status-bar";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { View } from "react-native";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -38,10 +40,13 @@ export default function App() {
         <QueryClientProvider client={queryClient}>
           <AuthProvider>
             <PinProvider>
+            <View style={{ flex: 1 }}>
               <NavigationContainer>
                 <StatusBar style="dark" />
                 <AppNavigator />
               </NavigationContainer>
+              <GlobalRefreshButton />
+              </View>
             </PinProvider>
           </AuthProvider>
         </QueryClientProvider>
