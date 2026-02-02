@@ -2,19 +2,16 @@ import React, { useEffect, useRef } from 'react';
 import { TouchableOpacity, StyleSheet, Animated, Easing } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useQueryClient, useIsFetching } from '@tanstack/react-query';
-import { useAuth } from '../context/AuthContext'; // Importation de ton contexte d'authentification
+import { useAuthContext } from '../context/AuthContext'; // Importation de ton contexte d'authentification
 
 const GlobalRefreshButton = () => {
-  const { user } = useAuth(); // On récupère l'utilisateur connecté
+  const { user } = useAuthContext(); // On récupère l'utilisateur connecté
   const queryClient = useQueryClient();
   const isFetching = useIsFetching(); 
   const spinValue = useRef(new Animated.Value(0)).current;
 
   // 1. Logique d'affichage : Si pas d'utilisateur (Login Screen), on ne rend rien
-  if (!user) {
-    return null;
-  }
-
+ 
   // 2. Logique d'animation de rotation
   useEffect(() => {
     if (isFetching > 0) {
@@ -37,6 +34,11 @@ const GlobalRefreshButton = () => {
       }).start();
     }
   }, [isFetching]);
+
+  if (!user) {
+    return null;
+  }
+
 
   // 3. Action de rafraîchissement global
   const handleRefresh = () => {
@@ -66,8 +68,8 @@ const GlobalRefreshButton = () => {
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    bottom: 90,
-    left: 20,
+    bottom: 90, 
+    left: 20, // Positionné à gauche comme demandé
     width: 54,
     height: 54,
     borderRadius: 27,
