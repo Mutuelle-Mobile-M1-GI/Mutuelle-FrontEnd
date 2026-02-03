@@ -233,30 +233,45 @@ const QuickActionCard = ({ title, subtitle, icon, color, onPress }: any) => (
 );
 
 // 📊 Composant résumé financier
-const FinancialSummary = ({ member, config }: any) => {
-  const patrimoine = member.donnees_financieres?.resume_financier.patrimoine_total;
-  const obligations = member.donnees_financieres?.resume_financier.obligations_totales;
-  const situationNette = member.donnees_financieres?.resume_financier.situation_nette;
+const FinancialSummary = ({ member }: any) => {
+  const resume = member?.donnees_financieres?.resume_financier || {};
+  
+  const patrimoine = resume.patrimoine_total || 0;
+  const obligationsReelles = resume.obligations_totales || 0;
+  const situationNette = resume.situation_nette || 0;
+
+  // 1. On force l'affichage à 0 si c'est négatif
+  const obligationsAffichees = Math.max(0, obligationsReelles);
+  
+  // 2. On calcule l'excédent (si les obligations sont < 0)
+  const excedent = obligationsReelles < 0 ? Math.abs(obligationsReelles) : 0;
 
   return (
     <View style={styles.summaryContainer}>
-      <LinearGradient
-        colors={BLUE_THEME.gradient}
-        style={styles.summaryGradient}
-      >
+      <LinearGradient colors={BLUE_THEME.gradient} style={styles.summaryGradient}>
         <Text style={styles.summaryTitle}>Résumé Financier</Text>
         
         <View style={styles.summaryGrid}>
+          {/* Patrimoine */}
           <View style={styles.summaryItem}>
             <Text style={styles.summaryLabel}>Patrimoine</Text>
-            <Text style={styles.summaryValue}>{formatMoney(patrimoine, false)}</Text>
+            <Text style={styles.summaryValue}>{formatMoney(Math.abs(patrimoine), false)}</Text>
           </View>
           
+          {/* Obligations avec message d'excédent */}
           <View style={styles.summaryItem}>
             <Text style={styles.summaryLabel}>Obligations</Text>
-            <Text style={styles.summaryValue}>{formatMoney(obligations, false)}</Text>
+            <Text style={styles.summaryValue}>{formatMoney(obligationsAffichees, false)}</Text>
+            
+            {/* Message conditionnel si excédent */}
+            {excedent > 0 && (
+              <Text style={styles.excedentText}>
+                (Excédent de {formatMoney(excedent, true)})
+              </Text>
+            )}
           </View>
           
+          {/* Situation Nette */}
           <View style={[styles.summaryItem, styles.summaryItemFull]}>
             <Text style={styles.summaryLabel}>Situation Nette</Text>
             <Text style={[
@@ -264,7 +279,7 @@ const FinancialSummary = ({ member, config }: any) => {
               styles.summaryValueLarge,
               { color: situationNette >= 0 ? '#10B981' : '#EF4444' }
             ]}>
-              {formatMoney(situationNette, false)} FCFA
+              {formatMoney(Math.abs(situationNette), false)} FCFA
             </Text>
           </View>
         </View>
@@ -969,5 +984,12 @@ const styles = StyleSheet.create({
   // Bottom spacing
   bottomSpacing: {
     height: 100, // Pour la tab bar
+  },
+  excedentText: {
+    fontSize: 10,
+    color: '#A7F3D0', // Un vert très clair pour contraster avec le bleu
+    fontStyle: 'italic',
+    marginTop: 2,
+    textAlign: 'center',
   },
 });
