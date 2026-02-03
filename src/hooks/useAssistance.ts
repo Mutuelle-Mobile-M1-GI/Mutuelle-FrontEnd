@@ -14,15 +14,16 @@ export function useAssistances(params?: Record<string, any>) {
   });
 }
 
-export function useAssistancesByMember(memberId: string) {
+export function useAssistancesByMember(memberId?: string) { // Ajoute le ?
   return useQuery<any>({
     queryKey: ["assistances-by-member", memberId],
     queryFn: async () => {
       const token = await getStoredAccessToken();
       if (!token) throw new Error("Token manquant");
-      return fetchAssistancesByMember(memberId, token);
+      // On est sûr que memberId existe ici grâce à 'enabled'
+      return fetchAssistancesByMember(memberId!, token); 
     },
-    enabled: !!memberId,
+    enabled: !!memberId && memberId.length > 0, // Sécurité renforcée
   });
 }
 

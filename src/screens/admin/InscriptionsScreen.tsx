@@ -186,13 +186,13 @@ interface MemberDetailModalProps {
 const MemberDetailModal = ({ visible, member, onClose, financialData, loading }: MemberDetailModalProps) => {
   if (!member) return null;
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('fr-FR', {
-      style: 'currency',
-      currency: 'XAF',
-      minimumFractionDigits: 0,
-    }).format(amount);
-  };
+ const formatCurrency = (amount: number) => {
+  return new Intl.NumberFormat('fr-FR', {
+    style: 'currency',
+    currency: 'XAF',
+    minimumFractionDigits: 0,
+  }).format(amount);
+};
 
   return (
     <Modal visible={visible} transparent animationType="fade" statusBarTranslucent>
@@ -287,7 +287,7 @@ const MemberDetailModal = ({ visible, member, onClose, financialData, loading }:
                       <Ionicons name="trending-down" size={20} color={COLORS.error} />
                       <Text style={styles.summaryLabel}>Obligations</Text>
                       <Text style={[styles.summaryValue, { color: COLORS.error }]}>
-                        {formatCurrency(financialData.resume_financier.obligations_totales)}
+                        {formatCurrency(Math.max(0,financialData.resume_financier.obligations_totales || 0))}
                       </Text>
                     </View>
                     <View style={[styles.summaryCard, { 

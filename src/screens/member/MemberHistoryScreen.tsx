@@ -211,9 +211,11 @@ const FinancialSummaryCard = ({ member }: { member: any }) => {
 
   const financialData = member.donnees_financieres?.resume_financier;
   const patrimoine = financialData?.patrimoine_total || 0;
-  const obligations = financialData?.obligations_totales || 0;
+  const obligationsReelles = financialData?.obligations_totales || 0;
   const situationNette = financialData?.situation_nette || 0;
-
+  // on force l'affichage à si c'es negatif 
+  const obligationsAffichees = Math.max(0, obligationsReelles)
+  const excedent = obligationsReelles <0 ? Math.abs(obligationsReelles) : 0;
   return (
     <Animated.View style={[styles.summaryCard, animatedStyle]}>
       <LinearGradient
@@ -241,8 +243,14 @@ const FinancialSummaryCard = ({ member }: { member: any }) => {
             <View style={styles.summaryMetric}>
               <Text style={styles.summaryLabel}>Obligations</Text>
               <Text style={[styles.summaryValue, { color: PREMIUM_THEME.colors.warning[600] }]}>
-                {formatMoney(obligations, true)}
+                {formatMoney(obligationsAffichees, false)}
               </Text>
+              {/* Message conditionnel si excédent */}
+                {excedent > 0 && (
+                 <Text style={styles.excedentText}>
+                       (Excédent de {formatMoney(excedent, true)})
+                 </Text>
+                          )}
             </View>
           </View>
 
@@ -882,6 +890,7 @@ export default function MemberHistoryScreen() {
   const { data: savingsRaw, isLoading: loadingSavings } = useSavings({ membre: member?.id });
   const { data: assistancesRaw, isLoading: loadingAssistances } = useAssistancesByMember(member?.id || "");
   const { data: inscriptionPaymentsRaw, isLoading: loadingInscriptionPayments } = useInscriptionPayments();
+  
 
   // États locaux
   const [selectedItem, setSelectedItem] = useState<TimelineItem | null>(null);
@@ -989,6 +998,7 @@ export default function MemberHistoryScreen() {
         data: payment,
       });
     });
+    
 
     // Tri par date décroissante
     return items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -1695,5 +1705,12 @@ const styles = StyleSheet.create({
   // Bottom spacing
   bottomSpacing: {
     height: 100,
+  },
+   excedentText: {
+    fontSize: 10,
+    color: '#A7F3D0', // Un vert très clair pour contraster avec le bleu
+    fontStyle: 'italic',
+    marginTop: 2,
+    textAlign: 'center',
   },
 });
