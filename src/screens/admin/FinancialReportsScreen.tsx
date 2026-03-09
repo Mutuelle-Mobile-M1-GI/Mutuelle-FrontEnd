@@ -1,1334 +1,981 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  FlatList,
+  Animated,
+  Dimensions,
+  StatusBar,
   Modal,
   TextInput,
-  ActivityIndicator,
-  Dimensions,
-  FlatList,
-  RefreshControl,
-  ListRenderItem,
-  Alert,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import { LinearGradient } from "expo-linear-gradient";
-import { BlurView } from "expo-blur";
-import * as Print from 'expo-print';
-import * as Sharing from 'expo-sharing';
 import { COLORS, SPACING, BORDER_RADIUS, FONT_SIZES } from "../../constants/config";
-import { useAdminDashboard } from "../../hooks/useDashboard";
-import { useLoans } from "../../hooks/useLoan";
+import { Ionicons } from "@expo/vector-icons";
+import { useLoans, useRepayments } from "../../hooks/useLoan";
+import { useSolidarityPayments } from "../../hooks/useSolidarity";
 import { useRenflouements } from "../../hooks/useRenflouement";
-import { useSolidarityPayments, useSocialFundCurrent } from "../../hooks/useSolidarity";
+import { useSavings } from "../../hooks/useSaving";
 import { useAssistances } from "../../hooks/useAssistance";
-import { useMembers } from "../../hooks/useMember";
-import { useCurrentSession } from "../../hooks/useSession";
-import { Loan } from "../../types/loan.types";
-import { Renflouement } from "../../types/renflouement.types";
-import { Assistance } from "../../types/assistance.types";
-import { Member } from "../../types/member.types";
-import { useNavigation } from "@react-navigation/native";
-import { useSavingsStats } from "../../hooks/useSaving"; 
+import { useInscriptionPayments } from "../../hooks/useInscription";
+import { LinearGradient } from "expo-linear-gradient";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useExercises } from "../../hooks/useExercise";
+import { useSessions } from "../../hooks/useSession";
+import { useMembers } from "../../hooks/useMember"; // adapte si le nom diffère
+import { Exercise } from "../../types/exercise.types";
+import { Session } from "../../types/session.types";
 
-const { width } = Dimensions.get("window");
+const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 
-// 🎯 Interface pour les stats calculées
-interface CalculatedStats {
-  empruntsEnCours: number;
-  empruntsTotal: number;
-  tresorTotal: number;
-  fondsSocialTotal: number;
-  membresTotal: number;
-  membresEnRegle: number;
-  membresNonEnRegle: number;
-  membresComplets: number;
-  inscriptionsTotal: number;
-  renflouementDu: number;
-  renflouementPaye: number;
-  tauxRecouvrement: number;
-  situationNette: number;
-  assistancesPayees: number;
-  assistancesTotales: number;
-  montantAssistances: number;
-}
+const EXERCISES_PER_PAGE = 6;
+const OPS_PER_PAGE       = 10;
 
-// 🎯 Composant MetricCard moderne
-interface MetricCardProps {
-  title: string;
-  value: string;
-  subtitle?: string;
-  icon: string;
-  gradient: [string, string];
-  trend?: "up" | "down" | "stable";
-  percentage?: number;
-  onPress?: () => void;
-}
+// ─── Types ────────────────────────────────────────────────────────────────────
 
-const MetricCard = ({ 
-  title, 
-  value, 
-  subtitle, 
-  icon, 
-  gradient, 
-  trend, 
-  percentage, 
-  onPress 
-}: MetricCardProps) => (
-  <TouchableOpacity 
-    style={styles.metricCard} 
-    onPress={onPress}
-    activeOpacity={0.8}
-  >
-    <LinearGradient
-      colors={gradient}
-      style={styles.metricCardGradient}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-    >
-      <View style={styles.metricHeader}>
-        <View style={styles.metricIcon}>
-          <Ionicons name={icon as any} size={24} color="white" />
-        </View>
-        {trend && (
-          <View style={styles.trendContainer}>
-            <Ionicons 
-              name={trend === "up" ? "trending-up" : trend === "down" ? "trending-down" : "remove"} 
-              size={16} 
-              color="white" 
-            />
-          </View>
-        )}
-      </View>
-      
-      <Text style={styles.metricTitle}>{title}</Text>
-      <Text style={styles.metricValue}>{value}</Text>
-      {subtitle && <Text style={styles.metricSubtitle}>{subtitle}</Text>}
-      
-      {typeof percentage === "number" && (
-        <View style={styles.progressContainer}>
-          <View style={styles.progressTrack}>
-            <View style={[styles.progressBar, { width: `${percentage}%` }]} />
-          </View>
-          <Text style={styles.progressText}>{percentage.toFixed(1)}%</Text>
-        </View>
-      )}
-    </LinearGradient>
-  </TouchableOpacity>
-);
+type TimelineItem = {
+  id: string;
+  type:
+    | "emprunt" | "remboursement" | "solidarite" | "renflouement"
+    | "epargne"  | "assistance"   | "paiement-inscription";
+  date: string;
+  amount: number;
+  data: any;
+  status?: string;
+  memberName?: string;
+  memberNumero?: string;
+};
 
-// 🎯 Composant SectionHeader
-interface SectionHeaderProps {
-  title: string;
-  subtitle?: string;
-  icon: string;
-  color: string;
-  action?: {
-    label: string;
-    onPress: () => void;
-  };
-}
+// ─── Design system ────────────────────────────────────────────────────────────
 
-const SectionHeader = ({ title, subtitle, icon, color, action }: SectionHeaderProps) => (
-  <View style={styles.sectionHeader}>
-    <View style={styles.sectionTitleContainer}>
-      <View style={[styles.sectionIcon, { backgroundColor: `${color}20` }]}>
-        <Ionicons name={icon as any} size={20} color={color} />
-      </View>
-      <View style={styles.sectionTextContainer}>
-        <Text style={styles.sectionTitle}>{title}</Text>
-        {subtitle && <Text style={styles.sectionSubtitle}>{subtitle}</Text>}
-      </View>
-    </View>
-    {action && (
-      <TouchableOpacity style={styles.sectionAction} onPress={action.onPress}>
-        <Text style={[styles.sectionActionText, { color }]}>{action.label}</Text>
-        <Ionicons name="chevron-forward" size={16} color={color} />
-      </TouchableOpacity>
+const THEME = {
+  colors: {
+    primary: { 50: "#EFF6FF", 100: "#DBEAFE", 500: COLORS.primary, 600: "#2563EB", 700: "#1D4ED8" },
+    success: { 50: "#ECFDF5", 500: "#10B981", 600: "#059669" },
+    warning: { 50: "#FFFBEB", 500: "#F59E0B", 600: "#D97706" },
+    error:   { 50: "#FEF2F2", 500: "#EF4444", 600: "#DC2626" },
+    neutral: { 50: "#FAFAFA", 100: "#F5F5F5", 200: "#E5E5E5", 300: "#D4D4D4",
+               400: "#A3A3A3", 500: "#737373", 600: "#525252", 700: "#404040",
+               800: "#262626", 900: "#171717" },
+    admin:   { 50: "#F0FDF4", 500: "#22C55E", 600: "#16A34A" },
+  },
+  gradients: {
+    primary: [COLORS.primary, "#2563EB"] as [string, string],
+    admin:   ["#16A34A", "#15803D"]      as [string, string],
+    success: ["#10B981", "#059669"]      as [string, string],
+    warning: ["#F59E0B", "#D97706"]      as [string, string],
+    error:   ["#EF4444", "#DC2626"]      as [string, string],
+    purple:  ["#8B5CF6", "#7C3AED"]      as [string, string],
+    pink:    ["#EC4899", "#DB2777"]      as [string, string],
+    cyan:    ["#06B6D4", "#0891B2"]      as [string, string],
+    glass:   ["rgba(255,255,255,0.95)", "rgba(255,255,255,0.80)"] as [string, string],
+  },
+};
+
+const OPERATION_CONFIG = {
+  emprunt:              { label: "Emprunt",            icon: "trending-up",       color: THEME.colors.primary[500], gradient: THEME.gradients.primary, bgColor: THEME.colors.primary[50] },
+  remboursement:        { label: "Remboursement",       icon: "arrow-down-circle", color: THEME.colors.success[500], gradient: THEME.gradients.success, bgColor: THEME.colors.success[50] },
+  solidarite:           { label: "Solidarité",          icon: "people",            color: THEME.colors.warning[500], gradient: THEME.gradients.warning, bgColor: THEME.colors.warning[50] },
+  renflouement:         { label: "Renflouement",        icon: "refresh-circle",    color: THEME.colors.error[500],   gradient: THEME.gradients.error,   bgColor: THEME.colors.error[50]   },
+  epargne:              { label: "Épargne",             icon: "wallet",            color: "#8B5CF6",                 gradient: THEME.gradients.purple,  bgColor: "#F3E8FF"                },
+  assistance:           { label: "Assistance",          icon: "heart",             color: "#EC4899",                 gradient: THEME.gradients.pink,    bgColor: "#FCE7F3"                },
+  "paiement-inscription": { label: "Inscription",      icon: "school",            color: "#06B6D4",                 gradient: THEME.gradients.cyan,    bgColor: "#ECFDFE"                },
+} as const;
+
+// ─── Utilitaires ─────────────────────────────────────────────────────────────
+
+// Formatage avec espaces comme séparateurs de milliers (norme française)
+const formatMoney = (val: number | string | undefined): string => {
+  if (typeof val === "string") val = parseFloat(val);
+  if (typeof val !== "number" || isNaN(val)) return "--";
+  return val.toLocaleString("fr-FR") + " FCFA";
+};
+
+const formatDateSmart = (dateStr: string): string => {
+  if (!dateStr) return "--";
+  try {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffDays = Math.floor((now.getTime() - date.getTime()) / 86_400_000);
+    if (diffDays === 0) return "Aujourd'hui";
+    if (diffDays === 1) return "Hier";
+    if (diffDays < 7)  return `Il y a ${diffDays} jour${diffDays > 1 ? "s" : ""}`;
+    if (diffDays < 30) return `Il y a ${Math.floor(diffDays / 7)} semaine${Math.floor(diffDays / 7) > 1 ? "s" : ""}`;
+    return date.toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" });
+  } catch { return dateStr.slice(0, 10); }
+};
+
+const arr = (raw: any): any[] =>
+  Array.isArray(raw) ? raw : raw?.results ?? raw?.assistances ?? [];
+
+// Extrait le nom du membre depuis différentes structures API possibles
+// ⚠️ Ajuste les champs selon le vrai retour de ton API (console.log à faire)
+const extractMemberName = (obj: any): string | undefined =>
+  obj?.membre_nom_complet         ||
+  obj?.membre_nom                 ||
+  obj?.membre?.nom_complet        ||
+  obj?.membre?.utilisateur?.nom_complet ||
+  undefined;
+
+const extractMemberNumero = (obj: any): string | undefined =>
+  obj?.membre_numero              ||
+  obj?.membre?.numero_membre      ||
+  undefined;
+
+// ─── Breadcrumb ───────────────────────────────────────────────────────────────
+
+const Breadcrumb = ({ exercice, session, onReset, onBackToExercice }: {
+  exercice: Exercise | null; session: Session | null;
+  onReset: () => void; onBackToExercice: () => void;
+}) => (
+  <View style={s.breadcrumb}>
+    <TouchableOpacity onPress={onReset}>
+      <Text style={[s.crumbItem, s.crumbLink]}>Exercices</Text>
+    </TouchableOpacity>
+    {exercice && (
+      <>
+        <Ionicons name="chevron-forward" size={13} color="rgba(255,255,255,0.5)" />
+        <TouchableOpacity onPress={onBackToExercice}>
+          <Text style={[s.crumbItem, session ? s.crumbLink : s.crumbActive]}>{exercice.nom}</Text>
+        </TouchableOpacity>
+      </>
+    )}
+    {session && (
+      <>
+        <Ionicons name="chevron-forward" size={13} color="rgba(255,255,255,0.5)" />
+        <Text style={[s.crumbItem, s.crumbActive]} numberOfLines={1}>{session.nom}</Text>
+      </>
     )}
   </View>
 );
 
+// ─── Dashboard exercice ───────────────────────────────────────────────────────
 
+const ExerciseDashboard = ({ exercice }: { exercice: Exercise }) => {
+  const { data: loansRaw }   = useLoans({ exercice: exercice.id });
+  const { data: savingsRaw } = useSavings({ exercice: exercice.id });
+  const { data: membersRaw } = useMembers({ exercice: exercice.id });
 
-// 🎯 Modal détaillé
-interface DetailModalProps<T> {
-  visible: boolean;
-  title: string;
-  data: T[];
-  renderItem: ListRenderItem<T>;
-  onClose: () => void;
-  loading?: boolean;
-  searchable?: boolean;
-  emptyMessage?: string;
-}
+  const totalEmprunts = useMemo(
+    () => arr(loansRaw).reduce((sum: number, l: any) => sum + (parseFloat(l.montant_emprunte) || 0), 0),
+    [loansRaw]
+  );
 
-function DetailModal<T extends { id: string }>({ 
-  visible, 
-  title, 
-  data, 
-  renderItem, 
-  onClose, 
-  loading = false,
-  searchable = true,
-  emptyMessage = "Aucune donnée disponible"
-}: DetailModalProps<T>) {
-  const [search, setSearch] = useState("");
-  
-  const filteredData = useMemo(() => {
-    if (!search) return data;
-    return data.filter(item => 
-      JSON.stringify(item).toLowerCase().includes(search.toLowerCase())
-    );
-  }, [data, search]);
+  const totalEpargne = useMemo(
+    () => arr(savingsRaw).reduce((sum: number, e: any) => sum + (parseFloat(e.montant) || 0), 0),
+    [savingsRaw]
+  );
 
-  console.log('🔍 Modal Debug:', { title, dataCount: data.length, filteredCount: filteredData.length, loading });
+  const nombreMembres = arr(membersRaw).length;
+
+  // Fonds social : déjà dans l'objet exercice retourné par l'API
+  const fondsSocial = (exercice as any)?.fonds_social_info?.montant_total ?? 0;
+
+  const metrics = [
+    { label: "Fonds social",      value: formatMoney(fondsSocial),  icon: "shield-checkmark", color: THEME.colors.admin[500]   },
+    { label: "Total emprunts",    value: formatMoney(totalEmprunts), icon: "trending-up",      color: THEME.colors.primary[500] },
+    { label: "Total épargnes",    value: formatMoney(totalEpargne),  icon: "wallet",           color: "#8B5CF6"                 },
+    { label: "Membres actifs",    value: String(nombreMembres),      icon: "people",           color: THEME.colors.warning[500] },
+  ];
 
   return (
-    <Modal visible={visible} transparent animationType="slide" statusBarTranslucent>
-      <BlurView intensity={20} style={StyleSheet.absoluteFillObject} />
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContainer}>
-          
-          {/* Header */}
+    <View style={s.dashboard}>
+      <View style={s.dashGrid}>
+        {metrics.map((m, i) => (
+          <View key={i} style={s.dashCard}>
+            <LinearGradient colors={THEME.gradients.glass} style={s.dashCardInner}>
+              <View style={[s.dashIconWrap, { backgroundColor: m.color + "20" }]}>
+                <Ionicons name={m.icon as any} size={16} color={m.color} />
+              </View>
+              <Text style={s.dashLabel} numberOfLines={1}>{m.label}</Text>
+              <Text style={[s.dashValue, { color: m.color }]} numberOfLines={1} adjustsFontSizeToFit>
+                {m.value}
+              </Text>
+            </LinearGradient>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+};
+
+// ─── Card exercice ────────────────────────────────────────────────────────────
+
+const ExerciceCard = ({ exercice, onPress }: { exercice: Exercise; onPress: () => void }) => {
+  const scale    = useRef(new Animated.Value(1)).current;
+  const isActive = exercice.statut === "EN_COURS";
+
+  return (
+    <Animated.View style={{ transform: [{ scale }] }}>
+      <TouchableOpacity
+        style={s.exerciceCard}
+        onPress={onPress}
+        onPressIn ={() => Animated.spring(scale, { toValue: 0.97, useNativeDriver: true }).start()}
+        onPressOut={() => Animated.spring(scale, { toValue: 1,    useNativeDriver: true }).start()}
+        activeOpacity={1}
+      >
+        <LinearGradient colors={THEME.gradients.glass} style={s.exerciceCardInner}>
+          <View style={[s.statusDot, { backgroundColor: isActive ? THEME.colors.success[500] : THEME.colors.neutral[400] }]} />
           <LinearGradient
-            colors={[COLORS.primary, "#3A86FF"]}
-            style={styles.modalHeader}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
+            colors={isActive ? THEME.gradients.admin : [THEME.colors.neutral[400], THEME.colors.neutral[600]]}
+            style={s.exerciceIconBg}
           >
-            <View style={styles.modalHeaderContent}>
-              <Text style={styles.modalTitle}>{title}</Text>
-              <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-                <Ionicons name="close" size={24} color="white" />
-              </TouchableOpacity>
+            <Ionicons name="calendar" size={26} color="white" />
+          </LinearGradient>
+          <View style={s.exerciceTextBlock}>
+            <Text style={s.exerciceYear}>{exercice.nom}</Text>
+            <View style={[s.badge, { backgroundColor: isActive ? THEME.colors.admin[50] : THEME.colors.neutral[100] }]}>
+              <Text style={[s.badgeText, { color: isActive ? THEME.colors.admin[600] : THEME.colors.neutral[600] }]}>
+                {isActive ? "● En cours" : "Clôturé"}
+              </Text>
             </View>
+            {exercice.date_debut && (
+              <Text style={s.smallDate}>
+                {new Date(exercice.date_debut).toLocaleDateString("fr-FR")}
+                {exercice.date_fin
+                  ? ` → ${new Date(exercice.date_fin).toLocaleDateString("fr-FR")}`
+                  : " → En cours"}
+              </Text>
+            )}
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={THEME.colors.neutral[400]} />
+        </LinearGradient>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+};
+
+// ─── Card session ─────────────────────────────────────────────────────────────
+
+const SessionCard = ({ session, onPress }: { session: Session; onPress: () => void }) => {
+  const scale  = useRef(new Animated.Value(1)).current;
+  const isOpen = session.statut === "EN_COURS";
+
+  return (
+    <Animated.View style={{ transform: [{ scale }] }}>
+      <TouchableOpacity
+        style={s.sessionCard}
+        onPress={onPress}
+        onPressIn={() => Animated.spring(scale, { toValue: 0.97, useNativeDriver: true }).start()}
+        onPressOut={() => Animated.spring(scale, { toValue: 1,    useNativeDriver: true }).start()}
+        activeOpacity={1}
+      >
+        <LinearGradient colors={THEME.gradients.glass} style={s.sessionCardInner}>
+          <LinearGradient
+            colors={isOpen ? THEME.gradients.primary : [THEME.colors.neutral[400], THEME.colors.neutral[600]]}
+            style={s.sessionIconBg}
+          >
+            <Ionicons name="folder-open" size={22} color="white" />
+          </LinearGradient>
+          <View style={s.sessionTextBlock}>
+            <Text style={s.sessionName}>{session.nom}</Text>
+            <View style={[s.badge, { backgroundColor: isOpen ? THEME.colors.primary[50] : THEME.colors.neutral[100] }]}>
+              <Text style={[s.badgeText, { color: isOpen ? THEME.colors.primary[600] : THEME.colors.neutral[600] }]}>
+                {isOpen ? "● Ouverte" : "Fermée"}
+              </Text>
+            </View>
+            {session.date_session && (
+              <Text style={s.smallDate}>
+                {new Date(session.date_session).toLocaleDateString("fr-FR")}
+              </Text>
+            )}
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={THEME.colors.neutral[400]} />
+        </LinearGradient>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+};
+
+// ─── Filtres / Recherche ──────────────────────────────────────────────────────
+
+const SearchAndFilters = ({ searchText, onSearchChange, selectedFilter, onFilterChange, totalItems, filteredItems }: any) => {
+  const [showFilters, setShowFilters] = useState(false);
+  const filters = [
+    { key: "all",                   label: "Tout",           icon: "list"             },
+    { key: "emprunt",               label: "Emprunts",       icon: "trending-up"      },
+    { key: "remboursement",         label: "Remboursements", icon: "arrow-down-circle" },
+    { key: "solidarite",            label: "Solidarité",     icon: "people"           },
+    { key: "renflouement",          label: "Renflouements",  icon: "refresh-circle"   },
+    { key: "epargne",               label: "Épargne",        icon: "wallet"           },
+    { key: "assistance",            label: "Assistances",    icon: "heart"            },
+    { key: "paiement-inscription",  label: "Inscription",    icon: "school"           },
+  ];
+
+  return (
+    <View style={s.searchContainer}>
+      <LinearGradient colors={THEME.gradients.glass} style={s.searchBar}>
+        <Ionicons name="search" size={18} color={THEME.colors.neutral[400]} />
+        <TextInput
+          style={s.searchInput}
+          placeholder="Rechercher par membre, montant, type…"
+          value={searchText}
+          onChangeText={onSearchChange}
+          placeholderTextColor={THEME.colors.neutral[400]}
+        />
+        <TouchableOpacity style={s.filterToggle} onPress={() => setShowFilters(!showFilters)}>
+          <Ionicons name="filter" size={18} color={showFilters ? THEME.colors.primary[500] : THEME.colors.neutral[400]} />
+        </TouchableOpacity>
+      </LinearGradient>
+
+      <Text style={s.resultsCounter}>
+        {filteredItems} opération{filteredItems !== 1 ? "s" : ""} trouvée{filteredItems !== 1 ? "s" : ""}
+        {(searchText || selectedFilter !== "all") ? ` sur ${totalItems}` : ""}
+      </Text>
+
+      {showFilters && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: SPACING.sm }}>
+          <View style={{ flexDirection: "row", paddingHorizontal: SPACING.xs }}>
+            {filters.map((f) => (
+              <TouchableOpacity
+                key={f.key}
+                style={[s.filterChip, selectedFilter === f.key && s.filterChipActive]}
+                onPress={() => onFilterChange(f.key)}
+              >
+                <Ionicons name={f.icon as any} size={13} color={selectedFilter === f.key ? "white" : THEME.colors.neutral[600]} />
+                <Text style={[s.filterChipText, selectedFilter === f.key && { color: "white" }]}>{f.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </ScrollView>
+      )}
+    </View>
+  );
+};
+
+// ─── Card opération ───────────────────────────────────────────────────────────
+
+const OperationCard = ({ item, onPress }: { item: TimelineItem; onPress: () => void }) => {
+  const scale  = useRef(new Animated.Value(1)).current;
+  const config = OPERATION_CONFIG[item.type];
+
+  return (
+    <Animated.View style={{ transform: [{ scale }] }}>
+      <TouchableOpacity
+        style={s.opCard}
+        onPress={onPress}
+        onPressIn={() => Animated.spring(scale, { toValue: 0.98, useNativeDriver: true }).start()}
+        onPressOut={() => Animated.spring(scale, { toValue: 1,    useNativeDriver: true }).start()}
+        activeOpacity={1}
+      >
+        <LinearGradient colors={THEME.gradients.glass} style={s.opCardInner}>
+          <LinearGradient colors={config.gradient} style={s.opIcon}>
+            <Ionicons name={config.icon as any} size={20} color="white" />
           </LinearGradient>
 
-          {/* Search */}
-          {searchable && (
-            <View style={styles.searchContainer}>
-              <View style={styles.searchInputContainer}>
-                <Ionicons name="search" size={20} color={COLORS.textSecondary} />
-                <TextInput
-                  style={styles.searchInput}
-                  value={search}
-                  onChangeText={setSearch}
-                  placeholder="Rechercher..."
-                  placeholderTextColor={COLORS.textLight}
-                />
-                {search.length > 0 && (
-                  <TouchableOpacity onPress={() => setSearch("")}>
-                    <Ionicons name="close-circle" size={20} color={COLORS.textSecondary} />
-                  </TouchableOpacity>
-                )}
-              </View>
+          <View style={s.opContent}>
+            {/* Type + date */}
+            <View style={s.opRow}>
+              <Text style={s.opType}>{config.label}</Text>
+              <Text style={s.opDate}>{formatDateSmart(item.date)}</Text>
             </View>
-          )}
 
-          {/* Debug info */}
-          {/* <View style={{ padding: 10, backgroundColor: '#f0f0f0' }}>
-            <Text style={{ fontSize: 12, color: '#666' }}>
-              Debug: {data.length} éléments • Filtré: {filteredData.length} • Loading: {loading ? 'Oui' : 'Non'}
-            </Text>
-          </View> */}
+            {/* Montant */}
+            <Text style={[s.opAmount, { color: config.color }]}>{formatMoney(item.amount)}</Text>
 
-          {/* Content */}
-          <View style={styles.modalBody}>
-            {loading ? (
-              <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color={COLORS.primary} />
-                <Text style={styles.loadingText}>Chargement...</Text>
-              </View>
-            ) : filteredData.length > 0 ? (
-              <FlatList
-                  data={filteredData}
-                  keyExtractor={(item) => item.id}
-                  renderItem={renderItem}
-                  showsVerticalScrollIndicator={true}  // 🔧 IMPORTANT: Montre la scrollbar
-                  scrollEnabled={true}                 // 🔧 IMPORTANT: Active le scroll
-                  nestedScrollEnabled={true}           // 🔧 IMPORTANT: Pour modal
-                  bounces={true}                       // 🔧 Effet de rebond iOS
-                  style={{
-                    flex: 1,                          // 🔧 IMPORTANT: Prend tout l'espace
-                  }}
-                  contentContainerStyle={{
-                    paddingVertical: SPACING.md,       // 🔧 Padding pour le contenu
-                    flexGrow: 1,                      // 🔧 IMPORTANT: Permet de grandir
-                  }}
-                  ItemSeparatorComponent={() => <View style={styles.separator} />}
-                  removeClippedSubviews={false}       // 🔧 Assure que tout reste visible
-                  keyboardShouldPersistTaps="handled" // 🔧 Pour la recherche
-                />
-
-            ) : (
-              <View style={styles.emptyContainer}>
-                <Ionicons name="document-outline" size={64} color={COLORS.textLight} />
-                <Text style={styles.emptyTitle}>Aucune donnée</Text>
-                <Text style={styles.emptyText}>{emptyMessage}</Text>
-                <Text style={styles.emptyText}>
-                  Total disponible: {data.length} • Recherche: "{search}"
+            {/* Membre */}
+            {item.memberName && (
+              <View style={s.opMemberRow}>
+                <Ionicons name="person-circle-outline" size={13} color={THEME.colors.neutral[400]} />
+                <Text style={s.opMember}>
+                  {item.memberName}{item.memberNumero ? `  ·  ${item.memberNumero}` : ""}
                 </Text>
+              </View>
+            )}
+
+            {/* Statut */}
+            {item.status && (
+              <View style={[s.opBadge, { backgroundColor: config.bgColor }]}>
+                <Text style={[s.opBadgeText, { color: config.color }]}>{item.status}</Text>
               </View>
             )}
           </View>
 
-          
+          <Ionicons name="chevron-forward" size={16} color={THEME.colors.neutral[400]} />
+        </LinearGradient>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+};
+
+// ─── Détail opération ─────────────────────────────────────────────────────────
+
+const DetailRow = ({ label, value }: { label: string; value: string }) => (
+  <View style={s.detailRow}>
+    <Text style={s.detailLabel}>{label}</Text>
+    <Text style={s.detailValue}>{value}</Text>
+  </View>
+);
+
+const OperationDetailModal = ({ item, onClose }: { item: TimelineItem | null; onClose: () => void }) => {
+  if (!item) return null;
+  const config = OPERATION_CONFIG[item.type];
+
+  return (
+    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
+      <View style={s.modalBackdrop}>
+        <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={onClose} />
+        <View style={s.modalSheet}>
+          <LinearGradient colors={THEME.gradients.glass} style={s.modalContent}>
+            <View style={s.modalHandle} />
+            <View style={s.modalHeader}>
+              <LinearGradient colors={config.gradient} style={s.modalHeaderIcon}>
+                <Ionicons name={config.icon as any} size={28} color="white" />
+              </LinearGradient>
+              <View style={{ flex: 1 }}>
+                <Text style={s.modalTitle}>{config.label}</Text>
+                <Text style={s.modalSubtitle}>
+                  {formatDateSmart(item.date)}{item.date?.length > 10 ? `  ·  ${item.date.slice(11, 16)}` : ""}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={onClose} style={s.modalClose}>
+                <Ionicons name="close" size={22} color={THEME.colors.neutral[600]} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={s.modalAmountBox}>
+              <Text style={s.modalAmountLabel}>Montant</Text>
+              <Text style={[s.modalAmountValue, { color: config.color }]}>{formatMoney(item.amount)}</Text>
+            </View>
+
+            <ScrollView style={{ maxHeight: 280 }}>
+              {item.memberName && (
+                <DetailRow
+                  label="Membre"
+                  value={`${item.memberName}${item.memberNumero ? `  (${item.memberNumero})` : ""}`}
+                />
+              )}
+              {item.type === "emprunt" && (<>
+                <DetailRow label="Montant emprunté"   value={formatMoney(item.data.montant_emprunte)} />
+                <DetailRow label="Total à rembourser" value={formatMoney(item.data.montant_total_a_rembourser)} />
+                <DetailRow label="Statut"             value={item.data.statut || "En cours"} />
+                <DetailRow label="Session"            value={item.data.session_nom || "N/A"} />
+                <DetailRow label="Notes"              value={item.data.notes || "Aucune note"} />
+              </>)}
+              {item.type === "remboursement" && (<>
+                <DetailRow label="Capital remboursé" value={formatMoney(item.data.montant_capital)} />
+                <DetailRow label="Intérêts"          value={formatMoney(item.data.montant_interet)} />
+                <DetailRow label="Session"           value={item.data.session_nom || "N/A"} />
+                <DetailRow label="Notes"             value={item.data.notes || "Aucune note"} />
+              </>)}
+              {item.type === "solidarite" && (<>
+                <DetailRow label="Montant" value={formatMoney(item.data.montant)} />
+                <DetailRow label="Session" value={item.data.session_nom || "N/A"} />
+                <DetailRow label="Notes"   value={item.data.notes || "Aucune note"} />
+              </>)}
+              {item.type === "renflouement" && (<>
+                <DetailRow label="Montant" value={formatMoney(item.data.montant)} />
+                <DetailRow label="Cause"   value={item.data.cause || "N/A"} />
+                <DetailRow label="Notes"   value={item.data.notes || "Aucune note"} />
+              </>)}
+              {item.type === "epargne" && (<>
+                <DetailRow label="Montant"  value={formatMoney(item.data.montant)} />
+                <DetailRow label="Type"     value={item.data.type || "Dépôt"} />
+                <DetailRow label="Intérêts" value={formatMoney(item.data.montant_interet || 0)} />
+                <DetailRow label="Session"  value={item.data.session_nom || "N/A"} />
+                <DetailRow label="Notes"    value={item.data.notes || "Aucune note"} />
+              </>)}
+              {item.type === "assistance" && (<>
+                <DetailRow label="Montant"       value={formatMoney(item.data.montant)} />
+                <DetailRow label="Type"          value={item.data.type_assistance || "N/A"} />
+                <DetailRow label="Statut"        value={item.data.statut || "N/A"} />
+                <DetailRow label="Justification" value={item.data.justification || "Aucune"} />
+                <DetailRow label="Session"       value={item.data.session_nom || "N/A"} />
+                <DetailRow label="Notes"         value={item.data.notes || "Aucune note"} />
+              </>)}
+              {item.type === "paiement-inscription" && (<>
+                <DetailRow label="Montant" value={formatMoney(item.data.montant)} />
+                <DetailRow label="Session" value={item.data.session_nom || "N/A"} />
+                <DetailRow label="Notes"   value={item.data.notes || "Aucune note"} />
+              </>)}
+            </ScrollView>
+          </LinearGradient>
         </View>
       </View>
     </Modal>
   );
-}
+};
 
-// 🎯 Composant principal
-export default function FinancialReportsScreen() {
-  const [refreshing, setRefreshing] = useState(false);
-  const [activeModal, setActiveModal] = useState<string | null>(null);
+// ─── Utilitaires UI ──────────────────────────────────────────────────────────
 
-  const { data: serverStats, isLoading: loadingStats, refetch: refetchServerStats } = useSavingsStats();
+const LoadingView = ({ message = "Chargement…" }: { message?: string }) => (
+  <View style={{ flex: 1, justifyContent: "center", alignItems: "center", gap: SPACING.md }}>
+    <LinearGradient colors={THEME.gradients.admin} style={{ borderRadius: 40, padding: 20 }}>
+      <Ionicons name="analytics" size={40} color="white" />
+    </LinearGradient>
+    <Text style={{ color: THEME.colors.neutral[600], fontSize: FONT_SIZES.md }}>{message}</Text>
+  </View>
+);
 
-  // 🔧 Hooks de données avec protection
-  const { data: dashboard, isLoading, refetch } = useAdminDashboard();
-  const { data: loansData, isLoading: loadingLoans } = useLoans();
-  const { data: renflouementsData, isLoading: loadingRenf } = useRenflouements();
-  const { data: solidarityData, isLoading: loadingSolid } = useSolidarityPayments();
-  const { data: assistancesData, isLoading: loadingAssist } = useAssistances();
-  const { data: membersData, isLoading: loadingMembers } = useMembers();
-  const { data: socialFund, isLoading: loadingFund } = useSocialFundCurrent();
-  const { data: currentSession } = useCurrentSession();
+const ErrorView = ({ message, onRetry }: { message: string; onRetry: () => void }) => (
+  <View style={{ flex: 1, justifyContent: "center", alignItems: "center", padding: SPACING.xl }}>
+    <Ionicons name="alert-circle" size={56} color={THEME.colors.error[500]} />
+    <Text style={{ fontSize: FONT_SIZES.lg, fontWeight: "700", color: THEME.colors.error[600], marginTop: SPACING.md, textAlign: "center" }}>{message}</Text>
+    <TouchableOpacity onPress={onRetry} style={{ marginTop: SPACING.lg }}>
+      <LinearGradient colors={THEME.gradients.primary} style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md, borderRadius: BORDER_RADIUS.lg, gap: SPACING.sm }}>
+        <Ionicons name="refresh" size={18} color="white" />
+        <Text style={{ color: "white", fontWeight: "600" }}>Réessayer</Text>
+      </LinearGradient>
+    </TouchableOpacity>
+  </View>
+);
 
-  // 🔧 Protection contre les valeurs undefined avec debug
-  const loans = Array.isArray(loansData) ? loansData : [];
-  const renflouements = Array.isArray(renflouementsData) ? renflouementsData : [];
-  const solidarity = Array.isArray(solidarityData) ? solidarityData : [];
-  const assistances = Array.isArray(assistancesData) ? assistancesData : [];
-  const members = Array.isArray(membersData) ? membersData : [];
+const EmptyState = ({ title, subtitle }: { title: string; subtitle: string }) => (
+  <View style={{ alignItems: "center", paddingVertical: SPACING.xl * 2 }}>
+    <Ionicons name="document-text-outline" size={56} color={THEME.colors.neutral[300]} />
+    <Text style={{ fontSize: FONT_SIZES.lg, fontWeight: "600", color: THEME.colors.neutral[600], marginTop: SPACING.md }}>{title}</Text>
+    <Text style={{ fontSize: FONT_SIZES.md, color: THEME.colors.neutral[400], textAlign: "center", marginTop: SPACING.xs, paddingHorizontal: SPACING.lg }}>{subtitle}</Text>
+  </View>
+);
 
-  // Debug logs
-  console.log('🔍 Debug données finales:', {
-    members: { count: members.length, loading: loadingMembers, raw: membersData },
-    loans: { count: loans.length, loading: loadingLoans },
-    renflouements: { count: renflouements.length, loading: loadingRenf },
-    assistances: { count: assistances.length, loading: loadingAssist },
-  });
-  const navigation=useNavigation();
-  const handleDetailPress = ( route: string) => {
-    console.log(`Navigation vers ${route}`);
-    navigation.navigate(route);
-  };
+const PaginationBar = ({ current, total, onPrev, onNext }: {
+  current: number; total: number; onPrev: () => void; onNext: () => void;
+}) => (
+  <View style={s.paginationBar}>
+    <TouchableOpacity
+      style={[s.pageBtn, current === 1 && s.pageBtnDisabled]}
+      onPress={onPrev} disabled={current === 1}
+    >
+      <Ionicons name="chevron-back" size={18} color={current === 1 ? THEME.colors.neutral[300] : THEME.colors.primary[500]} />
+    </TouchableOpacity>
+    <Text style={s.pageLabel}>Page {current} sur {total}</Text>
+    <TouchableOpacity
+      style={[s.pageBtn, current === total && s.pageBtnDisabled]}
+      onPress={onNext} disabled={current === total}
+    >
+      <Ionicons name="chevron-forward" size={18} color={current === total ? THEME.colors.neutral[300] : THEME.colors.primary[500]} />
+    </TouchableOpacity>
+  </View>
+);
 
-  // Formatage monétaire
-  const formatCurrency = (amount: number | undefined | null): string => {
-    if ( !amount || isNaN(amount)) return "0 FCFA";
-    return new Intl.NumberFormat('fr-FR', {
-      style: 'currency',
-      currency: 'XAF',
-      minimumFractionDigits: 0,
-    }).format(amount);
-  };
+// ─── Vue sessions ─────────────────────────────────────────────────────────────
 
-// 🔧 Statistiques calculées avec protection COMPLÈTE
-  const stats = useMemo((): CalculatedStats => {
-    // --- 1. DONNÉES DU SERVEUR (Hook useSavingsStats / Django) ---
-    const reelTresor = serverStats?.tresor_total ?? 0; 
-    const epargneGlobaleMembres = serverStats?.epargne_totale ?? 0;
-    const solidariteGlobale = serverStats?.solidarite_totale ?? 0; // Si dispo, sinon fallback
-
-    // --- 2. DONNÉES DU DASHBOARD ---
-    const empruntsEnCours = dashboard?.emprunts_en_cours?.nombre ?? 0;
-    const empruntsTotal = dashboard?.emprunts_en_cours?.montant_total_attendu ?? 0;
-    const fondsSocialTotal = dashboard?.fonds_social?.montant_total ?? solidariteGlobale;
-    
-    // --- 3. LOGIQUE MEMBRES ---
-    const membresTotal = members.length;
-    const membresEnRegle = members.filter(m => m?.statut === "EN_REGLE").length;
-    const membresNonEnRegle = membresTotal - membresEnRegle;
-    const membresComplets = members.filter(m => 
-      m?.donnees_financieres?.inscription?.inscription_complete
-    ).length;
-    
-    const inscriptionsTotal = members.reduce((sum, m) => 
-      sum + (m?.donnees_financieres?.inscription?.montant_paye_inscription ?? 0), 0
-    );
-
-    // --- 4. RENFLOUEMENTS & ASSISTANCES ---
-    const renflouementDu = dashboard?.renflouements?.montants?.total_du ?? 
-      renflouements.reduce((sum, r) => sum + (r?.montant_du ?? 0), 0);
-    const renflouementPaye = dashboard?.renflouements?.montants?.total_paye ?? 
-      renflouements.reduce((sum, r) => sum + (r?.montant_paye ?? 0), 0);
-    const tauxRecouvrement = dashboard?.renflouements?.pourcentages?.taux_recouvrement ?? 
-      (renflouementDu > 0 ? (renflouementPaye / renflouementDu) * 100 : 100);
-    
-    const assistancesPayees = assistances.filter(a => a?.statut === "PAYEE").length;
-    const assistancesTotales = assistances.length;
-    const montantAssistances = assistances
-      .filter(a => a?.statut === "PAYEE")
-      .reduce((sum, a) => sum + (a?.montant ?? 0), 0);
-
-    // --- 5. CALCUL DE LA SITUATION NETTE (LA CORRECTION) ---
-    // Formule : (Cash en Caisse + Créances/Prêts à percevoir) - Dettes envers les membres (Épargnes)
-    const situationNette = (reelTresor + empruntsTotal) - epargneGlobaleMembres;
-
-    return {
-      empruntsEnCours,
-      empruntsTotal,      // Argent "dehors"
-      tresorTotal: reelTresor, // Argent "dedans" (inclut les remboursements)
-      fondsSocialTotal,
-      membresTotal,
-      membresEnRegle,
-      membresNonEnRegle,
-      membresComplets,
-      inscriptionsTotal,
-      renflouementDu,
-      renflouementPaye,
-      tauxRecouvrement,
-      situationNette,    // Bilan de santé réel
-      assistancesPayees,
-      assistancesTotales,
-      montantAssistances,
-    };
-  }, [dashboard, serverStats, members, renflouements, assistances]);
-
-  // N'oublie pas de mettre à jour ton rafraîchissement également :
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    try {
-      await Promise.all([
-        refetch(),             // Dashboard
-        refetchServerStats()   // Nouvelles Stats
-      ]);
-    } catch (error) {
-      console.error("Erreur de rafraîchissement:", error);
-    } finally {
-      setRefreshing(false);
-    }
-  };
-
-  // 📄 Génération PDF (simplifié)
-  const generatePDF = async () => {
-    try {
-      const htmlContent = `
-        <html>
-          <head>
-            <meta charset="utf-8">
-            <title>Bilan Financier - Mutuelle ENSP</title>
-            <style>
-              body { font-family: Arial, sans-serif; margin: 20px; }
-              .header { text-align: center; border-bottom: 2px solid #2563EB; padding-bottom: 20px; margin-bottom: 30px; }
-              .title { color: #2563EB; font-size: 24px; font-weight: bold; }
-              .subtitle { color: #666; margin-top: 10px; }
-              .section { margin-bottom: 30px; }
-              .section-title { color: #2563EB; font-size: 18px; font-weight: bold; border-bottom: 1px solid #ddd; padding-bottom: 5px; margin-bottom: 15px; }
-              .grid { display: flex; flex-wrap: wrap; gap: 20px; }
-              .metric { flex: 1; min-width: 200px; padding: 15px; border: 1px solid #ddd; border-radius: 8px; }
-              .metric-title { font-weight: bold; color: #333; }
-              .metric-value { font-size: 20px; color: #2563EB; margin-top: 5px; }
-            </style>
-          </head>
-          <body>
-            <div class="header">
-              <div class="title">BILAN FINANCIER</div>
-              <div class="subtitle">Mutuelle des Enseignants - ENSP Yaoundé</div>
-              <div class="subtitle">Session: ${currentSession?.nom || "N/A"}</div>
-              <div class="subtitle">Généré le: ${new Date().toLocaleDateString('fr-FR')}</div>
-            </div>
-
-            <div class="section">
-              <div class="section-title">INDICATEURS GLOBAUX</div>
-              <div class="grid">
-                <div class="metric">
-                  <div class="metric-title">Trésor Total</div>
-                  <div class="metric-value">${formatCurrency(stats.tresorTotal)}</div>
-                </div>
-                <div class="metric">
-                  <div class="metric-title">Membres Total</div>
-                  <div class="metric-value">${stats.membresTotal}</div>
-                </div>
-                <div class="metric">
-                  <div class="metric-title">Membres En Règle</div>
-                  <div class="metric-value">${stats.membresEnRegle}</div>
-                </div>
-                <div class="metric">
-                  <div class="metric-title">Situation Nette</div>
-                  <div class="metric-value">${formatCurrency(stats.situationNette)}</div>
-                </div>
-              </div>
-            </div>
-          </body>
-        </html>
-      `;
-
-      const { uri } = await Print.printToFileAsync({
-        html: htmlContent,
-        base64: false
-      });
-
-      await Sharing.shareAsync(uri, {
-        mimeType: 'application/pdf',
-        dialogTitle: 'Bilan Financier - Mutuelle ENSP'
-      });
-
-    } catch (error) {
-      console.error('Erreur génération PDF:', error);
-      Alert.alert('Erreur', 'Impossible de générer le PDF');
-    }
-  };
-
-  // 🔧 Rendus des items pour modals - Avec debug
-  const renderMemberItem: ListRenderItem<Member> = ({ item: member, index }) => {
-    // 🔍 DEBUG COMPLET
-    console.log(`🔍 Render member ${index}:`, {
-      id: member?.id,
-      utilisateur: member?.utilisateur,
-      nom_complet: member?.utilisateur?.nom_complet,
-      statut: member?.statut,
-      structure_complete: member
-    });
-  
-    // Vérification des données critiques
-    if (!member) {
-      console.log('❌ Member est null/undefined');
-      return (
-        <View style={styles.listItem}>
-          <Text style={styles.errorText}>Membre non défini</Text>
-        </View>
-      );
-    }
-  
-    if (!member.id) {
-      console.log('❌ Member.id manquant');
-      return (
-        <View style={styles.listItem}>
-          <Text style={styles.errorText}>ID membre manquant</Text>
-        </View>
-      );
-    }
-  
-    const financial = member?.donnees_financieres;
-    
-    return (
-      <View style={[styles.listItem, { backgroundColor: '#f0f8ff', borderWidth: 2, borderColor: '#blue' }]}>
-        <View style={styles.listItemHeader}>
-          <Text style={styles.listItemName}>
-            {member?.utilisateur?.nom_complet || member?.utilisateur.first_name || `Membre ${member.id}`}
-          </Text>
-          <View style={[styles.statusBadge, { 
-            backgroundColor: member?.statut === "EN_REGLE" ? COLORS.success : COLORS.error 
-          }]}>
-            <Text style={styles.statusBadgeText}>{member?.statut || "N/A"}</Text>
-          </View>
-        </View>
-        <View style={styles.memberFinancials}>
-          <View style={styles.financialRow}>
-            <Text style={styles.financialLabel}>Email:</Text>
-            <Text style={styles.financialValue}>
-              {member?.utilisateur?.email  || "N/A"}
-            </Text>
-          </View>
-          <View style={styles.financialRow}>
-            <Text style={styles.financialLabel}>Numéro:</Text>
-            <Text style={styles.financialValue}>
-              {member?.numero_membre || "N/A"}
-            </Text>
-          </View>
-          <View style={styles.financialRow}>
-            <Text style={styles.financialLabel}>ID:</Text>
-            <Text style={styles.financialValue}>
-              {member?.id}
-            </Text>
-          </View>
-        </View>
-      </View>
-    );
-  };
-  const renderLoanItem: ListRenderItem<Loan> = ({ item: loan }) => (
-    <View style={styles.listItem}>
-      <View style={styles.listItemHeader}>
-        <Text style={styles.listItemName}>{loan?.membre_info?.nom_complet || "N/A"}</Text>
-        <Text style={[styles.listItemStatus, { 
-          color: loan?.statut === "EN_COURS" ? COLORS.warning : COLORS.success 
-        }]}>
-          {loan?.statut_display || loan?.statut}
-        </Text>
-      </View>
-      <View style={styles.listItemDetails}>
-        <Text style={styles.listItemDetail}>
-          Emprunté: {formatCurrency(loan?.montant_emprunte)}
-        </Text>
-        <Text style={styles.listItemDetail}>
-          Restant: {formatCurrency(loan?.montant_restant_a_rembourser)}
-        </Text>
-        <Text style={styles.listItemDetail}>
-          Session: {loan?.session_nom || "N/A"}
-        </Text>
-      </View>
-    </View>
+const SessionsView = ({ exercice, onSelectSession }: {
+  exercice: Exercise; onSelectSession: (s: Session) => void;
+}) => {
+  const { data: sessionsRaw, isLoading, error, refetch } = useSessions({ exercice: exercice.id });
+  const sessions: Session[] = arr(sessionsRaw).sort(
+    (a: Session, b: Session) =>
+      new Date(b.date_session || "").getTime() - new Date(a.date_session || "").getTime()
   );
 
-  const renderRenflouementItem: ListRenderItem<Renflouement> = ({ item: renf }) => (
-    <View style={styles.listItem}>
-      <View style={styles.listItemHeader}>
-        <Text style={styles.listItemName}>{renf?.membre_info?.nom_complet || "N/A"}</Text>
-        <Text style={[styles.listItemStatus, { 
-          color: renf?.is_solde ? COLORS.success : COLORS.error 
-        }]}>
-          {renf?.is_solde ? "Soldé" : "En cours"}
-        </Text>
-      </View>
-      <View style={styles.listItemDetails}>
-        <Text style={styles.listItemDetail}>Dû: {formatCurrency(renf?.montant_du)}</Text>
-        <Text style={styles.listItemDetail}>Payé: {formatCurrency(renf?.montant_paye)}</Text>
-        <Text style={styles.listItemDetail}>Cause: {renf?.cause || "N/A"}</Text>
-      </View>
-    </View>
-  );
-
-  const renderAssistanceItem: ListRenderItem<Assistance> = ({ item: assist }) => (
-    <View style={styles.listItem}>
-      <View style={styles.listItemHeader}>
-        <Text style={styles.listItemName}>{assist?.membre_info?.nom_complet || "N/A"}</Text>
-        <Text style={[styles.listItemStatus, { 
-          color: assist?.statut === "PAYEE" ? COLORS.success : COLORS.warning 
-        }]}>
-          {assist?.statut_display || assist?.statut}
-        </Text>
-      </View>
-      <View style={styles.listItemDetails}>
-        <Text style={styles.listItemDetail}>
-          Type: {assist?.type_assistance_info?.nom || "N/A"}
-        </Text>
-        <Text style={styles.listItemDetail}>
-          Montant: {formatCurrency(assist?.montant)}
-        </Text>
-        <Text style={styles.listItemDetail}>
-          Date: {assist?.date_demande ? new Date(assist.date_demande).toLocaleDateString('fr-FR') : "N/A"}
-        </Text>
-      </View>
-    </View>
-  );
-
-  if (isLoading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
-        <Text style={styles.loadingText}>Chargement du bilan...</Text>
-      </View>
-    );
-  }
+  if (isLoading) return <LoadingView message="Chargement des sessions…" />;
+  if (error)     return <ErrorView message="Impossible de charger les sessions" onRetry={refetch} />;
 
   return (
     <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.scrollContent}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
-      }
+      contentContainerStyle={{ paddingHorizontal: SPACING.lg, paddingBottom: 120, paddingTop: SPACING.md }}
       showsVerticalScrollIndicator={false}
     >
-      {/* Header avec bouton PDF */}
-      <LinearGradient
-        colors={[COLORS.primary, "#3A86FF"]}
-        style={styles.header}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
+      <View style={s.sectionHeader}>
+        <Ionicons name="folder-open" size={18} color={THEME.colors.primary[500]} />
+        <Text style={s.sectionTitle}>{sessions.length} session{sessions.length !== 1 ? "s" : ""}</Text>
+      </View>
+      {sessions.length === 0
+        ? <EmptyState title="Aucune session" subtitle="Aucune session créée pour cet exercice" />
+        : sessions.map((session) => (
+            <SessionCard key={String(session.id)} session={session} onPress={() => onSelectSession(session)} />
+          ))
+      }
+    </ScrollView>
+  );
+};
+
+// ─── Vue opérations ───────────────────────────────────────────────────────────
+
+const OperationsView = ({ session }: { session: Session }) => {
+  const { data: loansRaw }               = useLoans({ session: session.id });
+  const { data: repaymentsRaw }          = useRepayments({ session: session.id });
+  const { data: solidarityRaw }          = useSolidarityPayments({ session: session.id });
+  const { data: renflouementRaw }        = useRenflouements({ session: session.id });
+  const { data: savingsRaw }             = useSavings({ session: session.id });
+  const { data: assistancesRaw }         = useAssistances({ session: session.id });
+  const { data: inscriptionPaymentsRaw } = useInscriptionPayments({ session: session.id });
+
+  const [selectedItem,   setSelectedItem]   = useState<TimelineItem | null>(null);
+  const [searchText,     setSearchText]     = useState("");
+  const [selectedFilter, setSelectedFilter] = useState("all");
+  const [page,           setPage]           = useState(1);
+
+  const timeline = useMemo<TimelineItem[]>(() => {
+    const items: TimelineItem[] = [];
+
+    arr(loansRaw).forEach((loan: any) => items.push({
+      id: `loan-${loan.id}`, type: "emprunt",
+      date: loan.date_emprunt, amount: parseFloat(loan.montant_emprunte) || 0,
+      data: loan, status: loan.statut,
+      memberName: extractMemberName(loan), memberNumero: extractMemberNumero(loan),
+    }));
+
+    arr(repaymentsRaw).forEach((rep: any) => items.push({
+      id: `rep-${rep.id}`, type: "remboursement",
+      date: rep.date_remboursement, amount: parseFloat(rep.montant) || 0,
+      data: rep,
+      memberName: extractMemberName(rep), memberNumero: extractMemberNumero(rep),
+    }));
+
+    arr(solidarityRaw).forEach((sol: any) => items.push({
+      id: `sol-${sol.id}`, type: "solidarite",
+      date: sol.date_paiement, amount: parseFloat(sol.montant) || 0,
+      data: sol,
+      memberName: extractMemberName(sol), memberNumero: extractMemberNumero(sol),
+    }));
+
+    arr(renflouementRaw).forEach((renf: any) => {
+      (renf.paiements_details || []).forEach((pay: any) => items.push({
+        id: `renf-${pay.id}`, type: "renflouement",
+        date: pay.date_paiement, amount: parseFloat(pay.montant) || 0,
+        data: { ...pay, cause: renf.cause },
+        memberName: extractMemberName(pay), memberNumero: extractMemberNumero(pay),
+      }));
+    });
+
+    arr(savingsRaw).forEach((saving: any) => items.push({
+      id: `saving-${saving.id}`, type: "epargne",
+      date: saving.date_transaction || saving.date_creation,
+      amount: parseFloat(saving.montant) || 0,
+      data: saving, status: saving.type || "Dépôt",
+      memberName: extractMemberName(saving), memberNumero: extractMemberNumero(saving),
+    }));
+
+    arr(assistancesRaw).forEach((a: any) => items.push({
+      id: `assist-${a.id}`, type: "assistance",
+      date: a.date_paiement || a.date_demande, amount: parseFloat(a.montant) || 0,
+      data: a, status: a.statut,
+      memberName: extractMemberName(a), memberNumero: extractMemberNumero(a),
+    }));
+
+    arr(inscriptionPaymentsRaw).forEach((p: any) => items.push({
+      id: `ins-${p.id}`, type: "paiement-inscription",
+      date: p.date_paiement, amount: parseFloat(p.montant) || 0,
+      data: p,
+      memberName: extractMemberName(p), memberNumero: extractMemberNumero(p),
+    }));
+
+    return items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [loansRaw, repaymentsRaw, solidarityRaw, renflouementRaw, savingsRaw, assistancesRaw, inscriptionPaymentsRaw]);
+
+  const filteredTimeline = useMemo(() => {
+    let f = timeline;
+    if (selectedFilter !== "all") f = f.filter((i) => i.type === selectedFilter);
+    if (searchText.trim()) {
+      const q = searchText.toLowerCase();
+      f = f.filter((i) =>
+        OPERATION_CONFIG[i.type].label.toLowerCase().includes(q) ||
+        formatMoney(i.amount).toLowerCase().includes(q) ||
+        (i.memberName   || "").toLowerCase().includes(q) ||
+        (i.memberNumero || "").toLowerCase().includes(q) ||
+        (i.data.notes   || "").toLowerCase().includes(q)
+      );
+    }
+    return f;
+  }, [timeline, selectedFilter, searchText]);
+
+  useMemo(() => setPage(1), [searchText, selectedFilter]);
+
+  const totalPages    = Math.max(1, Math.ceil(filteredTimeline.length / OPS_PER_PAGE));
+  const pagedTimeline = filteredTimeline.slice((page - 1) * OPS_PER_PAGE, page * OPS_PER_PAGE);
+
+  const totals = useMemo(() => {
+    const t: Record<string, number> = {};
+    filteredTimeline.forEach((i) => { t[i.type] = (t[i.type] || 0) + i.amount; });
+    return t;
+  }, [filteredTimeline]);
+
+  return (
+    <>
+      <ScrollView
+        contentContainerStyle={{ paddingHorizontal: SPACING.lg, paddingBottom: 120, paddingTop: SPACING.md }}
+        showsVerticalScrollIndicator={false}
       >
-        <View style={styles.headerContent}>
-          <View style={styles.headerTextContainer}>
-            <Text style={styles.headerTitle}>Bilan Financier</Text>
-            <Text style={styles.headerSubtitle}>
-              Session: {currentSession?.nom || "Aucune session active"}
-            </Text>
-            <Text style={styles.headerDate}>
-              MAJ: {new Date().toLocaleDateString('fr-FR')}
-            </Text>
-          </View>
-          <TouchableOpacity style={styles.pdfButton} onPress={generatePDF}>
-            <Ionicons name="document-text" size={24} color="white" />
-          </TouchableOpacity>
+        {/* Synthèse */}
+        <View style={s.sessionSummary}>
+          <LinearGradient colors={THEME.gradients.glass} style={s.sessionSummaryInner}>
+            <View style={s.sessionSummaryHeader}>
+              <LinearGradient colors={THEME.gradients.admin} style={s.sessionSummaryIcon}>
+                <Ionicons name="stats-chart" size={18} color="white" />
+              </LinearGradient>
+              <Text style={s.sessionSummaryTitle}>Synthèse de la session</Text>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <View style={{ flexDirection: "row", gap: SPACING.sm }}>
+                {Object.entries(totals).map(([type, total]) => {
+                  const cfg = OPERATION_CONFIG[type as keyof typeof OPERATION_CONFIG];
+                  return (
+                    <View key={type} style={[s.summaryChip, { backgroundColor: cfg.bgColor }]}>
+                      <Ionicons name={cfg.icon as any} size={13} color={cfg.color} />
+                      <Text style={[s.summaryChipLabel, { color: cfg.color }]}>{cfg.label}</Text>
+                      <Text style={[s.summaryChipValue, { color: cfg.color }]}>{formatMoney(total)}</Text>
+                    </View>
+                  );
+                })}
+              </View>
+            </ScrollView>
+          </LinearGradient>
         </View>
-      </LinearGradient>
-{/* Métriques principales - Version Corrigée */}
-<View style={styles.metricsGrid}>
-  <MetricCard
-    title="Trésor Total"
-    value={formatCurrency(stats.tresorTotal)}
-    subtitle="Liquidités en caisse" 
-    icon="wallet-outline"
-    gradient={[COLORS.primary, "#3A86FF"]}
-    trend={stats.tresorTotal > 0 ? "up" : "down"}
-    onPress={() => setActiveModal("members")}
-  />
-  
-  <MetricCard
-    title="Fonds Social"
-    value={formatCurrency(stats.fondsSocialTotal)}
-    subtitle="Réserve de solidarité"
-    icon="heart-outline"
-    gradient={[COLORS.success, "#57CC99"]}
-    trend="stable"
-  />
-</View>
 
-<View style={styles.metricsGrid}>
-  <MetricCard
-    title="Emprunts"
-    value={formatCurrency(stats.empruntsTotal)}
-    subtitle={`${stats.empruntsEnCours} prêt(s) à recouvrer`}
-    icon="cash-outline"
-    gradient={[COLORS.warning, "#FCBF49"]}
-    trend="down"
-    onPress={() => setActiveModal("loans")}
-  />
-  
-  <MetricCard
-    title="Situation Nette"
-    value={formatCurrency(stats.situationNette)}
-    subtitle={stats.situationNette >= 0 ? "Bilan Excédentaire" : "Bilan Déficitaire"}
-    icon={stats.situationNette >= 0 ? "shield-checkmark-outline" : "alert-circle-outline"}
-    // Changement dynamique de couleur : Gris foncé si positif, Rouge vif si négatif
-    gradient={stats.situationNette >= 0 ? ["#4B5563", "#1F2937"] : [COLORS.error, "#B91C1C"]}
-    trend={stats.situationNette >= 0 ? "up" : "down"}
-  />
-</View>
-
-      {/* Analyse des membres - Section corrigée */}
-      <View style={styles.fullWidthSection}>
-        <SectionHeader
-          title="Analyse des Membres"
-          subtitle={`${stats.membresEnRegle}/${stats.membresTotal} en règle`}
-          icon="people"
-          color={COLORS.primary}
-          action={{
-            label: "Voir détail",
-            onPress: () => {
-              console.log('🔍 Ouverture modal membres avec:', members.length, 'membres');
-              setActiveModal("members");
-            }
-          }}
+        {/* Filtres */}
+        <SearchAndFilters
+          searchText={searchText}       onSearchChange={setSearchText}
+          selectedFilter={selectedFilter} onFilterChange={setSelectedFilter}
+          totalItems={timeline.length}    filteredItems={filteredTimeline.length}
         />
-        
-        <View style={styles.membersOverview}>
-          <View style={styles.membersStat}>
-            <Text style={styles.membersStatValue}>{stats.membresTotal}</Text>
-            <Text style={styles.membersStatLabel}>Total</Text>
-          </View>
-          <View style={styles.membersStat}>
-            <Text style={[styles.membersStatValue, { color: COLORS.success }]}>
-              {stats.membresEnRegle}
-            </Text>
-            <Text style={styles.membersStatLabel}>En règle</Text>
-          </View>
-          <View style={styles.membersStat}>
-            <Text style={[styles.membersStatValue, { color: COLORS.error }]}>
-              {stats.membresNonEnRegle}
-            </Text>
-            <Text style={styles.membersStatLabel}>Problèmes</Text>
-          </View>
-          <View style={styles.membersStat}>
-            <Text style={[styles.membersStatValue, { color: COLORS.primary }]}>
-              {stats.membresTotal > 0 ? ((stats.membresEnRegle / stats.membresTotal) * 100).toFixed(0) : 0}%
-            </Text>
-            <Text style={styles.membersStatLabel}>Conformité</Text>
-          </View>
-        </View>
-      </View>
 
-      {/* Inscriptions - Section corrigée */}
-      <View style={styles.fullWidthSection}>
-        <SectionHeader
-          title="Inscriptions"
-          subtitle={`${stats.membresComplets} complètes sur ${stats.membresTotal}`}
-          icon="card"
-          color={COLORS.success}
-          action={{
-            label: "Voir détail",
-            onPress: () => {
-              handleDetailPress("InscriptionsScreen")
-            }
-          }}
-        />
-        
-        <View style={styles.inscriptionsOverview}>
-          <View style={styles.inscriptionStat}>
-            <Text style={styles.inscriptionValue}>{formatCurrency(stats.inscriptionsTotal)}</Text>
-            <Text style={styles.inscriptionLabel}>Total perçu</Text>
-          </View>
-          <View style={styles.inscriptionStat}>
-            <Text style={[styles.inscriptionValue, { color: COLORS.success }]}>
-              {stats.membresComplets}
-            </Text>
-            <Text style={styles.inscriptionLabel}>Complètes</Text>
-          </View>
-          <View style={styles.inscriptionStat}>
-            <Text style={[styles.inscriptionValue, { color: COLORS.warning }]}>
-              {stats.membresTotal - stats.membresComplets}
-            </Text>
-            <Text style={styles.inscriptionLabel}>En cours</Text>
-          </View>
-        </View>
-      </View>
-
-      {/* Renflouements - Section corrigée */}
-      <View style={styles.fullWidthSection}>
-        <SectionHeader
-          title="Renflouements"
-          subtitle={`${stats.tauxRecouvrement.toFixed(1)}% de recouvrement`}
-          icon="refresh-circle"
-          color={COLORS.warning}
-          action={{
-            label: "Gérer",
-            onPress: () => setActiveModal("renflouements")
-          }}
-        />
-        
-        <View style={styles.renflouementOverview}>
-          <View style={styles.renflouementStat}>
-            <Text style={styles.renflouementValue}>{formatCurrency(stats.renflouementDu)}</Text>
-            <Text style={styles.renflouementLabel}>Total dû</Text>
-          </View>
-          <View style={styles.renflouementStat}>
-            <Text style={[styles.renflouementValue, { color: COLORS.success }]}>
-              {formatCurrency(stats.renflouementPaye)}
-            </Text>
-            <Text style={styles.renflouementLabel}>Payé</Text>
-          </View>
-          <View style={styles.renflouementStat}>
-            <Text style={[styles.renflouementValue, { color: COLORS.primary }]}>
-              {stats.tauxRecouvrement.toFixed(1)}%
-            </Text>
-            <Text style={styles.renflouementLabel}>Recouvrement</Text>
-          </View>
-        </View>
-      </View>
-
-      {/* Activité récente */}
-      {dashboard?.activite_recente && (
-        <View style={styles.fullWidthSection}>
-          <SectionHeader
-            title="Activité récente"
-            icon="pulse"
-            color={COLORS.primary}
+        {/* Liste */}
+        {filteredTimeline.length === 0 ? (
+          <EmptyState
+            title={searchText || selectedFilter !== "all" ? "Aucun résultat" : "Aucune opération"}
+            subtitle={searchText || selectedFilter !== "all"
+              ? "Modifiez vos critères de recherche"
+              : "Aucune transaction enregistrée pour cette session"}
           />
-          
-          <View style={styles.activityGrid}>
-            <View style={styles.activityItem}>
-              <Text style={styles.activityValue}>
-                {dashboard.activite_recente.nouveaux_membres ?? 0}
-              </Text>
-              <Text style={styles.activityLabel}>Nouveaux membres</Text>
-            </View>
-            <View style={styles.activityItem}>
-              <Text style={styles.activityValue}>
-                {dashboard.activite_recente.nouveaux_emprunts ?? 0}
-              </Text>
-              <Text style={styles.activityLabel}>Nouveaux emprunts</Text>
-            </View>
-            <View style={styles.activityItem}>
-              <Text style={styles.activityValue}>
-                {dashboard.activite_recente.assistances_demandees ?? 0}
-              </Text>
-              <Text style={styles.activityLabel}>Assistances</Text>
-            </View>
-            <View style={styles.activityItem}>
-              <Text style={styles.activityValue}>
-                {formatCurrency(dashboard.activite_recente.total_paiements)}
-              </Text>
-              <Text style={styles.activityLabel}>Total paiements</Text>
-            </View>
+        ) : (
+          <>
+            <FlatList
+              data={pagedTimeline}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <OperationCard item={item} onPress={() => setSelectedItem(item)} />
+              )}
+              scrollEnabled={false}
+              ItemSeparatorComponent={() => <View style={{ height: SPACING.sm }} />}
+            />
+            {totalPages > 1 && (
+              <PaginationBar
+                current={page} total={totalPages}
+                onPrev={() => setPage((p) => Math.max(1, p - 1))}
+                onNext={() => setPage((p) => Math.min(totalPages, p + 1))}
+              />
+            )}
+          </>
+        )}
+      </ScrollView>
+
+      <OperationDetailModal item={selectedItem} onClose={() => setSelectedItem(null)} />
+    </>
+  );
+};
+
+// ─── Composant principal ──────────────────────────────────────────────────────
+
+export default function AdminHistoryScreen() {
+  const insets = useSafeAreaInsets();
+
+  const { data: exercicesRaw, isLoading, error, refetch } = useExercises();
+  const exercices: Exercise[] = arr(exercicesRaw).sort(
+    (a: Exercise, b: Exercise) =>
+      new Date(b.date_debut || "").getTime() - new Date(a.date_debut || "").getTime()
+  );
+
+  const [selectedExercice, setSelectedExercice] = useState<Exercise | null>(null);
+  const [selectedSession,  setSelectedSession]  = useState<Session  | null>(null);
+  const [exPage,           setExPage]           = useState(1);
+
+  const totalExPages   = Math.max(1, Math.ceil(exercices.length / EXERCISES_PER_PAGE));
+  const pagedExercices = exercices.slice((exPage - 1) * EXERCISES_PER_PAGE, exPage * EXERCISES_PER_PAGE);
+
+  const showDashboard = !!selectedExercice && !selectedSession;
+
+  const headerTitle = selectedSession
+    ? selectedSession.nom
+    : selectedExercice ? selectedExercice.nom : "Historique Global";
+
+  const headerSubtitle = selectedSession
+    ? `Exercice  ·  ${selectedExercice?.nom}`
+    : selectedExercice ? "Sélectionnez une session" : "Tous les exercices";
+
+  if (isLoading && !selectedExercice) return <LoadingView message="Chargement des exercices…" />;
+  if (error    && !selectedExercice)  return <ErrorView  message="Impossible de charger les exercices" onRetry={refetch} />;
+
+  return (
+    <View style={[s.container, { paddingTop: insets.top }]}>
+      <StatusBar barStyle="light-content" />
+
+      {/* Header */}
+      <LinearGradient colors={THEME.gradients.admin} style={s.header}>
+        <View style={s.headerTop}>
+          {(selectedExercice || selectedSession) && (
+            <TouchableOpacity
+              style={s.backBtn}
+              onPress={() => { if (selectedSession) setSelectedSession(null); else setSelectedExercice(null); }}
+            >
+              <Ionicons name="arrow-back" size={22} color="white" />
+            </TouchableOpacity>
+          )}
+          <View style={{ flex: 1 }}>
+            <Text style={s.headerTitle} numberOfLines={1}>📊  {headerTitle}</Text>
+            <Text style={s.headerSubtitle}>{headerSubtitle}</Text>
           </View>
+          <LinearGradient colors={["rgba(255,255,255,0.25)", "rgba(255,255,255,0.08)"]} style={s.adminBadge}>
+            <Ionicons name="shield-checkmark" size={13} color="white" />
+            <Text style={s.adminBadgeText}>Admin</Text>
+          </LinearGradient>
         </View>
+
+        <Breadcrumb
+          exercice={selectedExercice} session={selectedSession}
+          onReset={() => { setSelectedSession(null); setSelectedExercice(null); }}
+          onBackToExercice={() => setSelectedSession(null)}
+        />
+
+        {/* Dashboard affiché uniquement sur la vue "sessions de l'exercice" */}
+        {showDashboard && <ExerciseDashboard exercice={selectedExercice!} />}
+      </LinearGradient>
+
+      {/* Contenu */}
+      {!selectedExercice && (
+        <ScrollView
+          contentContainerStyle={{ paddingHorizontal: SPACING.lg, paddingBottom: 120, paddingTop: SPACING.md }}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={s.sectionHeader}>
+            <Ionicons name="calendar-outline" size={18} color={THEME.colors.admin[500]} />
+            <Text style={s.sectionTitle}>{exercices.length} exercice{exercices.length !== 1 ? "s" : ""}</Text>
+          </View>
+
+          {exercices.length === 0 ? (
+            <EmptyState title="Aucun exercice" subtitle="Aucun exercice n'a encore été créé" />
+          ) : (
+            <>
+              {pagedExercices.map((ex) => (
+                <ExerciceCard
+                  key={String(ex.id)}
+                  exercice={ex}
+                  onPress={() => { setSelectedExercice(ex); setExPage(1); }}
+                />
+              ))}
+              {totalExPages > 1 && (
+                <PaginationBar
+                  current={exPage} total={totalExPages}
+                  onPrev={() => setExPage((p) => Math.max(1, p - 1))}
+                  onNext={() => setExPage((p) => Math.min(totalExPages, p + 1))}
+                />
+              )}
+            </>
+          )}
+        </ScrollView>
       )}
 
-      {/* Modals détaillés avec debug */}
-      <DetailModal
-        visible={activeModal === "members"}
-        title={`Liste des membres (${members.length})`}
-        data={members}
-        renderItem={renderMemberItem}
-        onClose={() => setActiveModal(null)}
-        loading={loadingMembers}
-        emptyMessage={`Aucun membre trouvé. Total chargé: ${members.length}`}
-      />
+      {selectedExercice && !selectedSession && (
+        <SessionsView exercice={selectedExercice} onSelectSession={setSelectedSession} />
+      )}
 
-      <DetailModal
-        visible={activeModal === "loans"}
-        title="Emprunts en cours"
-        data={loans}
-        renderItem={renderLoanItem}
-        onClose={() => setActiveModal(null)}
-        loading={loadingLoans}
-        emptyMessage="Aucun emprunt en cours"
-      />
-
-      <DetailModal
-        visible={activeModal === "renflouements"}
-        title="Renflouements"
-        data={renflouements}
-        renderItem={renderRenflouementItem}
-        onClose={() => setActiveModal(null)}
-        loading={loadingRenf}
-        emptyMessage="Aucun renflouement"
-      />
-
-      <DetailModal
-        visible={activeModal === "assistances"}
-        title="Assistances accordées"
-        data={assistances}
-        renderItem={renderAssistanceItem}
-        onClose={() => setActiveModal(null)}
-        loading={loadingAssist}
-        emptyMessage="Aucune assistance accordée"
-      />
-
-      <View style={{ height: 100 }} />
-    </ScrollView>
+      {selectedExercice && selectedSession && (
+        <OperationsView session={selectedSession} />
+      )}
+    </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  scrollContent: {
-    paddingBottom: SPACING.xxl,
-  },
-  errorText: {
-    color: 'red',
-    fontSize: 16,
-    textAlign: 'center',
-    padding: 20,
-  },
+// ─── Styles ───────────────────────────────────────────────────────────────────
+
+const s = StyleSheet.create({
+  container: { flex: 1, backgroundColor: "#F7F8FA" },
 
   // Header
-  header: {
-    paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.xl,
-    paddingBottom: SPACING.lg,
-  },
-  headerContent: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  headerTextContainer: {
-    flex: 1,
-  },
-  headerTitle: {
-    fontSize: FONT_SIZES.xxxl,
-    fontWeight: "bold",
-    color: "white",
-    marginBottom: SPACING.xs,
-  },
-  headerSubtitle: {
-    fontSize: FONT_SIZES.md,
-    color: "rgba(255,255,255,0.8)",
-    marginBottom: SPACING.xs,
-  },
-  headerDate: {
-    fontSize: FONT_SIZES.sm,
-    color: "rgba(255,255,255,0.6)",
-  },
-  pdfButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: "rgba(255,255,255,0.2)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  header:         { paddingHorizontal: SPACING.lg, paddingTop: SPACING.md, paddingBottom: SPACING.lg, borderBottomLeftRadius: BORDER_RADIUS.xl, borderBottomRightRadius: BORDER_RADIUS.xl },
+  headerTop:      { flexDirection: "row", alignItems: "center", marginBottom: SPACING.xs },
+  backBtn:        { width: 38, height: 38, borderRadius: 19, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center", marginRight: SPACING.sm },
+  headerTitle:    { fontSize: FONT_SIZES.lg, fontWeight: "700", color: "white" },
+  headerSubtitle: { fontSize: FONT_SIZES.xs, color: "rgba(255,255,255,0.75)", marginTop: 2 },
+  adminBadge:     { flexDirection: "row", alignItems: "center", paddingHorizontal: SPACING.sm, paddingVertical: 4, borderRadius: BORDER_RADIUS.md, gap: 4, borderWidth: 1, borderColor: "rgba(255,255,255,0.3)" },
+  adminBadgeText: { fontSize: 10, color: "white", fontWeight: "700" },
 
-  // Métriques - CORRIGÉES
-  metricsGrid: {
-    flexDirection: "row",
-    paddingHorizontal: SPACING.lg,
-    marginTop: SPACING.lg,
-    gap: SPACING.md,
-  },
-  metricCard: {
-    flex: 1,
-    borderRadius: BORDER_RADIUS.xl,
-    overflow: "hidden",
-    shadowColor: COLORS.shadowLight,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  metricCardGradient: {
-    padding: SPACING.md,
-    minHeight: 120,
-  },
-  metricHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: SPACING.sm,
-  },
-  metricIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "rgba(255,255,255,0.2)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  trendContainer: {
-    padding: SPACING.xs,
-  },
-  metricTitle: {
-    fontSize: FONT_SIZES.sm,
-    color: "rgba(255,255,255,0.8)",
-    marginBottom: SPACING.xs,
-  },
-  metricValue: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: "bold",
-    color: "white",
-    marginBottom: SPACING.xs,
-  },
-  metricSubtitle: {
-    fontSize: FONT_SIZES.xs,
-    color: "rgba(255,255,255,0.6)",
-    marginBottom: SPACING.sm,
-  },
+  // Breadcrumb
+  breadcrumb: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 4, marginTop: SPACING.xs, marginBottom: SPACING.xs },
+  crumbItem:  { fontSize: FONT_SIZES.xs },
+  crumbLink:  { color: "rgba(255,255,255,0.65)", fontWeight: "500" },
+  crumbActive:{ color: "white", fontWeight: "700" },
 
-  // Sections - CORRIGÉES pour éviter le décalage
-  fullWidthSection: {
-    marginTop: SPACING.lg,
-  },
-  sectionHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: SPACING.lg,
-    marginBottom: SPACING.md,
-  },
-  sectionTitleContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
-  },
-  sectionIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: SPACING.md,
-  },
-  sectionTextContainer: {
-    flex: 1,
-  },
-  sectionTitle: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: "bold",
-    color: COLORS.text,
-  },
-  sectionSubtitle: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textSecondary,
-  },
-  sectionAction: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SPACING.xs,
-  },
-  sectionActionText: {
-    fontSize: FONT_SIZES.sm,
-    fontWeight: "600",
-  },
+  // Dashboard exercice
+  dashboard:     { marginTop: SPACING.md },
+  dashGrid:      { flexDirection: "row", flexWrap: "wrap", gap: SPACING.sm },
+  dashCard:      { width: "47%", borderRadius: BORDER_RADIUS.lg, overflow: "hidden" },
+  dashCardInner: { padding: SPACING.sm, borderRadius: BORDER_RADIUS.lg, borderWidth: 1, borderColor: "rgba(255,255,255,0.5)", gap: 4 },
+  dashIconWrap:  { width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center" },
+  dashLabel:     { fontSize: 10, color: THEME.colors.neutral[600], fontWeight: "500" },
+  dashValue:     { fontSize: FONT_SIZES.sm, fontWeight: "800" },
 
-  // Membres overview - CORRIGÉ
-  membersOverview: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginHorizontal: SPACING.lg,
-    backgroundColor: COLORS.surface,
-    borderRadius: BORDER_RADIUS.lg,
-    padding: SPACING.md,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  membersStat: {
-    alignItems: "center",
-  },
-  membersStatValue: {
-    fontSize: FONT_SIZES.xl,
-    fontWeight: "bold",
-    color: COLORS.text,
-  },
-  membersStatLabel: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textSecondary,
-    marginTop: SPACING.xs,
-  },
+  // Section header
+  sectionHeader: { flexDirection: "row", alignItems: "center", gap: SPACING.sm, marginBottom: SPACING.md },
+  sectionTitle:  { fontSize: FONT_SIZES.md, fontWeight: "700", color: THEME.colors.neutral[700] },
 
-  // Inscriptions overview - CORRIGÉ
-  inscriptionsOverview: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginHorizontal: SPACING.lg,
-    backgroundColor: COLORS.surface,
-    borderRadius: BORDER_RADIUS.lg,
-    padding: SPACING.md,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  inscriptionStat: {
-    alignItems: "center",
-    flex: 1,
-  },
-  inscriptionValue: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: "bold",
-    color: COLORS.text,
-  },
-  inscriptionLabel: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textSecondary,
-    marginTop: SPACING.xs,
-    textAlign: "center",
-  },
+  // Exercice card
+  exerciceCard:      { marginBottom: SPACING.sm, borderRadius: BORDER_RADIUS.xl, overflow: "hidden", elevation: 2, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.07, shadowRadius: 4 },
+  exerciceCardInner: { flexDirection: "row", alignItems: "center", padding: SPACING.md, borderRadius: BORDER_RADIUS.xl, borderWidth: 1, borderColor: "rgba(255,255,255,0.6)" },
+  statusDot:         { position: "absolute", top: 10, right: 10, width: 8, height: 8, borderRadius: 4 },
+  exerciceIconBg:    { width: 52, height: 52, borderRadius: 26, alignItems: "center", justifyContent: "center", marginRight: SPACING.md },
+  exerciceTextBlock: { flex: 1 },
+  exerciceYear:      { fontSize: FONT_SIZES.md, fontWeight: "700", color: THEME.colors.neutral[800] },
+  smallDate:         { fontSize: FONT_SIZES.xs, color: THEME.colors.neutral[500], marginTop: 4 },
 
-  // Renflouements overview - NOUVEAU
-  renflouementOverview: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginHorizontal: SPACING.lg,
-    backgroundColor: COLORS.surface,
-    borderRadius: BORDER_RADIUS.lg,
-    padding: SPACING.md,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  renflouementStat: {
-    alignItems: "center",
-    flex: 1,
-  },
-  renflouementValue: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: "bold",
-    color: COLORS.text,
-  },
-  renflouementLabel: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textSecondary,
-    marginTop: SPACING.xs,
-    textAlign: "center",
-  },
+  // Session card
+  sessionCard:      { marginBottom: SPACING.sm, borderRadius: BORDER_RADIUS.xl, overflow: "hidden", elevation: 2, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.07, shadowRadius: 4 },
+  sessionCardInner: { flexDirection: "row", alignItems: "center", padding: SPACING.md, borderRadius: BORDER_RADIUS.xl, borderWidth: 1, borderColor: "rgba(255,255,255,0.6)" },
+  sessionIconBg:    { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", marginRight: SPACING.md },
+  sessionTextBlock: { flex: 1 },
+  sessionName:      { fontSize: FONT_SIZES.md, fontWeight: "700", color: THEME.colors.neutral[800] },
 
-  // Activité - CORRIGÉ
-  activityGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    paddingHorizontal: SPACING.lg,
-    gap: SPACING.md,
-  },
-  activityItem: {
-    flex: 1,
-    minWidth: "45%",
-    backgroundColor: COLORS.surface,
-    padding: SPACING.md,
-    borderRadius: BORDER_RADIUS.lg,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  activityValue: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: "bold",
-    color: COLORS.primary,
-    marginBottom: SPACING.xs,
-  },
-  activityLabel: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textSecondary,
-    textAlign: "center",
-  },
+  // Badge partagé (statuts)
+  badge:     { alignSelf: "flex-start", paddingHorizontal: SPACING.sm, paddingVertical: 2, borderRadius: BORDER_RADIUS.sm, marginTop: 4 },
+  badgeText: { fontSize: FONT_SIZES.xs, fontWeight: "700" },
 
-  // Progress
-  progressContainer: {
-    marginTop: SPACING.sm,
-  },
-  progressTrack: {
-    height: 4,
-    backgroundColor: "rgba(255,255,255,0.3)",
-    borderRadius: 2,
-    overflow: "hidden",
-  },
-  progressBar: {
-    height: "100%",
-    backgroundColor: "white",
-    borderRadius: 2,
-  },
-  progressText: {
-    fontSize: FONT_SIZES.xs,
-    color: "rgba(255,255,255,0.8)",
-    textAlign: "right",
-    marginTop: SPACING.xs,
-  },
+  // Session summary (dans opérations)
+  sessionSummary:       { marginBottom: SPACING.md, borderRadius: BORDER_RADIUS.xl, overflow: "hidden", elevation: 1, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3 },
+  sessionSummaryInner:  { padding: SPACING.md, borderRadius: BORDER_RADIUS.xl, borderWidth: 1, borderColor: "rgba(255,255,255,0.5)" },
+  sessionSummaryHeader: { flexDirection: "row", alignItems: "center", gap: SPACING.sm, marginBottom: SPACING.md },
+  sessionSummaryIcon:   { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center" },
+  sessionSummaryTitle:  { fontSize: FONT_SIZES.md, fontWeight: "700", color: THEME.colors.neutral[800] },
+  summaryChip:          { alignItems: "center", paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, borderRadius: BORDER_RADIUS.lg, gap: 2, minWidth: 110 },
+  summaryChipLabel:     { fontSize: 10, fontWeight: "600", marginTop: 2 },
+  summaryChipValue:     { fontSize: FONT_SIZES.xs, fontWeight: "800" },
+
+  // Search
+  searchContainer: { marginBottom: SPACING.md },
+  searchBar:       { flexDirection: "row", alignItems: "center", paddingHorizontal: SPACING.md, paddingVertical: 10, borderRadius: BORDER_RADIUS.lg, borderWidth: 1, borderColor: "rgba(255,255,255,0.5)", marginBottom: SPACING.xs },
+  searchInput:     { flex: 1, marginLeft: SPACING.sm, fontSize: FONT_SIZES.sm, color: THEME.colors.neutral[800] },
+  filterToggle:    { padding: SPACING.xs },
+  resultsCounter:  { fontSize: FONT_SIZES.xs, color: THEME.colors.neutral[500], textAlign: "center" },
+  filterChip:      { flexDirection: "row", alignItems: "center", backgroundColor: "rgba(255,255,255,0.85)", borderRadius: BORDER_RADIUS.lg, paddingHorizontal: SPACING.sm, paddingVertical: 6, marginHorizontal: 3, borderWidth: 1, borderColor: THEME.colors.neutral[200], gap: 4 },
+  filterChipActive:{ backgroundColor: THEME.colors.primary[500], borderColor: THEME.colors.primary[500] },
+  filterChipText:  { fontSize: 11, fontWeight: "600", color: THEME.colors.neutral[600] },
+
+  // Opération card
+  opCard:       { borderRadius: BORDER_RADIUS.lg, overflow: "hidden", elevation: 1, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3 },
+  opCardInner:  { flexDirection: "row", alignItems: "center", padding: SPACING.md, borderRadius: BORDER_RADIUS.lg, borderWidth: 1, borderColor: "rgba(255,255,255,0.5)" },
+  opIcon:       { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", marginRight: SPACING.md },
+  opContent:    { flex: 1 },
+  opRow:        { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 2 },
+  opType:       { fontSize: FONT_SIZES.sm, fontWeight: "700", color: THEME.colors.neutral[800] },
+  opDate:       { fontSize: 10, color: THEME.colors.neutral[500] },
+  opAmount:     { fontSize: FONT_SIZES.md, fontWeight: "800", marginBottom: 3 },
+  opMemberRow:  { flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 3 },
+  opMember:     { fontSize: 11, color: THEME.colors.neutral[500] },
+  opBadge:      { alignSelf: "flex-start", paddingHorizontal: 6, paddingVertical: 1, borderRadius: BORDER_RADIUS.xs },
+  opBadgeText:  { fontSize: 9, fontWeight: "700" },
+
+  // Pagination
+  paginationBar:   { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: SPACING.lg, marginVertical: SPACING.lg },
+  pageBtn:         { width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.95)", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: THEME.colors.neutral[200], elevation: 1, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 2 },
+  pageBtnDisabled: { opacity: 0.35 },
+  pageLabel:       { fontSize: FONT_SIZES.sm, fontWeight: "600", color: THEME.colors.neutral[700] },
 
   // Modal
-  modalOverlay: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: SPACING.lg,
-  },
-  modalContainer: {
-    backgroundColor: COLORS.background,
-    borderRadius: BORDER_RADIUS.xl,
-    width: "100%",
-    height: "60%",  // 🔧 CHANGÉ: hauteur fixe au lieu de maxHeight
-    overflow: "hidden",
-    shadowColor: COLORS.shadowDark,
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
-    elevation: 15,
-    
-  },
-  modalHeader: {
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.lg,
-  },
-  modalHeaderContent: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  modalTitle: {
-    fontSize: FONT_SIZES.xl,
-    fontWeight: "bold",
-    color: "white",
-    flex: 1,
-  },
-  closeButton: {
-    padding: SPACING.xs,
-  },
-  searchContainer: {
-    paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.md,
-  },
-  searchInputContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: COLORS.surface,
-    borderRadius: BORDER_RADIUS.lg,
-    paddingHorizontal: SPACING.md,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    gap: SPACING.sm,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: FONT_SIZES.md,
-    color: COLORS.text,
-    paddingVertical: SPACING.md,
-  },
-  modalBody: {
-  flex: 1,           // 🔧 GARDE flex: 1
-  paddingHorizontal: SPACING.lg,
-  paddingTop: SPACING.md,
-  paddingBottom: SPACING.md,  // 🔧 AJOUTE padding bottom
-
-  },
-
-  // Liste items
-  listItem: {
-    backgroundColor: COLORS.surface,
-    borderRadius: BORDER_RADIUS.lg,
-    padding: SPACING.md,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  listItemHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: SPACING.sm,
-  },
-  listItemName: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: "bold",
-    color: COLORS.text,
-    flex: 1,
-  },
-  listItemStatus: {
-    fontSize: FONT_SIZES.sm,
-    fontWeight: "600",
-  },
-  listItemDetails: {
-    gap: SPACING.xs,
-  },
-  listItemDetail: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textSecondary,
-  },
-  statusBadge: {
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: SPACING.xs,
-    borderRadius: BORDER_RADIUS.sm,
-  },
-  statusBadgeText: {
-    fontSize: FONT_SIZES.xs,
-    fontWeight: "bold",
-    color: "white",
-  },
-  separator: {
-    height: SPACING.md,
-  },
-
-  // Financials members
-  memberFinancials: {
-    gap: SPACING.xs,
-  },
-  financialRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  financialLabel: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textSecondary,
-  },
-  financialValue: {
-    fontSize: FONT_SIZES.sm,
-    fontWeight: "600",
-    color: COLORS.text,
-  },
-
-  // Loading & Empty
-  loadingContainer: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: SPACING.xxl,
-  },
-  loadingText: {
-    fontSize: FONT_SIZES.md,
-    color: COLORS.textSecondary,
-    marginTop: SPACING.md,
-  },
-  emptyContainer: {
-    alignItems: "center",
-    paddingVertical: SPACING.xxl,
-  },
-  emptyTitle: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: "bold",
-    color: COLORS.text,
-    marginTop: SPACING.md,
-    marginBottom: SPACING.sm,
-  },
-  emptyText: {
-    fontSize: FONT_SIZES.md,
-    color: COLORS.textSecondary,
-    textAlign: "center",
-    marginBottom: SPACING.sm,
-  },
+  modalBackdrop:    { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" },
+  modalSheet:       { maxHeight: SCREEN_HEIGHT * 0.82, borderTopLeftRadius: BORDER_RADIUS.xl, borderTopRightRadius: BORDER_RADIUS.xl, overflow: "hidden" },
+  modalContent:     { padding: SPACING.lg, borderTopLeftRadius: BORDER_RADIUS.xl, borderTopRightRadius: BORDER_RADIUS.xl },
+  modalHandle:      { width: 40, height: 4, backgroundColor: THEME.colors.neutral[300], borderRadius: 2, alignSelf: "center", marginBottom: SPACING.lg },
+  modalHeader:      { flexDirection: "row", alignItems: "center", marginBottom: SPACING.lg },
+  modalHeaderIcon:  { width: 50, height: 50, borderRadius: 25, alignItems: "center", justifyContent: "center", marginRight: SPACING.md },
+  modalTitle:       { fontSize: FONT_SIZES.lg, fontWeight: "700", color: THEME.colors.neutral[800] },
+  modalSubtitle:    { fontSize: FONT_SIZES.xs, color: THEME.colors.neutral[500], marginTop: 2 },
+  modalClose:       { padding: SPACING.xs },
+  modalAmountBox:   { backgroundColor: "rgba(255,255,255,0.7)", borderRadius: BORDER_RADIUS.lg, padding: SPACING.lg, marginBottom: SPACING.md, alignItems: "center" },
+  modalAmountLabel: { fontSize: FONT_SIZES.sm, color: THEME.colors.neutral[500], marginBottom: 4 },
+  modalAmountValue: { fontSize: FONT_SIZES.xxl, fontWeight: "800" },
+  detailRow:        { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: SPACING.sm, borderBottomWidth: 1, borderBottomColor: "rgba(0,0,0,0.05)" },
+  detailLabel:      { fontSize: FONT_SIZES.sm, color: THEME.colors.neutral[600], fontWeight: "500" },
+  detailValue:      { fontSize: FONT_SIZES.sm, color: THEME.colors.neutral[800], fontWeight: "600", textAlign: "right", flex: 1, marginLeft: SPACING.md },
 });

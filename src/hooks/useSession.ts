@@ -58,3 +58,23 @@ export function useCurrentSession() {
     },
   });
 }
+
+// 📋 Hook pour lister les sessions d'un exercice (admin)
+export function useSessions(params?: { exercice?: string | number }) {
+  return useQuery({
+    queryKey: ["sessions", params?.exercice],
+    queryFn: async () => {
+      const token = await getStoredAccessToken();
+      if (!token) throw new Error("Token manquant");
+      const { data } = await axios.get(
+        API_BASE_URL + API_ENDPOINTS.sessions,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+          params: params?.exercice ? { exercice: params.exercice } : undefined,
+        }
+      );
+      return data;
+    },
+    enabled: !!params?.exercice,
+  });
+}
