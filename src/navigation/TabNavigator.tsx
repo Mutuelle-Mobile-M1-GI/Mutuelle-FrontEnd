@@ -155,10 +155,10 @@ export default function TabNavigator() {
             }}
           />
           <Tab.Screen
-            name="Bilan"
+            name="Historique"
             component={FinancialReportsScreen}
             options={{
-              title: "Bilan",
+              title: "Historique",
             }}
           />
           <Tab.Screen
