@@ -60,14 +60,7 @@ const FinancialCard = ({ title, icon, value, subtitle, color, progress, trend }:
         />
       )}
     </View>
-    {progress !== undefined && (
-      <View style={styles.progressContainer}>
-        <View style={styles.progressTrack}>
-          <View style={[styles.progressBar, { width: `${progress}%`, backgroundColor: color }]} />
-        </View>
-        <Text style={styles.progressText}>{progress.toFixed(1)}%</Text>
-      </View>
-    )}
+
   </View>
 );
 
@@ -77,12 +70,14 @@ interface MemberCardProps {
   onPress: () => void;
   onPayment: () => void;
   onDetail: () => void;
+  onDeactivate: () => void;
 }
 
-const MemberCard = ({ member, onPress, onPayment, onDetail }: MemberCardProps) => {
+const MemberCard = ({ member, onPress, onPayment, onDetail, onDeactivate }: MemberCardProps) => {
   const isComplete = member.donnees_financieres?.inscription?.inscription_complete;
   const progress = member.donnees_financieres?.inscription?.pourcentage_inscription || 0;
-  
+  const isSuspended = member.statut === "SUSPENDU";
+
   const getStatusColor = () => {
     switch (member.statut) {
       case "EN_REGLE": return COLORS.success;
@@ -92,17 +87,17 @@ const MemberCard = ({ member, onPress, onPayment, onDetail }: MemberCardProps) =
     }
   };
 
-  const getStatusIcon = () => {
+  const getStatusLabel = () => {
     switch (member.statut) {
-      case "EN_REGLE": return "checkmark-circle";
-      case "NON_EN_REGLE": return "warning";
-      case "SUSPENDU": return "ban";
-      default: return "help-circle";
+      case "EN_REGLE": return "En règle";
+      case "NON_EN_REGLE": return "Non en règle";
+      case "SUSPENDU": return "Suspendu";
+      default: return member.statut;
     }
   };
 
   return (
-    <TouchableOpacity style={styles.memberCard} onPress={onPress} activeOpacity={0.7}>
+    <View style={styles.memberCard}>
       <View style={styles.memberCardContent}>
         {/* Avatar */}
         <View style={styles.avatarContainer}>
@@ -116,9 +111,7 @@ const MemberCard = ({ member, onPress, onPayment, onDetail }: MemberCardProps) =
             </View>
           )}
           {/* Indicateur de statut */}
-          <View style={[styles.statusIndicator, { backgroundColor: getStatusColor() }]}>
-            <Ionicons name={getStatusIcon() as any} size={12} color="white" />
-          </View>
+          <View style={[styles.statusIndicator, { backgroundColor: getStatusColor() }]} />
         </View>
 
         {/* Informations principales */}
@@ -126,51 +119,47 @@ const MemberCard = ({ member, onPress, onPayment, onDetail }: MemberCardProps) =
           <Text style={styles.memberName}>{member.utilisateur.nom_complet}</Text>
           <Text style={styles.memberNumber}>{member.numero_membre}</Text>
           <Text style={styles.memberEmail}>{member.utilisateur.email}</Text>
-          
-          {/* Barre de progression inscription */}
-          <View style={styles.inscriptionProgress}>
-            <View style={styles.progressRow}>
-              <Text style={styles.progressLabel}>Inscription</Text>
-              <Text style={styles.progressPercent}>{progress.toFixed(0)}%</Text>
-            </View>
-            <View style={styles.progressTrack}>
-              <View style={[styles.progressBar, { 
-                width: `${progress}%`, 
-                backgroundColor: isComplete ? COLORS.success : COLORS.primary 
-              }]} />
-            </View>
-          </View>
-        </View>
 
-        {/* Actions */}
-        <View style={styles.memberActions}>
-          <TouchableOpacity 
-            style={styles.actionButton} 
-            onPress={onDetail}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="eye-outline" size={18} color={COLORS.primary} />
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={[
-              styles.actionButton,
-              styles.paymentButton,
-              isComplete && styles.disabledButton
-            ]} 
-            onPress={onPayment}
-            disabled={isComplete}
-            activeOpacity={0.7}
-          >
-            <Ionicons 
-              name={isComplete ? "checkmark-circle" : "card-outline"} 
-              size={18} 
-              color={isComplete ? COLORS.success : "white"} 
-            />
-          </TouchableOpacity>
+          {/* Badge statut texte */}
+          <View style={[styles.statusTextBadge, { backgroundColor: getStatusColor() + "15" }]}>
+            <Text style={[styles.statusTextBadgeLabel, { color: getStatusColor() }]}>
+              {getStatusLabel()}
+            </Text>
+          </View>
+
+
         </View>
       </View>
-    </TouchableOpacity>
+
+      {/* Boutons d'action en texte — sous la carte */}
+      <View style={styles.memberActionRow}>
+        <TouchableOpacity
+          style={styles.memberActionBtn}
+          onPress={onDetail}
+          activeOpacity={0.7}
+        >
+          <Text style={[styles.memberActionBtnText, { color: COLORS.primary }]}>
+            Voir détails
+          </Text>
+        </TouchableOpacity>
+
+        <View style={styles.memberActionDivider} />
+
+        <TouchableOpacity
+          style={[styles.memberActionBtn, isSuspended && styles.memberActionBtnDisabled]}
+          onPress={onDeactivate}
+          disabled={isSuspended}
+          activeOpacity={0.7}
+        >
+          <Text style={[
+            styles.memberActionBtnText,
+            { color: isSuspended ? COLORS.textLight : COLORS.error }
+          ]}>
+            {isSuspended ? "Déjà suspendu" : "Désactiver"}
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </View>
   );
 };
 
@@ -783,6 +772,30 @@ export default function InscriptionsScreen() {
     setDisplayedItems(prev => Math.min(prev + ITEMS_PER_PAGE, filteredMembers.length));
   };
 
+  const handleDeactivate = (member: Member) => {
+  Alert.alert(
+    "Désactiver le membre",
+    `Voulez-vous vraiment désactiver ${member.utilisateur.nom_complet} ?\nCette action suspendra son accès à la mutuelle.`,
+    [
+      { text: "Annuler", style: "cancel" },
+      {
+        text: "Désactiver",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            // TODO: remplacer par le vrai appel API quand l'endpoint sera prêt
+            // await deactivateMember(member.id);
+            Alert.alert("Succès", `${member.utilisateur.nom_complet} a été désactivé.`);
+            refetch();
+          } catch (error: any) {
+            Alert.alert("Erreur", error?.response?.data?.error || "Impossible de désactiver le membre");
+          }
+        },
+      },
+    ]
+  );
+};
+
   // Reset pagination when search changes
   useMemo(() => {
     setDisplayedItems(ITEMS_PER_PAGE);
@@ -975,6 +988,7 @@ export default function InscriptionsScreen() {
                   setSelectedMember(member);
                   setShowDetailModal(true);
                 }}
+                onDeactivate={() => handleDeactivate(member)}
               />
             ))}
 
@@ -1980,5 +1994,45 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     fontWeight: "500",
     textAlign: "right",
+  },
+
+  // Statut texte badge
+  statusTextBadge: {
+    alignSelf: "flex-start",
+    paddingHorizontal: SPACING.xs,
+    paddingVertical: 2,
+    borderRadius: BORDER_RADIUS.sm,
+    marginBottom: SPACING.xs,
+    marginTop: 2,
+  },
+  statusTextBadgeLabel: {
+    fontSize: FONT_SIZES.xs,
+    fontWeight: "600",
+  },
+
+  // Boutons d'action texte sous la carte membre
+  memberActionRow: {
+    flexDirection: "row",
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    marginTop: SPACING.sm,
+  },
+  memberActionBtn: {
+    flex: 1,
+    paddingVertical: SPACING.sm,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  memberActionBtnDisabled: {
+    opacity: 0.5,
+  },
+  memberActionBtnText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: "600",
+  },
+  memberActionDivider: {
+    width: 1,
+    backgroundColor: COLORS.border,
+    marginVertical: SPACING.xs,
   },
 });
