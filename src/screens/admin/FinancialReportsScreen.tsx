@@ -267,20 +267,34 @@ const SessionCard = ({ session, onPress }: { session: Session; onPress: () => vo
   );
 };
 
-// ─── Synthèse session (toujours 7 boîtes) ────────────────────────────────────
+// ─── Synthèse session — Tableau Option A ────────────────────────────────────
 
 const SessionSummaryGrid = ({ totals }: { totals: Record<string, number> }) => (
-  <View style={s.summaryGrid}>
-    {Object.entries(OPERATION_CONFIG).map(([type, cfg]) => {
-      const total = totals[type] ?? 0;
+  <View style={s.summaryCard}>
+    {/* En-tête colonnes */}
+    <View style={s.summaryTableHeader}>
+      <Text style={s.summaryHeaderCell}>Catégorie</Text>
+      <Text style={[s.summaryHeaderCell, { textAlign: "right" }]}>Montant</Text>
+    </View>
+
+    {/* Lignes */}
+    {Object.entries(OPERATION_CONFIG).map(([type, cfg], index) => {
+      const total  = totals[type] ?? 0;
+      const isZero = total === 0;
+      const dotColor = cfg.gradient[0];
       return (
-        <LinearGradient key={type} colors={cfg.gradient} style={s.summaryTile}>
-          <Ionicons name={cfg.icon as any} size={20} color="rgba(255,255,255,0.9)" />
-          <Text style={s.summaryTileLabel}>{cfg.label}</Text>
-          <Text style={s.summaryTileValue} numberOfLines={1} adjustsFontSizeToFit>
+        <View
+          key={type}
+          style={[s.summaryTableRow, index === 0 && { borderTopWidth: 0 }]}
+        >
+          <View style={s.summaryRowLeft}>
+            <View style={[s.summaryDot, { backgroundColor: dotColor }]} />
+            <Text style={s.summaryRowLabel}>{cfg.label}</Text>
+          </View>
+          <Text style={[s.summaryRowAmount, isZero ? s.summaryRowAmountZero : { color: dotColor }]}>
             {formatMoney(total)}
           </Text>
-        </LinearGradient>
+        </View>
       );
     })}
   </View>
@@ -873,11 +887,16 @@ const s = StyleSheet.create({
   sessionStatusBadge: { marginTop: 5, alignSelf: "flex-start", backgroundColor: "rgba(255,255,255,0.2)", paddingHorizontal: SPACING.sm, paddingVertical: 2, borderRadius: 20 },
   sessionStatusText: { fontSize: 11, color: "white", fontWeight: "700" },
 
-  // Synthèse session — grille de 7 tuiles (3 par ligne sauf la dernière)
-  summaryGrid: { flexDirection: "row", flexWrap: "wrap", gap: SPACING.sm },
-  summaryTile: { width: "30%", flexGrow: 1, borderRadius: 14, padding: SPACING.sm + 2, alignItems: "center", gap: 3, elevation: 2, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 },
-  summaryTileLabel: { fontSize: 10, color: "rgba(255,255,255,0.85)", fontWeight: "600", textAlign: "center" },
-  summaryTileValue: { fontSize: FONT_SIZES.xs, fontWeight: "800", color: "white", textAlign: "center" },
+  // Synthèse session — tableau Option A
+  summaryCard:          { backgroundColor: "white", borderRadius: 16, overflow: "hidden", elevation: 2, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.08, shadowRadius: 4 },
+  summaryTableHeader:   { flexDirection: "row", justifyContent: "space-between", paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm },
+  summaryHeaderCell:    { fontSize: 11, fontWeight: "700", color: THEME.colors.neutral[400], textTransform: "uppercase", letterSpacing: 0.5 },
+  summaryTableRow:      { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: SPACING.md, paddingVertical: 10, borderTopWidth: 0.5, borderTopColor: "#F1F5F9" },
+  summaryRowLeft:       { flexDirection: "row", alignItems: "center", gap: SPACING.sm, flex: 1 },
+  summaryDot:           { width: 8, height: 8, borderRadius: 4 },
+  summaryRowLabel:      { fontSize: FONT_SIZES.sm, fontWeight: "600", color: THEME.colors.neutral[800] },
+  summaryRowAmount:     { fontSize: FONT_SIZES.sm, fontWeight: "700", textAlign: "right" },
+  summaryRowAmountZero: { color: THEME.colors.neutral[400], fontWeight: "400" },
 
   // Filtres
   filterScroll: { marginBottom: SPACING.sm },
