@@ -527,7 +527,7 @@ const NewSessionModal = ({ visible, onClose, onSubmit, loading }: NewSessionModa
             </View>
  
             <Text style={styles.sectionHint}>
-              Facultatif — renseigner uniquement si une dépense est associée à cette session.
+              Facultatif : Remplir ce champ uniquement si une dépense est associée à cette session.
             </Text>
  
             <Text style={styles.inputLabel}>Montant de la dépense (FCFA)</Text>
@@ -544,7 +544,7 @@ const NewSessionModal = ({ visible, onClose, onSubmit, loading }: NewSessionModa
             </Text>
             <TextInput
               style={[styles.input, styles.inputMultiline, !hasDepense && styles.inputDisabled]}
-              placeholder="Ex: Achat fournitures, location salle…"
+              placeholder="Ex: Achat fournitures, location salle . . ."
               value={formData.motif_depense}
               onChangeText={(text) => setFormData({ ...formData, motif_depense: text })}
               multiline

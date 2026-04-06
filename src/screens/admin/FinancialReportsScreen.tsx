@@ -10,7 +10,6 @@ import { useSolidarityPayments } from "../../hooks/useSolidarity";
 import { useRenflouements } from "../../hooks/useRenflouement";
 import { useSavings } from "../../hooks/useSaving";
 import { useAssistances } from "../../hooks/useAssistance";
-import { useInscriptionPayments } from "../../hooks/useInscription";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useExercises } from "../../hooks/useExercise";
@@ -150,27 +149,39 @@ const ExerciseDashboard = ({ exercice }: { exercice: Exercise }) => {
   const { data: savingsRaw } = useSavings({ exercice: exercice.id });
   const { data: membersRaw } = useMembers();
 
-  const totalEmprunts  = useMemo(() => arr(loansRaw).reduce((s: number, l: any) => s + (parseFloat(l.montant_emprunte) || 0), 0), [loansRaw]);
-  const totalEpargne   = useMemo(() => arr(savingsRaw).reduce((s: number, e: any) => s + (parseFloat(e.montant) || 0), 0), [savingsRaw]);
-  const nombreMembres  = arr(membersRaw).length;
-  const fondsSocial    = (exercice as any)?.fonds_social_info?.montant_total ?? 0;
+  const totalEmprunts = useMemo(() => arr(loansRaw).reduce((s: number, l: any) => s + (parseFloat(l.montant_emprunte) || 0), 0), [loansRaw]);
+  const totalEpargne  = useMemo(() => arr(savingsRaw).reduce((s: number, e: any) => s + (parseFloat(e.montant) || 0), 0), [savingsRaw]);
+  const nombreMembres = arr(membersRaw).length;
+  const fondsSocial   = (exercice as any)?.fonds_social_info?.montant_total ?? 0;
 
-  const tiles = [
-    { label: "Fonds social",   value: formatMoney(fondsSocial),  icon: "shield-checkmark", gradient: THEME.gradients.teal   },
-    { label: "Total emprunts", value: formatMoney(totalEmprunts), icon: "trending-up",      gradient: THEME.gradients.orange },
-    { label: "Total épargnes", value: formatMoney(totalEpargne),  icon: "wallet",           gradient: THEME.gradients.pink  },
-    { label: "Membres",        value: String(nombreMembres),      icon: "people",           gradient: THEME.gradients.primary},
+  const rows = [
+    { label: "Fonds social",   value: formatMoney(fondsSocial),   dotColor: THEME.gradients.teal[0]    },
+    { label: "Total emprunts", value: formatMoney(totalEmprunts),  dotColor: THEME.gradients.orange[0]  },
+    { label: "Total epargnes", value: formatMoney(totalEpargne),   dotColor: THEME.gradients.pink[0]    },
+    { label: "Membres",        value: String(nombreMembres),       dotColor: THEME.gradients.primary[0] },
   ];
 
   return (
-    <View style={s.dashGrid}>
-      {tiles.map((t, i) => (
-        <LinearGradient key={i} colors={t.gradient} style={s.dashTile}>
-          <Ionicons name={t.icon as any} size={22} color="rgba(255,255,255,0.9)" />
-          <Text style={s.dashTileValue} numberOfLines={1} adjustsFontSizeToFit>{t.value}</Text>
-          <Text style={s.dashTileLabel}>{t.label}</Text>
-        </LinearGradient>
-      ))}
+    <View style={s.dashCard}>
+      {/* En-tete colonnes */}
+      <View style={s.dashTableHeader}>
+        <Text style={s.dashHeaderCell}>Indicateur</Text>
+        <Text style={[s.dashHeaderCell, { textAlign: "right" }]}>Valeur</Text>
+      </View>
+      {rows.map((row, index) => {
+        const isZero = row.value === "0 FCFA" || row.value === "0";
+        return (
+          <View key={index} style={[s.dashTableRow, index === 0 && { borderTopWidth: 0 }]}>
+            <View style={s.dashRowLeft}>
+              <View style={[s.dashDot, { backgroundColor: row.dotColor }]} />
+              <Text style={s.dashRowLabel}>{row.label}</Text>
+            </View>
+            <Text style={[s.dashRowValue, isZero && s.dashRowValueZero, !isZero && { color: row.dotColor }]}>
+              {row.value}
+            </Text>
+          </View>
+        );
+      })}
     </View>
   );
 };
@@ -608,13 +619,14 @@ const SessionsView = ({ exercice, onSelectSession }: {
 // ─── Vue opérations ───────────────────────────────────────────────────────────
 
 const OperationsView = ({ session }: { session: Session }) => {
-  const { data: loansRaw }               = useLoans({ session: session.id });
-  const { data: repaymentsRaw }          = useRepayments({ session: session.id });
-  const { data: solidarityRaw }          = useSolidarityPayments({ session: session.id });
-  const { data: renflouementRaw }        = useRenflouements({ session: session.id });
-  const { data: savingsRaw }             = useSavings({ session: session.id });
-  const { data: assistancesRaw }         = useAssistances({ session: session.id });
-  const { data: inscriptionPaymentsRaw } = useInscriptionPayments({ session: session.id });
+  const { data: loansRaw }        = useLoans({ session: session.id });
+  const { data: repaymentsRaw }   = useRepayments({ session: session.id });
+  const { data: solidarityRaw }   = useSolidarityPayments({ session: session.id });
+  const { data: renflouementRaw } = useRenflouements({ session: session.id });
+  const { data: savingsRaw }      = useSavings({ session: session.id });
+  const { data: assistancesRaw }  = useAssistances({ session: session.id });
+  // Inscriptions : reconstruites depuis les membres (pas d'endpoint dédié)
+  const { data: membersRaw }      = useMembers();
 
   const [selectedItem,   setSelectedItem]   = useState<TimelineItem | null>(null);
   const [searchText,     setSearchText]     = useState("");
@@ -624,17 +636,84 @@ const OperationsView = ({ session }: { session: Session }) => {
   // ── Construire timeline ──
   const timeline = useMemo<TimelineItem[]>(() => {
     const items: TimelineItem[] = [];
-    arr(loansRaw).forEach((l: any) => items.push({ id: `loan-${l.id}`, type: "emprunt", date: l.date_emprunt, amount: parseFloat(l.montant_emprunte) || 0, data: l, status: l.statut, memberName: extractMemberName(l), memberNumero: extractMemberNumero(l) }));
-    arr(repaymentsRaw).forEach((r: any) => items.push({ id: `rep-${r.id}`, type: "remboursement", date: r.date_remboursement, amount: parseFloat(r.montant) || 0, data: r, memberName: extractMemberName(r), memberNumero: extractMemberNumero(r) }));
-    arr(solidarityRaw).forEach((s: any) => items.push({ id: `sol-${s.id}`, type: "solidarite", date: s.date_paiement, amount: parseFloat(s.montant) || 0, data: s, memberName: extractMemberName(s), memberNumero: extractMemberNumero(s) }));
+
+    arr(loansRaw).forEach((l: any) => items.push({
+      id: `loan-${l.id}`, type: "emprunt",
+      date: l.date_emprunt, amount: parseFloat(l.montant_emprunte) || 0,
+      data: l, status: l.statut,
+      memberName: extractMemberName(l), memberNumero: extractMemberNumero(l),
+    }));
+
+    arr(repaymentsRaw).forEach((r: any) => items.push({
+      id: `rep-${r.id}`, type: "remboursement",
+      date: r.date_remboursement, amount: parseFloat(r.montant) || 0,
+      data: r,
+      memberName: extractMemberName(r), memberNumero: extractMemberNumero(r),
+    }));
+
+    arr(solidarityRaw).forEach((sol: any) => items.push({
+      id: `sol-${sol.id}`, type: "solidarite",
+      date: sol.date_paiement, amount: parseFloat(sol.montant) || 0,
+      data: sol,
+      memberName: extractMemberName(sol), memberNumero: extractMemberNumero(sol),
+    }));
+
     arr(renflouementRaw).forEach((renf: any) => {
-      (renf.paiements_details || []).forEach((pay: any) => items.push({ id: `renf-${pay.id}`, type: "renflouement", date: pay.date_paiement, amount: parseFloat(pay.montant) || 0, data: { ...pay, cause: renf.cause }, memberName: extractMemberName(pay), memberNumero: extractMemberNumero(pay) }));
+      (renf.paiements_details || []).forEach((pay: any) => items.push({
+        id: `renf-${pay.id}`, type: "renflouement",
+        date: pay.date_paiement, amount: parseFloat(pay.montant) || 0,
+        data: { ...pay, cause: renf.cause },
+        memberName: extractMemberName(pay), memberNumero: extractMemberNumero(pay),
+      }));
     });
-    arr(savingsRaw).forEach((sv: any) => items.push({ id: `sav-${sv.id}`, type: "epargne", date: sv.date_transaction || sv.date_creation, amount: parseFloat(sv.montant) || 0, data: sv, status: sv.type_transaction_display || sv.type, memberName: extractMemberName(sv), memberNumero: extractMemberNumero(sv) }));
-    arr(assistancesRaw).forEach((a: any) => items.push({ id: `ast-${a.id}`, type: "assistance", date: a.date_paiement || a.date_demande, amount: parseFloat(a.montant) || 0, data: a, status: a.statut, memberName: extractMemberName(a), memberNumero: extractMemberNumero(a) }));
-    arr(inscriptionPaymentsRaw).forEach((p: any) => items.push({ id: `ins-${p.id}`, type: "paiement-inscription", date: p.date_paiement, amount: parseFloat(p.montant) || 0, data: p, memberName: extractMemberName(p), memberNumero: extractMemberNumero(p) }));
+
+    arr(savingsRaw).forEach((sv: any) => items.push({
+      id: `sav-${sv.id}`, type: "epargne",
+      date: sv.date_transaction || sv.date_creation, amount: parseFloat(sv.montant) || 0,
+      data: sv, status: sv.type_transaction_display || sv.type,
+      memberName: extractMemberName(sv), memberNumero: extractMemberNumero(sv),
+    }));
+
+    arr(assistancesRaw).forEach((a: any) => items.push({
+      id: `ast-${a.id}`, type: "assistance",
+      date: a.date_paiement || a.date_demande, amount: parseFloat(a.montant) || 0,
+      data: a, status: a.statut,
+      memberName: extractMemberName(a), memberNumero: extractMemberNumero(a),
+    }));
+
+    // ── Inscriptions reconstruites depuis les membres ──
+    // Un membre est "inscrit dans cette session" si session_inscription === session.id
+    arr(membersRaw)
+      .filter((m: any) => String(m.session_inscription) === String(session.id))
+      .forEach((m: any) => {
+        const montant =
+          parseFloat(m.donnees_financieres?.inscription?.montant_paye) ||
+          parseFloat(m.donnees_financieres?.inscription?.montant) ||
+          parseFloat(m.donnees_financieres?.resume_financier?.total_inscription) ||
+          0;
+        const nom    = m.utilisateur?.nom_complet || m.utilisateur?.username || "Membre";
+        const numero = m.numero_membre || "";
+        items.push({
+          id:           `ins-${m.id}`,
+          type:         "paiement-inscription",
+          date:         m.date_inscription || m.date_creation,
+          amount:       montant,
+          data:         { ...m, membre_info: { nom_complet: nom, numero_membre: numero } },
+          memberName:   nom,
+          memberNumero: numero,
+        });
+      });
+
+      // Juste avant return items.sort(...)
+      console.log("MEMBRES RAW:", arr(membersRaw).length);
+      console.log("SESSION ID:", session.id);
+      console.log("MEMBRES FILTRÉS:", arr(membersRaw).filter((m: any) => 
+        String(m.session_inscription) === String(session.id)
+      ).length);
+      console.log("SAMPLE session_inscription:", arr(membersRaw)[0]?.session_inscription);
+
     return items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [loansRaw, repaymentsRaw, solidarityRaw, renflouementRaw, savingsRaw, assistancesRaw, inscriptionPaymentsRaw]);
+  }, [loansRaw, repaymentsRaw, solidarityRaw, renflouementRaw, savingsRaw, assistancesRaw, membersRaw, session.id]);
 
   // ── Filtrage : d'abord par type, ensuite par nom de membre ──
   const filteredTimeline = useMemo(() => {
@@ -857,10 +936,16 @@ const s = StyleSheet.create({
   crumbActive:{ color: "white", fontWeight: "700" },
 
   // Dashboard exercice (grille 2x2)
-  dashGrid: { flexDirection: "row", flexWrap: "wrap", gap: SPACING.sm, marginTop: SPACING.sm },
-  dashTile: { width: "47%", borderRadius: 16, padding: SPACING.md, gap: 4 },
-  dashTileValue: { fontSize: FONT_SIZES.md, fontWeight: "800", color: "white", marginTop: 4 },
-  dashTileLabel: { fontSize: 11, color: "rgba(255,255,255,0.8)", fontWeight: "500" },
+  // Dashboard exercice - tableau (meme style que bilan session)
+  dashCard:        { backgroundColor: "rgba(255,255,255,0.12)", borderRadius: 14, overflow: "hidden", marginTop: SPACING.sm },
+  dashTableHeader: { flexDirection: "row", justifyContent: "space-between", paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm },
+  dashHeaderCell:  { fontSize: 10, fontWeight: "700", color: "rgba(255,255,255,0.55)", textTransform: "uppercase", letterSpacing: 0.5 },
+  dashTableRow:    { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: SPACING.md, paddingVertical: 10, borderTopWidth: 0.5, borderTopColor: "rgba(255,255,255,0.15)" },
+  dashRowLeft:     { flexDirection: "row", alignItems: "center", gap: SPACING.sm, flex: 1 },
+  dashDot:         { width: 8, height: 8, borderRadius: 4 },
+  dashRowLabel:    { fontSize: FONT_SIZES.sm, fontWeight: "600", color: "rgba(255,255,255,0.85)" },
+  dashRowValue:    { fontSize: FONT_SIZES.sm, fontWeight: "700", textAlign: "right" },
+  dashRowValueZero:{ color: "rgba(255,255,255,0.4)", fontWeight: "400" },
 
   // Section header
   sectionHeader: { flexDirection: "row", alignItems: "center", gap: SPACING.sm, marginBottom: SPACING.md },
