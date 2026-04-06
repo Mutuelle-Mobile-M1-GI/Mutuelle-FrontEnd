@@ -5,6 +5,9 @@ import {
   logout as apiLogout, 
   login as apiLogin 
 } from "../services/auth.service";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as SecureStore from "expo-secure-store";
+import { ASYNC_STORAGE_KEYS } from "../constants/config";
 
 type AuthContextType = {
   user: User | null;
@@ -38,12 +41,22 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const loadUser = async () => {
       try {
         setIsLoading(true);
-        const storedUser = await getStoredUser();
-        console.log("Utilisateur chargé depuis le storage:", storedUser);
-        setUser(storedUser);
-        setIsFirstLogin(false); // Si on charge depuis le storage, ce n'est pas un premier login
+        
+        // ⚠️ SÉCURITÉ: Supprimer les tokens/PIN à chaque démarrage
+        // Pour forcer la reconnexion complète (données financières sensibles)
+        await AsyncStorage.multiRemove([
+          ASYNC_STORAGE_KEYS.accessToken,
+          ASYNC_STORAGE_KEYS.refreshToken,
+          ASYNC_STORAGE_KEYS.currentUser,
+        ]);
+        await SecureStore.deleteItemAsync(ASYNC_STORAGE_KEYS.pin).catch(() => {});
+        console.log("✓ Session effacée au démarrage - reconnexion requise");
+        
+        // Aucun utilisateur après le nettoyage - écran de login
+        setUser(null);
+        setIsFirstLogin(false);
       } catch (error) {
-        console.log("Erreur chargement utilisateur:", error);
+        console.log("Erreur nettoyage session:", error);
         setUser(null);
       } finally {
         setIsLoading(false);

@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React from "react";
 import GlobalRefreshButton from "./src/components/GlobalRefreshButton";
 import { ThemeProvider } from "./src/context/ThemeContext";
 import { AuthProvider } from "./src/context/AuthContext";
@@ -8,7 +8,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NavigationContainer } from "@react-navigation/native";
 import AppNavigator from "./src/navigation/AppNavigator";
 import { StatusBar } from "expo-status-bar";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { View } from "react-native";
 
 const queryClient = new QueryClient({
@@ -20,20 +19,6 @@ const queryClient = new QueryClient({
 });
 
 export default function App() {
-  
-  // BLOC DE DÉPANNAGE : À supprimer après avoir réussi à vous connecter
-  useEffect(() => {
-    const clearAppStorage = async () => {
-      try {
-        await AsyncStorage.clear();
-        console.log("🧹 Nettoyage terminé : Ancien PIN et Token supprimés.");
-      } catch (e) {
-        console.error("Erreur lors du nettoyage", e);
-      }
-    };
-    clearAppStorage();
-  }, []);
-
   return (
     <ThemeProvider>
       <AppProvider>
