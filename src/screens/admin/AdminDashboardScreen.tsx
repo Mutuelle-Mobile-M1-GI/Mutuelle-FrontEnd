@@ -525,14 +525,31 @@ interface NewSessionModalProps {
   onSubmit: (data: any) => void;
   loading: boolean;
 }
-
+ 
 const NewSessionModal = ({ visible, onClose, onSubmit, loading }: NewSessionModalProps) => {
   const [formData, setFormData] = useState({
     nom: "",
     date_session: new Date().toISOString().split("T")[0],
     montant_collation: "45000",
+    montant_depense: "",
+    motif_depense: "",
   });
-
+ 
+  // Réinitialiser le formulaire à chaque ouverture
+  React.useEffect(() => {
+    if (visible) {
+      setFormData({
+        nom: "",
+        date_session: new Date().toISOString().split("T")[0],
+        montant_collation: "45000",
+        montant_depense: "",
+        motif_depense: "",
+      });
+    }
+  }, [visible]);
+ 
+  const hasDepense = formData.montant_depense.trim() !== "";
+ 
   return (
     <Modal visible={visible} transparent animationType="fade" statusBarTranslucent>
       <BlurView intensity={20} style={StyleSheet.absoluteFillObject} />
@@ -542,18 +559,20 @@ const NewSessionModal = ({ visible, onClose, onSubmit, loading }: NewSessionModa
         keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
       >
         <View style={styles.modalContent}>
+          {/* ── En-tête ── */}
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>Nouvelle Session</Text>
             <TouchableOpacity onPress={onClose}>
               <Ionicons name="close" size={24} color={COLORS.textSecondary} />
             </TouchableOpacity>
           </View>
-
+ 
           <ScrollView
             style={styles.modalBody}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
+            {/* ── Section infos session ── */}
             <Text style={styles.inputLabel}>Nom de la session</Text>
             <TextInput
               style={styles.input}
@@ -561,6 +580,7 @@ const NewSessionModal = ({ visible, onClose, onSubmit, loading }: NewSessionModa
               value={formData.nom}
               onChangeText={(text) => setFormData({ ...formData, nom: text })}
             />
+ 
             <Text style={styles.inputLabel}>Date de session</Text>
             <TextInput
               style={styles.input}
@@ -568,6 +588,7 @@ const NewSessionModal = ({ visible, onClose, onSubmit, loading }: NewSessionModa
               value={formData.date_session}
               onChangeText={(text) => setFormData({ ...formData, date_session: text })}
             />
+ 
             <Text style={styles.inputLabel}>Montant collation (FCFA)</Text>
             <TextInput
               style={styles.input}
@@ -576,17 +597,65 @@ const NewSessionModal = ({ visible, onClose, onSubmit, loading }: NewSessionModa
               onChangeText={(text) => setFormData({ ...formData, montant_collation: text })}
               keyboardType="numeric"
             />
-            <Text style={styles.helperText}>Montant par défaut: 45 000 FCFA</Text>
+            <Text style={styles.helperText}>Montant par défaut : 45 000 FCFA</Text>
+ 
+            {/* ── Séparateur section dépense ── */}
+            <View style={styles.sectionDivider}>
+              <View style={styles.sectionDividerLine} />
+              <View style={styles.sectionDividerBadge}>
+                <Ionicons name="receipt-outline" size={13} color="#F97316" />
+                <Text style={styles.sectionDividerText}>Dépense supplémentaire</Text>
+              </View>
+              <View style={styles.sectionDividerLine} />
+            </View>
+ 
+            <Text style={styles.sectionHint}>
+              Facultatif : Remplir ce champ uniquement si une dépense est associée à cette session.
+            </Text>
+ 
+            <Text style={styles.inputLabel}>Montant de la dépense (FCFA)</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Ex: 10 000"
+              value={formData.montant_depense}
+              onChangeText={(text) => setFormData({ ...formData, montant_depense: text })}
+              keyboardType="numeric"
+            />
+ 
+            <Text style={[styles.inputLabel, !hasDepense && styles.inputLabelDisabled]}>
+              Motif / Description
+            </Text>
+            <TextInput
+              style={[styles.input, styles.inputMultiline, !hasDepense && styles.inputDisabled]}
+              placeholder="Ex: Achat fournitures, location salle . . ."
+              value={formData.motif_depense}
+              onChangeText={(text) => setFormData({ ...formData, motif_depense: text })}
+              multiline
+              numberOfLines={3}
+              editable={hasDepense}
+            />
+            {hasDepense && formData.motif_depense.trim() === "" && (
+              <Text style={styles.warningText}>
+                ⚠ Veuillez renseigner un motif pour cette dépense.
+              </Text>
+            )}
+ 
+            <View style={{ height: SPACING.md }} />
           </ScrollView>
-
+ 
+          {/* ── Boutons ── */}
           <View style={styles.modalActions}>
             <TouchableOpacity style={styles.cancelButton} onPress={onClose}>
               <Text style={styles.cancelButtonText}>Annuler</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.submitButton, loading && styles.submitButtonDisabled]}
+              style={[
+                styles.submitButton,
+                (loading || (hasDepense && formData.motif_depense.trim() === "")) &&
+                  styles.submitButtonDisabled,
+              ]}
               onPress={() => onSubmit(formData)}
-              disabled={loading}
+              disabled={loading || (hasDepense && formData.motif_depense.trim() === "")}
             >
               {loading ? (
                 <ActivityIndicator size="small" color="white" />
@@ -707,7 +776,7 @@ export default function AdminDashboardScreen() {
     } as never);
   };
 
-  const handleCreateSession = async (sessionData: any) => {
+  /*const handleCreateSession = async (sessionData: any) => {
     try {
       const apiData = {
         nom: sessionData.nom.trim(),
@@ -716,6 +785,42 @@ export default function AdminDashboardScreen() {
         description: `Session créée le ${new Date().toLocaleDateString("fr-FR")}`,
         exercice: currentExercise?.id,
       };
+      await createSessionMutation.mutateAsync(apiData);
+      Alert.alert("Succès", "Session créée avec succès !");
+      setShowSessionModal(false);
+    } catch (error: any) {
+      let errorMessage = "Impossible de créer la session";
+      if (error.response?.data) {
+        const errorData = error.response.data;
+        if (typeof errorData === "object") {
+          errorMessage = Object.entries(errorData)
+            .map(([f, m]) => `${f}: ${Array.isArray(m) ? m.join(", ") : m}`)
+            .join("\n");
+        }
+      }
+      Alert.alert("Erreur", errorMessage);
+    }
+  };*/
+
+  const handleCreateSession = async (sessionData: any) => {
+    try {
+      const montantDepense = parseFloat(sessionData.montant_depense) || 0;
+      const hasDepense     = montantDepense > 0;
+ 
+      const apiData: any = {
+        nom:              sessionData.nom.trim(),
+        date_session:     sessionData.date_session,
+        montant_collation: parseFloat(sessionData.montant_collation) || 45000,
+        description:      `Session créée le ${new Date().toLocaleDateString("fr-FR")}`,
+        exercice:         currentExercise?.id,
+      };
+ 
+      // N'envoyer les champs dépense que si un montant est saisi
+      if (hasDepense) {
+        apiData.montant_depense = montantDepense;
+        apiData.motif_depense   = sessionData.motif_depense.trim();
+      }
+ 
       await createSessionMutation.mutateAsync(apiData);
       Alert.alert("Succès", "Session créée avec succès !");
       setShowSessionModal(false);
@@ -1176,6 +1281,17 @@ const styles = StyleSheet.create({
   submitButton: { flex: 1, padding: SPACING.md, borderRadius: BORDER_RADIUS.md, backgroundColor: COLORS.primary, alignItems: "center" },
   submitButtonDisabled: { backgroundColor: COLORS.textLight },
   submitButtonText: { fontSize: FONT_SIZES.md, fontWeight: "600", color: "white" },
+
+  // Section dépense
+  sectionDivider:      { flexDirection: "row", alignItems: "center", marginTop: SPACING.lg, marginBottom: SPACING.sm },
+  sectionDividerLine:  { flex: 1, height: 1, backgroundColor: COLORS.border },
+  sectionDividerBadge: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#FFF7ED", paddingHorizontal: SPACING.sm, paddingVertical: 4, borderRadius: 20, marginHorizontal: SPACING.sm },
+  sectionDividerText:  { fontSize: FONT_SIZES.xs, fontWeight: "700", color: "#F97316" },
+  sectionHint:         { fontSize: FONT_SIZES.xs, color: COLORS.textSecondary, marginBottom: SPACING.md, fontStyle: "italic" },
+  inputMultiline:      { minHeight: 72, textAlignVertical: "top", paddingTop: SPACING.sm },
+  inputDisabled:       { backgroundColor: COLORS.border, color: COLORS.textLight },
+  inputLabelDisabled:  { color: COLORS.textLight },
+  warningText:         { fontSize: FONT_SIZES.xs, color: "#F97316", marginTop: -SPACING.sm, marginBottom: SPACING.sm },
 });
 
 // ─────────────────────────────────────────────

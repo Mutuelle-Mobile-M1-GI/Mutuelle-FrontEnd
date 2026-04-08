@@ -23,7 +23,10 @@ export const createNewSession = async (
     nom: string;
     date_session: string;
     montant_collation: number;
+    montant_depense?: number;
+    motif_depense?: string;
     description?: string;
+    exercice: string;
   },
   accessToken: string
 ): Promise<any> => {
@@ -31,10 +34,10 @@ export const createNewSession = async (
     API_BASE_URL + API_ENDPOINTS.sessions,
     sessionData,
     {
-      headers: { 
+      headers: {
         Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json'
-      }
+        "Content-Type": "application/json",
+      },
     }
   );
   return data;
