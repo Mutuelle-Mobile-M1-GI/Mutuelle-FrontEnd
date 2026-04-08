@@ -27,46 +27,13 @@ import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { useCurrentExercise, useCurrentSession } from "../../hooks/useExercise";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCreateNewSession } from "../../hooks/useSession";
+import { useOperationsHistory, Operation } from "../../hooks/useOperationsHistory";
+import { useExercises, useSessions } from "../../hooks/useListData";
 
 const { width } = Dimensions.get("window");
 
 // 🎯 Configuration de la pagination
 const ITEMS_PER_PAGE = 10;
-
-// ─────────────────────────────────────────────
-// 📄 DONNÉES SIMULÉES
-// ─────────────────────────────────────────────
-const MOCK_EXERCICES = [
-  { id: 1, nom: "Exe 1", date_debut: "2024-03-02", date_fin: "2025-03-02", statut: "ACTIF" },
-  { id: 2, nom: "Exe 2", date_debut: "2022-03-02", date_fin: "2023-03-02", statut: "CLOTURE" },
-  { id: 3, nom: "Exe 3", date_debut: "2021-03-02", date_fin: "2022-03-02", statut: "CLOTURE" },
-  { id: 4, nom: "Exe 4", date_debut: "2021-03-02", date_fin: "2022-03-02", statut: "CLOTURE" },
-  { id: 5, nom: "Exe 5", date_debut: "2021-03-02", date_fin: "2022-03-02", statut: "CLOTURE" },
-  { id: 6, nom: "Exe 6", date_debut: "2021-03-02", date_fin: "2022-03-02", statut: "CLOTURE" },
-  { id: 7, nom: "Exe 7", date_debut: "2021-03-02", date_fin: "2022-03-02", statut: "CLOTURE" },
-  { id: 8, nom: "Exe 8", date_debut: "2021-03-02", date_fin: "2022-03-02", statut: "CLOTURE" },
-  { id: 9, nom: "Exe 9", date_debut: "2021-03-02", date_fin: "2022-03-02", statut: "CLOTURE" },
-  { id: 10, nom: "Exe 10", date_debut: "2021-03-02", date_fin: "2022-03-02", statut: "CLOTURE" },
-  { id: 11, nom: "Exe 11", date_debut: "2021-03-02", date_fin: "2022-03-02", statut: "CLOTURE" },
-];
-
-const MOCK_SESSIONS = [
-  { id: 1, nom: "Session Janvier 2025",  date_session: "2025-02-02", exercice_id: 1, statut: "ACTIVE",   nombre_membres_inscrits: 24, total_solidarite_collectee: 180000 },
-  { id: 2, nom: "Session Décembre 2024", date_session: "2025-01-02", exercice_id: 1, statut: "CLOTUREE", nombre_membres_inscrits: 22, total_solidarite_collectee: 165000 },
-  { id: 3, nom: "Session Novembre 2024", date_session: "2024-12-01", exercice_id: 1, statut: "CLOTUREE", nombre_membres_inscrits: 20, total_solidarite_collectee: 150000 },
-  { id: 4, nom: "Session Octobre 2024",  date_session: "2024-11-01", exercice_id: 2, statut: "CLOTUREE", nombre_membres_inscrits: 19, total_solidarite_collectee: 142500 },
-];
-
-const MOCK_OPERATIONS = [
-  { id: 1, type: "INSCRIPTION",    membre: "Jean Mbarga",   montant: 25000,  date: "2025-02-02", session_id: 1, description: "Inscription membre" },
-  { id: 2, type: "SOLIDARITE",     membre: "Marie Ngo",     montant: 5000,   date: "2025-02-02", session_id: 1, description: "Paiement solidarité mensuelle" },
-  { id: 3, type: "AIDE",           membre: "Paul Etoa",     montant: 50000,  date: "2025-02-03", session_id: 1, description: "Aide médicale accordée" },
-  { id: 4, type: "EMPRUNT",        membre: "Sylvie Belinga",montant: 150000, date: "2025-02-05", session_id: 1, description: "Prêt accordé" },
-  { id: 5, type: "REMBOURSEMENT",  membre: "Sylvie Belinga",montant: 15000,  date: "2025-02-10", session_id: 1, description: "Remboursement mensuel" },
-  { id: 6, type: "INSCRIPTION",    membre: "Alain Fouda",   montant: 25000,  date: "2025-01-02", session_id: 2, description: "Inscription membre" },
-  { id: 7, type: "SOLIDARITE",     membre: "Jean Mbarga",   montant: 5000,   date: "2025-01-02", session_id: 2, description: "Paiement solidarité mensuelle" },
-  { id: 8, type: "EPARGNE",        membre: "Marie Ngo",     montant: 30000,  date: "2025-01-05", session_id: 2, description: "Versement épargne" },
-];
 
 // ─────────────────────────────────────────────
 // 🎨 CONFIG TYPE D'OPÉRATION
@@ -81,13 +48,14 @@ const TYPE_CONFIG: Record<string, { label: string; color: string; bg: string }> 
 };
 
 // ─────────────────────────────────────────────
-// 📄 PAGE HISTORIQUE — multi-filtres
+// 📄 PAGE HISTORIQUE (mini-modal interne au dashboard)
+// Utilisée UNIQUEMENT pour les raccourcis soldes (Fond Social, Épargne…)
 // ─────────────────────────────────────────────
 interface HistoriquePageProps {
   visible: boolean;
   onClose: () => void;
   initialFilters?: string[];
-  sessionId?: number | null;
+  sessionId?: string | number | null;
   sessionNom?: string | null;
   title: string;
 }
@@ -100,7 +68,8 @@ const HistoriquePage = ({
   sessionNom,
   title,
 }: HistoriquePageProps) => {
-  const [activeFilters, setActiveFilters] = useState<string[]>(initialFilters);
+  const [activeFilters, setActiveFilters] = useState<string[]>(initialFilters || []);
+  const { data: operations = [], isLoading, error } = useOperationsHistory(sessionId);
 
   React.useEffect(() => {
     setActiveFilters(initialFilters);
@@ -113,8 +82,8 @@ const HistoriquePage = ({
     );
   };
 
-  const filteredOps = MOCK_OPERATIONS.filter((op) => {
-    const matchSession = sessionId ? op.session_id === sessionId : true;
+  const filteredOps = operations.filter((op) => {
+    const matchSession = sessionId ? String(op.session_id) === String(sessionId) : true;
     const matchType = activeFilters.length === 0 ? true : activeFilters.includes(op.type);
     return matchSession && matchType;
   });
@@ -172,34 +141,50 @@ const HistoriquePage = ({
           </Text>
         </View>
 
-        <FlatList
-          data={filteredOps}
-          keyExtractor={(item) => String(item.id)}
-          contentContainerStyle={hist.list}
-          ListEmptyComponent={
-            <View style={hist.empty}>
-              <Text style={hist.emptyText}>Aucune opération trouvée</Text>
-            </View>
-          }
-          renderItem={({ item }) => {
-            const cfg = TYPE_CONFIG[item.type] || { label: item.type, color: "#666", bg: "#66666615" };
-            return (
-              <View style={hist.opCard}>
-                <View style={[hist.opTypeBadge, { backgroundColor: cfg.bg }]}>
-                  <Text style={[hist.opTypeText, { color: cfg.color }]}>{cfg.label}</Text>
-                </View>
-                <View style={hist.opBody}>
-                  <Text style={hist.opMembre}>{item.membre}</Text>
-                  <Text style={hist.opDesc}>{item.description}</Text>
-                  <Text style={hist.opDate}>{new Date(item.date).toLocaleDateString("fr-FR")}</Text>
-                </View>
-                <Text style={[hist.opMontant, { color: cfg.color }]}>
-                  {item.montant.toLocaleString("fr-FR")} F
-                </Text>
+        {isLoading ? (
+          <View style={[hist.empty, { paddingTop: 100 }]}>
+            <ActivityIndicator size="large" color={COLORS.primary} />
+            <Text style={hist.emptyText} numberOfLines={1}>
+              Chargement des opérations...
+            </Text>
+          </View>
+        ) : error ? (
+          <View style={[hist.empty, { paddingTop: 100 }]}>
+            <Ionicons name="alert-circle" size={48} color={COLORS.error} />
+            <Text style={[hist.emptyText, { color: COLORS.error }]}>
+              Erreur lors du chargement
+            </Text>
+          </View>
+        ) : (
+          <FlatList
+            data={filteredOps}
+            keyExtractor={(item) => String(item.id)}
+            contentContainerStyle={hist.list}
+            ListEmptyComponent={
+              <View style={hist.empty}>
+                <Text style={hist.emptyText}>Aucune opération trouvée</Text>
               </View>
-            );
-          }}
-        />
+            }
+            renderItem={({ item }) => {
+              const cfg = TYPE_CONFIG[item.type] || { label: item.type, color: "#666", bg: "#66666615" };
+              return (
+                <View style={hist.opCard}>
+                  <View style={[hist.opTypeBadge, { backgroundColor: cfg.bg }]}>
+                    <Text style={[hist.opTypeText, { color: cfg.color }]}>{cfg.label}</Text>
+                  </View>
+                  <View style={hist.opBody}>
+                    <Text style={hist.opMembre}>{item.membre}</Text>
+                    <Text style={hist.opDesc}>{item.description}</Text>
+                    <Text style={hist.opDate}>{new Date(item.date).toLocaleDateString("fr-FR")}</Text>
+                  </View>
+                  <Text style={[hist.opMontant, { color: cfg.color }]}>
+                    {item.montant.toLocaleString("fr-FR")} F
+                  </Text>
+                </View>
+              );
+            }}
+          />
+        )}
       </View>
     </Modal>
   );
@@ -207,25 +192,26 @@ const HistoriquePage = ({
 
 // ─────────────────────────────────────────────
 // 📄 MODAL LISTE DES EXERCICES
-// (affiche chaque exercice avec ses sessions en dessous — pas de déroulant)
+// Clic sur un exercice → ouvre la liste des sessions de cet exercice
 // ─────────────────────────────────────────────
 interface ExerciceListModalProps {
   visible: boolean;
   onClose: () => void;
-  onSelectSession: (session: any) => void;
+  onSelectExercice: (exe: any) => void;
 }
 
-const ExerciceListModal = ({ visible, onClose, onSelectSession, onSelectExercice }: ExerciceListModalProps & { onSelectExercice: (exe: any) => void }) => {
+const ExerciceListModal = ({ visible, onClose, onSelectExercice }: ExerciceListModalProps) => {
   const [displayedItems, setDisplayedItems] = useState(ITEMS_PER_PAGE);
+  const { data: exercices = [], isLoading, error } = useExercises();
 
-  const paginatedExercices = React.useMemo(() => {
-    return MOCK_EXERCICES.slice(0, displayedItems);
-  }, [displayedItems]);
-
-  const hasMore = displayedItems < MOCK_EXERCICES.length;
+  const paginatedExercices = React.useMemo(
+    () => exercices.slice(0, displayedItems),
+    [exercices, displayedItems]
+  );
+  const hasMore = displayedItems < exercices.length;
 
   const loadMore = () => {
-    setDisplayedItems(prev => Math.min(prev + ITEMS_PER_PAGE, MOCK_EXERCICES.length));
+    setDisplayedItems((prev) => Math.min(prev + ITEMS_PER_PAGE, exercices.length));
   };
 
   const confirmDelete = (nom: string, onConfirm: () => void) => {
@@ -236,9 +222,7 @@ const ExerciceListModal = ({ visible, onClose, onSelectSession, onSelectExercice
   };
 
   React.useEffect(() => {
-    if (visible) {
-      setDisplayedItems(ITEMS_PER_PAGE);
-    }
+    if (visible) setDisplayedItems(ITEMS_PER_PAGE);
   }, [visible]);
 
   return (
@@ -250,65 +234,94 @@ const ExerciceListModal = ({ visible, onClose, onSelectSession, onSelectExercice
           </TouchableOpacity>
           <Text style={listModal.title}>Liste des exercices</Text>
         </View>
-        <ScrollView contentContainerStyle={listModal.list}>
-          {paginatedExercices.map((exe) => (
-            <View key={exe.id} style={listModal.block}>
-              <TouchableOpacity
-                style={listModal.itemRow}
-                onPress={() => { onClose(); onSelectExercice(exe); }}
-              >
-                <View style={listModal.itemLeft}>
-                  <Text style={listModal.itemNom}>{exe.nom}</Text>
-                  <Text style={listModal.itemDate}>
-                    {new Date(exe.date_debut).toLocaleDateString("fr-FR")}
-                  </Text>
-                  <Text style={listModal.itemDate}>
-                    {new Date(exe.date_fin).toLocaleDateString("fr-FR")}
-                  </Text>
-                </View>
-                <View style={[
-                  listModal.statusBadge,
-                  { backgroundColor: exe.statut === "ACTIF" ? "#4361EE15" : "#66666615" },
-                ]}>
-                  <Text style={[listModal.statusText, { color: exe.statut === "ACTIF" ? "#4361EE" : "#888" }]}>
-                    {exe.statut}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-              <View style={listModal.actionRow}>
-                <TouchableOpacity
-                  style={listModal.btnModifier}
-                  onPress={() => Alert.alert("Modifier", `Modification de ${exe.nom} (simulé)`)}
-                >
-                  <Text style={listModal.btnModifierText}>Modifier</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={listModal.btnSupprimer}
-                  onPress={() => confirmDelete(exe.nom, () => Alert.alert("Info", "Suppression simulée"))}
-                >
-                  <Text style={listModal.btnSupprimerText}>Supprimer</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          ))}
 
-          {/* Bouton "Voir plus" */}
-          {hasMore && (
-            <TouchableOpacity style={listModal.loadMoreButton} onPress={loadMore}>
-              <LinearGradient
-                colors={["#4361EE", "#3A86FF"]}
-                style={listModal.loadMoreGradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-              >
-                <Text style={listModal.loadMoreText}>
-                  Voir plus ({MOCK_EXERCICES.length - displayedItems} restant{MOCK_EXERCICES.length - displayedItems > 1 ? "s" : ""})
-                </Text>
-                <Ionicons name="chevron-down" size={20} color="white" />
-              </LinearGradient>
-            </TouchableOpacity>
-          )}
-        </ScrollView>
+        {isLoading ? (
+          <View style={[listModal.list, { justifyContent: "center", alignItems: "center", paddingTop: 100 }]}>
+            <ActivityIndicator size="large" color={COLORS.primary} />
+          </View>
+        ) : error ? (
+          <View style={[listModal.list, { justifyContent: "center", alignItems: "center", paddingTop: 100 }]}>
+            <Ionicons name="alert-circle" size={48} color={COLORS.error} />
+            <Text style={[listModal.title, { color: COLORS.error, marginTop: SPACING.md }]}>Erreur de chargement</Text>
+          </View>
+        ) : exercices.length === 0 ? (
+          <View style={[listModal.list, { justifyContent: "center", alignItems: "center", paddingTop: 100 }]}>
+            <Text style={listModal.noItems}>Aucun exercice</Text>
+          </View>
+        ) : (
+          <ScrollView contentContainerStyle={listModal.list}>
+            {paginatedExercices.map((exe: any) => (
+              <View key={exe.id} style={listModal.block}>
+                {/* Clic → ferme ce modal ET ouvre les sessions de l'exercice */}
+                <TouchableOpacity
+                  style={listModal.itemRow}
+                  onPress={() => {
+                    onClose();
+                    onSelectExercice(exe);
+                  }}
+                >
+                  <View style={listModal.itemLeft}>
+                    <Text style={listModal.itemNom}>{exe.nom}</Text>
+                    <Text style={listModal.itemDate}>
+                      {new Date(exe.date_debut).toLocaleDateString("fr-FR")}
+                    </Text>
+                    <Text style={listModal.itemDate}>
+                      {exe.date_fin
+                        ? new Date(exe.date_fin).toLocaleDateString("fr-FR")
+                        : "En cours"}
+                    </Text>
+                  </View>
+                  <View
+                    style={[
+                      listModal.statusBadge,
+                      { backgroundColor: exe.statut === "ACTIF" ? "#4361EE15" : "#66666615" },
+                    ]}
+                  >
+                    <Text
+                      style={[listModal.statusText, { color: exe.statut === "ACTIF" ? "#4361EE" : "#888" }]}
+                    >
+                      {exe.statut}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+
+                <View style={listModal.actionRow}>
+                  <TouchableOpacity
+                    style={listModal.btnModifier}
+                    onPress={() => Alert.alert("Modifier", `Modification de ${exe.nom} (simulé)`)}
+                  >
+                    <Text style={listModal.btnModifierText}>Modifier</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={listModal.btnSupprimer}
+                    onPress={() =>
+                      confirmDelete(exe.nom, () => Alert.alert("Info", "Suppression simulée"))
+                    }
+                  >
+                    <Text style={listModal.btnSupprimerText}>Supprimer</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
+
+            {hasMore && (
+              <TouchableOpacity style={listModal.loadMoreButton} onPress={loadMore}>
+                <LinearGradient
+                  colors={["#4361EE", "#3A86FF"]}
+                  style={listModal.loadMoreGradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                >
+                  <Text style={listModal.loadMoreText}>
+                    Voir plus ({exercices.length - displayedItems} restant
+                    {exercices.length - displayedItems > 1 ? "s" : ""})
+                  </Text>
+                  <Ionicons name="chevron-down" size={20} color="white" />
+                </LinearGradient>
+              </TouchableOpacity>
+            )}
+          </ScrollView>
+        )}
       </View>
     </Modal>
   );
@@ -316,30 +329,42 @@ const ExerciceListModal = ({ visible, onClose, onSelectSession, onSelectExercice
 
 // ─────────────────────────────────────────────
 // 📄 MODAL LISTE DES SESSIONS
-// (clic sur une session → historique filtré par session)
+// • Mode "toutes"   : exerciceId = undefined  → titre "Toutes les sessions"
+//                      affiche le nom de l'exercice dans chaque carte
+// • Mode "exercice" : exerciceId = number     → titre dynamique "Sessions — <nom>"
+//                      clic sur une session → navigation vers FinancialReportsScreen
 // ─────────────────────────────────────────────
 interface SessionListModalProps {
   visible: boolean;
   onClose: () => void;
   onSelectSession: (session: any) => void;
-  exerciceId?: number;
+  exerciceId?: string;
+  exerciceNom?: string;
+  // Toutes les sessions : on a besoin des exercices pour afficher leur nom
+  allExercices?: any[];
 }
 
-const SessionListModal = ({ visible, onClose, onSelectSession, exerciceId }: SessionListModalProps) => {
+const SessionListModal = ({
+  visible,
+  onClose,
+  onSelectSession,
+  exerciceId,
+  exerciceNom,
+  allExercices = [],
+}: SessionListModalProps) => {
   const [displayedItems, setDisplayedItems] = useState(ITEMS_PER_PAGE);
 
-  const allSessions = exerciceId
-    ? MOCK_SESSIONS.filter((s) => s.exercice_id === exerciceId)
-    : MOCK_SESSIONS;
+  // Si exerciceId fourni → sessions filtrées, sinon toutes les sessions
+  const { data: sessions = [], isLoading, error } = useSessions(exerciceId);
 
-  const paginatedSessions = React.useMemo(() => {
-    return allSessions.slice(0, displayedItems);
-  }, [allSessions, displayedItems]);
-
-  const hasMore = displayedItems < allSessions.length;
+  const paginatedSessions = React.useMemo(
+    () => sessions.slice(0, displayedItems),
+    [sessions, displayedItems]
+  );
+  const hasMore = displayedItems < sessions.length;
 
   const loadMore = () => {
-    setDisplayedItems(prev => Math.min(prev + ITEMS_PER_PAGE, allSessions.length));
+    setDisplayedItems((prev) => Math.min(prev + ITEMS_PER_PAGE, sessions.length));
   };
 
   const confirmDelete = (nom: string, onConfirm: () => void) => {
@@ -350,10 +375,24 @@ const SessionListModal = ({ visible, onClose, onSelectSession, exerciceId }: Ses
   };
 
   React.useEffect(() => {
-    if (visible) {
-      setDisplayedItems(ITEMS_PER_PAGE);
-    }
+    if (visible) setDisplayedItems(ITEMS_PER_PAGE);
   }, [visible, exerciceId]);
+
+  // Titre dynamique
+  const modalTitle = exerciceId
+    ? `Sessions — ${exerciceNom || "Exercice"}`
+    : "Toutes les sessions";
+
+  // Résolution du nom d'exercice pour le mode "toutes sessions"
+  const getExerciceNomForSession = (sess: any): string | null => {
+    if (exerciceId) return null; // mode exercice unique, pas besoin
+    // Cherche d'abord dans les données de la session elle-même
+    if (sess.exercice_nom) return sess.exercice_nom;
+    if (sess.exercice_info?.nom) return sess.exercice_info.nom;
+    // Cherche dans la liste des exercices passée en prop
+    const found = allExercices.find((ex: any) => String(ex.id) === String(sess.exercice));
+    return found?.nom ?? null;
+  };
 
   return (
     <Modal visible={visible} animationType="slide" statusBarTranslucent>
@@ -362,79 +401,123 @@ const SessionListModal = ({ visible, onClose, onSelectSession, exerciceId }: Ses
           <TouchableOpacity onPress={onClose} style={listModal.closeBtn}>
             <Ionicons name="close" size={24} color={COLORS.textSecondary} />
           </TouchableOpacity>
-            <Text style={listModal.title}>
-              {exerciceId
-                ? `Sessions — ${MOCK_EXERCICES.find(e => e.id === exerciceId)?.nom ?? ""}`
-                : "Liste des sessions"}
-            </Text>
+          <Text style={listModal.title}>{modalTitle}</Text>
         </View>
 
-        <ScrollView contentContainerStyle={listModal.list}>
-          {paginatedSessions.map((sess) => (
-            <View key={sess.id} style={listModal.block}>
-              <TouchableOpacity
-                style={listModal.itemRow}
-                onPress={() => { onClose(); onSelectSession(sess); }}
-              >
-                <View style={listModal.itemLeft}>
-                  <Text style={listModal.itemNom}>{sess.nom}</Text>
-                  <Text style={listModal.itemDate}>
-                    {new Date(sess.date_session).toLocaleDateString("fr-FR")}
-                  </Text>
-                  <Text style={listModal.itemDate}>
-                    {sess.nombre_membres_inscrits} membres inscrits
-                  </Text>
-                </View>
-                <View style={[
-                  listModal.statusBadge,
-                  { backgroundColor: sess.statut === "ACTIVE" ? "#38A3A515" : "#66666615" },
-                ]}>
-                  <Text style={[listModal.statusText, { color: sess.statut === "ACTIVE" ? "#38A3A5" : "#888" }]}>
-                    {sess.statut}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-              <View style={listModal.actionRow}>
-                <TouchableOpacity
-                  style={listModal.btnModifier}
-                  onPress={() => Alert.alert("Modifier", `Modification de ${sess.nom} (simulé)`)}
-                >
-                  <Text style={listModal.btnModifierText}>Modifier</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={listModal.btnSupprimer}
-                  onPress={() => confirmDelete(sess.nom, () => Alert.alert("Info", "Suppression simulée"))}
-                >
-                  <Text style={listModal.btnSupprimerText}>Supprimer</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          ))}
+        {isLoading ? (
+          <View style={[listModal.list, { justifyContent: "center", alignItems: "center", paddingTop: 100 }]}>
+            <ActivityIndicator size="large" color={COLORS.primary} />
+          </View>
+        ) : error ? (
+          <View style={[listModal.list, { justifyContent: "center", alignItems: "center", paddingTop: 100 }]}>
+            <Ionicons name="alert-circle" size={48} color={COLORS.error} />
+            <Text style={[listModal.title, { color: COLORS.error, marginTop: SPACING.md }]}>Erreur de chargement</Text>
+          </View>
+        ) : sessions.length === 0 ? (
+          <View style={[listModal.list, { justifyContent: "center", alignItems: "center", paddingTop: 100 }]}>
+            <Text style={listModal.noItems}>Aucune session</Text>
+          </View>
+        ) : (
+          <ScrollView contentContainerStyle={listModal.list}>
+            {paginatedSessions.map((sess: any) => {
+              const exNom = getExerciceNomForSession(sess);
+              return (
+                <View key={sess.id} style={listModal.block}>
+                  <TouchableOpacity
+                    style={listModal.itemRow}
+                    onPress={() => {
+                      onClose();
+                      onSelectSession(sess);
+                    }}
+                  >
+                    <View style={listModal.itemLeft}>
+                      <Text style={listModal.itemNom}>{sess.nom}</Text>
+                      <Text style={listModal.itemDate}>
+                        {new Date(sess.date_session).toLocaleDateString("fr-FR")}
+                      </Text>
+                      {/* Nom de l'exercice affiché seulement en mode "toutes sessions" */}
+                      {exNom && (
+                        <View style={listModal.exerciceBadge}>
+                          <Ionicons name="calendar-outline" size={11} color="#4361EE" />
+                          <Text style={listModal.exerciceBadgeText}>{exNom}</Text>
+                        </View>
+                      )}
+                      <Text style={listModal.itemDate}>
+                        {sess.nombre_membres_inscrits ?? 0} membres inscrits
+                      </Text>
+                    </View>
+                    <View
+                      style={[
+                        listModal.statusBadge,
+                        {
+                          backgroundColor:
+                            sess.statut === "ACTIVE" || sess.statut === "EN_COURS"
+                              ? "#38A3A515"
+                              : "#66666615",
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          listModal.statusText,
+                          {
+                            color:
+                              sess.statut === "ACTIVE" || sess.statut === "EN_COURS"
+                                ? "#38A3A5"
+                                : "#888",
+                          },
+                        ]}
+                      >
+                        {sess.statut}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
 
-          {/* Bouton "Voir plus" */}
-          {hasMore && (
-            <TouchableOpacity style={listModal.loadMoreButton} onPress={loadMore}>
-              <LinearGradient
-                colors={["#38A3A5", "#57CC99"]}
-                style={listModal.loadMoreGradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-              >
-                <Text style={listModal.loadMoreText}>
-                  Voir plus ({allSessions.length - displayedItems} restant{allSessions.length - displayedItems > 1 ? "s" : ""})
-                </Text>
-                <Ionicons name="chevron-down" size={20} color="white" />
-              </LinearGradient>
-            </TouchableOpacity>
-          )}
-        </ScrollView>
+                  <View style={listModal.actionRow}>
+                    <TouchableOpacity
+                      style={listModal.btnModifier}
+                      onPress={() => Alert.alert("Modifier", `Modification de ${sess.nom} (simulé)`)}
+                    >
+                      <Text style={listModal.btnModifierText}>Modifier</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={listModal.btnSupprimer}
+                      onPress={() =>
+                        confirmDelete(sess.nom, () => Alert.alert("Info", "Suppression simulée"))
+                      }
+                    >
+                      <Text style={listModal.btnSupprimerText}>Supprimer</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              );
+            })}
+
+            {hasMore && (
+              <TouchableOpacity style={listModal.loadMoreButton} onPress={loadMore}>
+                <LinearGradient
+                  colors={["#38A3A5", "#57CC99"]}
+                  style={listModal.loadMoreGradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                >
+                  <Text style={listModal.loadMoreText}>
+                    Voir plus ({sessions.length - displayedItems} restant
+                    {sessions.length - displayedItems > 1 ? "s" : ""})
+                  </Text>
+                  <Ionicons name="chevron-down" size={20} color="white" />
+                </LinearGradient>
+              </TouchableOpacity>
+            )}
+          </ScrollView>
+        )}
       </View>
     </Modal>
   );
 };
 
 // ─────────────────────────────────────────────
-// 📄 MODAL NOUVELLE SESSION (identique à l'original)
+// 📄 MODAL NOUVELLE SESSION
 // ─────────────────────────────────────────────
 interface NewSessionModalProps {
   visible: boolean;
@@ -598,18 +681,27 @@ export default function AdminDashboardScreen() {
   const queryClient = useQueryClient();
   const createSessionMutation = useCreateNewSession();
 
+  // ── Données exercices (pour enrichir les cartes de sessions en mode "toutes") ──
+  const { data: allExercices = [] } = useExercises();
+
   const [refreshing, setRefreshing] = useState(false);
   const [showSessionModal, setShowSessionModal] = useState(false);
-  const [showExerciceModal, setShowExerciceModal] = useState(false);
-  const [showSessionListModal, setShowSessionListModal] = useState(false);
 
+  // Modal liste exercices
+  const [showExerciceModal, setShowExerciceModal] = useState(false);
+
+  // Modal liste sessions — mode "toutes" (bouton Session du dashboard)
+  const [showAllSessionsModal, setShowAllSessionsModal] = useState(false);
+
+  // Modal liste sessions — mode "exercice" (clic sur un exercice dans la liste)
+  const [selectedExercice, setSelectedExercice] = useState<any>(null);
+  const [showSessionsForExercice, setShowSessionsForExercice] = useState(false);
+
+  // Mini-historique interne (raccourcis soldes)
   const [historiqueVisible, setHistoriqueVisible] = useState(false);
   const [historiqueFilters, setHistoriqueFilters] = useState<string[]>([]);
   const [historiqueSession, setHistoriqueSession] = useState<any>(null);
   const [historiqueTitle, setHistoriqueTitle] = useState("Historique des opérations");
-
-  const [selectedExercice, setSelectedExercice] = useState<any>(null);
-  const [showSessionsForExercice, setShowSessionsForExercice] = useState(false);
 
   const sessionLoading = createSessionMutation.isPending;
   const { data: currentExercise, isLoading: exerciseLoading } = useCurrentExercise();
@@ -646,7 +738,7 @@ export default function AdminDashboardScreen() {
     }
   };
 
-  // Ouvrir l'historique — filters[] vide = tout afficher, session null = toutes sessions
+  // Ouvrir le mini-historique interne (raccourcis soldes uniquement)
   const openHistorique = (title: string, filters: string[] = [], session: any = null) => {
     setHistoriqueTitle(title);
     setHistoriqueFilters(filters);
@@ -654,9 +746,34 @@ export default function AdminDashboardScreen() {
     setHistoriqueVisible(true);
   };
 
-  // Depuis la liste des sessions → historique filtré par session
+  // ── Navigation vers FinancialReportsScreen avec pré-sélection session ──
+  // IMPORTANT : on passe les IDs en NUMBER (pas en string) pour correspondre
+  // exactement aux comparaisons === faites dans FinancialReportsScreen.
   const handleSelectSession = (sess: any) => {
-    openHistorique(`Opérations — ${sess.nom}`, [], sess);
+    // Fermer tous les modals ouverts
+    setShowAllSessionsModal(false);
+    setShowSessionsForExercice(false);
+    setShowExerciceModal(false);
+
+    // Les IDs sont des UUID (strings) — on les passe tels quels, sans Number()
+    const exerciceId: string =
+      typeof sess.exercice === "object"
+        ? String(sess.exercice?.id ?? "")
+        : String(sess.exercice ?? "");
+
+    // Résoudre le nom de l'exercice
+    const exerciceNom =
+      sess.exercice_nom ||
+      sess.exercice_info?.nom ||
+      allExercices.find((ex: any) => String(ex.id) === exerciceId)?.nom ||
+      "";
+
+    navigation.navigate("Historique" as never, {
+      sessionId:    String(sess.id),    // ← UUID string
+      exerciceId:   exerciceId,         // ← UUID string
+      sessionName:  sess.nom,
+      exerciceName: exerciceNom,
+    } as never);
   };
 
   /*const handleCreateSession = async (sessionData: any) => {
@@ -724,9 +841,9 @@ export default function AdminDashboardScreen() {
   const stats = React.useMemo(() => {
     if (!dashboardData) return null;
     return {
-      fondInscription: dashboardData.tresor?.fond_inscription || 0o0,
-      fondSocial: dashboardData.fonds_social?.montant_total || 0o0,
-      fondEpargne: dashboardData.tresor?.cumul_total_epargnes || 0o0,
+      fondInscription: 0,
+      fondSocial: dashboardData.fonds_social?.montant_total || 0,
+      fondEpargne: dashboardData.tresor?.cumul_total_epargnes || 0,
       membres: dashboardData.tresor?.nombre_membres || 0,
       empruntsEnCours: dashboardData.emprunts_en_cours?.nombre || 0,
       alertesCount: dashboardData.alertes?.length || 0,
@@ -775,7 +892,7 @@ export default function AdminDashboardScreen() {
         showsVerticalScrollIndicator={false}
       >
 
-        {/* ══ HEADER (identique à l'original) ══ */}
+        {/* ══ HEADER ══ */}
         <View style={styles.header}>
           <View style={styles.headerLeft}>
             <Text style={styles.greeting}>Bonjour </Text>
@@ -876,6 +993,7 @@ export default function AdminDashboardScreen() {
           <Text style={styles.sectionTitle}>Exercices & Sessions</Text>
           <View style={styles.exerciseSessionGrid}>
 
+            {/* Bouton Exercice → ouvre la liste des exercices */}
             <TouchableOpacity
               style={[styles.exerciseSessionCard, { backgroundColor: "#4361EE15" }]}
               onPress={() => setShowExerciceModal(true)}
@@ -908,9 +1026,10 @@ export default function AdminDashboardScreen() {
               )}
             </TouchableOpacity>
 
+            {/* Bouton Session → ouvre TOUTES les sessions */}
             <TouchableOpacity
               style={[styles.exerciseSessionCard, { backgroundColor: "#38A3A515" }]}
-              onPress={() => setShowSessionListModal(true)}
+              onPress={() => setShowAllSessionsModal(true)}
               activeOpacity={0.8}
             >
               <View style={styles.cardHeader}>
@@ -951,17 +1070,17 @@ export default function AdminDashboardScreen() {
           </View>
         </View>
 
-        {/* ══ MODULES (4 selon maquette) ══ */}
+        {/* ══ MODULES ══ */}
         <View style={styles.modulesContainer}>
           <Text style={styles.sectionTitle}>Gestion Mutuelle</Text>
           <View style={styles.modulesGrid}>
             {[
-              { id: "inscriptions",   title: "Membres",        subtitle: "Gérer les inscriptions des Membres", icon: "person-add", gradientColors: ["#4361EE", "#3A86FF"] as [string,string], route: "InscriptionsScreen" },
-              { id: "solidarite",     title: "Solidarité",     subtitle: "Fonds social",                       icon: "heart",      gradientColors: ["#38A3A5", "#57CC99"] as [string,string], route: "SolidarityScreen" },
-              { id: "epargne",        title: "Épargne",        subtitle: "Gestion des épargnes",               icon: "wallet",     gradientColors: ["#B5179E", "#F72585"] as [string,string], route: "SavingsScreen" },
-              { id: "emprunts",       title: "Emprunts",       subtitle: "Prêts et crédits",                   icon: "card",       gradientColors: ["#F77F00", "#FCBF49"] as [string,string], route: "LoansScreen" },
-              { id: "assistances",    title: "Assistances",    subtitle: "Aides et soutiens",                  icon: "medical",    gradientColors: ["#7209B7", "#A663CC"] as [string,string], route: "AssistanceScreen" },
-              { id: "remboursements", title: "Remboursements", subtitle: "Suivi des retours",                  icon: "repeat",     gradientColors: ["#06FFA5", "#0EAD69"] as [string,string], route: "RepaymentsScreen" },
+              { id: "inscriptions",   title: "Membres",        subtitle: "Gérer les inscriptions des Membres", icon: "person-add", gradientColors: ["#4361EE", "#3A86FF"] as [string, string], route: "InscriptionsScreen" },
+              { id: "solidarite",     title: "Solidarité",     subtitle: "Fonds social",                       icon: "heart",      gradientColors: ["#38A3A5", "#57CC99"] as [string, string], route: "SolidarityScreen" },
+              { id: "epargne",        title: "Épargne",        subtitle: "Gestion des épargnes",               icon: "wallet",     gradientColors: ["#B5179E", "#F72585"] as [string, string], route: "SavingsScreen" },
+              { id: "emprunts",       title: "Emprunts",       subtitle: "Prêts et crédits",                   icon: "card",       gradientColors: ["#F77F00", "#FCBF49"] as [string, string], route: "LoansScreen" },
+              { id: "assistances",    title: "Assistances",    subtitle: "Aides et soutiens",                  icon: "medical",    gradientColors: ["#7209B7", "#A663CC"] as [string, string], route: "AssistanceScreen" },
+              { id: "remboursements", title: "Remboursements", subtitle: "Suivi des retours",                  icon: "repeat",     gradientColors: ["#06FFA5", "#0EAD69"] as [string, string], route: "RepaymentsScreen" },
             ].map((module) => (
               <TouchableOpacity
                 key={module.id}
@@ -986,7 +1105,7 @@ export default function AdminDashboardScreen() {
           </View>
         </View>
 
-        {/* ══ BOUTON NOUVELLE SESSION (identique à l'original) ══ */}
+        {/* ══ BOUTON NOUVELLE SESSION ══ */}
         <View style={styles.actionContainer}>
           <TouchableOpacity
             style={styles.newSessionButton}
@@ -1027,32 +1146,45 @@ export default function AdminDashboardScreen() {
       </ScrollView>
 
       {/* ══════════ MODALS ══════════ */}
+
+      {/* Nouvelle session */}
       <NewSessionModal
         visible={showSessionModal}
         onClose={() => setShowSessionModal(false)}
         onSubmit={handleCreateSession}
         loading={sessionLoading}
       />
+
+      {/* Liste des exercices (clic sur exercice → ouvre sessions de cet exercice) */}
       <ExerciceListModal
         visible={showExerciceModal}
         onClose={() => setShowExerciceModal(false)}
-        onSelectSession={handleSelectSession}
         onSelectExercice={(exe) => {
           setSelectedExercice(exe);
           setShowSessionsForExercice(true);
         }}
       />
+
+      {/* Toutes les sessions (bouton "Session" du dashboard) */}
       <SessionListModal
-        visible={showSessionListModal}
-        onClose={() => setShowSessionListModal(false)}
+        visible={showAllSessionsModal}
+        onClose={() => setShowAllSessionsModal(false)}
         onSelectSession={handleSelectSession}
+        allExercices={allExercices}
+        // pas d'exerciceId → toutes les sessions
       />
+
+      {/* Sessions filtrées par exercice (après clic exercice dans la liste) */}
       <SessionListModal
         visible={showSessionsForExercice}
         onClose={() => setShowSessionsForExercice(false)}
         onSelectSession={handleSelectSession}
         exerciceId={selectedExercice?.id}
+        exerciceNom={selectedExercice?.nom}
+        allExercices={allExercices}
       />
+
+      {/* Mini-historique interne (raccourcis soldes uniquement) */}
       <HistoriquePage
         visible={historiqueVisible}
         onClose={() => setHistoriqueVisible(false)}
@@ -1081,7 +1213,6 @@ const styles = StyleSheet.create({
   retryButton: { backgroundColor: COLORS.primary, paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md, borderRadius: BORDER_RADIUS.md },
   retryButtonText: { color: "white", fontWeight: "600", fontSize: FONT_SIZES.md },
 
-  // Header
   header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: SPACING.lg, paddingVertical: SPACING.xl, backgroundColor: COLORS.background },
   headerLeft: { flex: 1 },
   greeting: { fontSize: FONT_SIZES.md, color: COLORS.textSecondary, marginBottom: SPACING.xs },
@@ -1094,18 +1225,15 @@ const styles = StyleSheet.create({
   avatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.primary, alignItems: "center", justifyContent: "center" },
   avatarText: { color: "white", fontSize: FONT_SIZES.md, fontWeight: "bold" },
 
-  // Section
   section: { paddingHorizontal: SPACING.lg, marginBottom: SPACING.xl },
   sectionTitle: { fontSize: FONT_SIZES.lg, fontWeight: "bold", color: COLORS.text, marginBottom: SPACING.md },
 
-  // Soldes
   soldeCard: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: COLORS.surface, borderRadius: BORDER_RADIUS.lg, padding: SPACING.md, marginBottom: SPACING.sm, borderWidth: 1, borderColor: COLORS.border },
   soldeLeft: { flexDirection: "row", alignItems: "center", gap: SPACING.md },
   soldeIconWrapper: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
   soldeMontant: { fontSize: FONT_SIZES.md, fontWeight: "bold", color: COLORS.text },
   soldeLabel: { fontSize: FONT_SIZES.sm, color: COLORS.textSecondary, marginTop: 2 },
 
-  // Exercice & Session
   exerciseSessionContainer: { paddingHorizontal: SPACING.lg, marginBottom: SPACING.xl },
   exerciseSessionGrid: { flexDirection: "row", gap: SPACING.md },
   exerciseSessionCard: { flex: 1, padding: SPACING.md, borderRadius: BORDER_RADIUS.lg, borderWidth: 1, borderColor: COLORS.border },
@@ -1122,7 +1250,6 @@ const styles = StyleSheet.create({
   createButton: { backgroundColor: COLORS.primary, paddingHorizontal: SPACING.sm, paddingVertical: SPACING.xs, borderRadius: BORDER_RADIUS.sm, alignSelf: "center" },
   createButtonText: { fontSize: FONT_SIZES.xs, color: "white", fontWeight: "600" },
 
-  // Modules
   modulesContainer: { paddingHorizontal: SPACING.lg, marginBottom: SPACING.xl },
   modulesGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", gap: SPACING.md },
   moduleCard: { width: (width - SPACING.lg * 2 - SPACING.md) / 2, height: 140, borderRadius: BORDER_RADIUS.xl, overflow: "hidden", marginBottom: SPACING.md },
@@ -1131,18 +1258,15 @@ const styles = StyleSheet.create({
   moduleTitle: { fontSize: FONT_SIZES.md, fontWeight: "bold", color: "white", marginTop: SPACING.sm, textAlign: "center" },
   moduleSubtitle: { fontSize: FONT_SIZES.xs, color: "rgba(255,255,255,0.8)", marginTop: SPACING.xs, textAlign: "center" },
 
-  // Nouvelle session
   actionContainer: { paddingHorizontal: SPACING.lg, marginBottom: SPACING.xl },
   newSessionButton: { borderRadius: BORDER_RADIUS.xl, overflow: "hidden", shadowColor: COLORS.shadowDark, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 6 },
   newSessionGradient: { flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: SPACING.lg, paddingHorizontal: SPACING.xl, gap: SPACING.sm },
   newSessionText: { fontSize: FONT_SIZES.lg, fontWeight: "bold", color: "white" },
 
-  // Alertes
   alertsContainer: { paddingHorizontal: SPACING.lg, marginBottom: SPACING.xl },
   alertCard: { flexDirection: "row", alignItems: "center", backgroundColor: COLORS.surface, padding: SPACING.md, borderRadius: BORDER_RADIUS.md, marginBottom: SPACING.sm, borderLeftWidth: 4, borderLeftColor: COLORS.warning },
   alertText: { fontSize: FONT_SIZES.sm, color: COLORS.text, marginLeft: SPACING.sm, flex: 1 },
 
-  // Modal Nouvelle Session
   modalOverlay: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "rgba(0,0,0,0.5)" },
   modalContent: { backgroundColor: COLORS.background, borderRadius: BORDER_RADIUS.xl, width: width - SPACING.lg * 2, maxHeight: "80%" },
   modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: SPACING.lg, borderBottomWidth: 1, borderBottomColor: COLORS.border },
@@ -1186,6 +1310,10 @@ const listModal = StyleSheet.create({
   itemNom: { fontSize: FONT_SIZES.md, fontWeight: "700", color: COLORS.text, marginBottom: 4 },
   itemDate: { fontSize: FONT_SIZES.sm, color: COLORS.textSecondary, marginBottom: 2 },
 
+  // Badge nom d'exercice dans les cartes session (mode "toutes sessions")
+  exerciceBadge: { flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 4, backgroundColor: "#4361EE10", paddingHorizontal: SPACING.xs, paddingVertical: 2, borderRadius: BORDER_RADIUS.sm, alignSelf: "flex-start" },
+  exerciceBadgeText: { fontSize: FONT_SIZES.xs, fontWeight: "600", color: "#4361EE" },
+
   statusBadge: { paddingHorizontal: SPACING.sm, paddingVertical: 4, borderRadius: BORDER_RADIUS.sm, alignSelf: "flex-start" },
   statusText: { fontSize: FONT_SIZES.xs, fontWeight: "600" },
 
@@ -1195,42 +1323,15 @@ const listModal = StyleSheet.create({
   btnSupprimer: { flex: 1, paddingVertical: SPACING.sm, borderRadius: BORDER_RADIUS.sm, backgroundColor: "#FF000015", alignItems: "center" },
   btnSupprimerText: { fontSize: FONT_SIZES.sm, fontWeight: "600", color: "#CC0000" },
 
-  // Bloc sessions imbriquées (dans liste exercices)
-  sessionsBlock: { backgroundColor: COLORS.background, margin: SPACING.md, marginTop: 0, borderRadius: BORDER_RADIUS.md, borderWidth: 1, borderColor: COLORS.border, paddingTop: SPACING.sm },
-  sessionsLabel: { fontSize: FONT_SIZES.xs, fontWeight: "700", color: COLORS.textSecondary, marginBottom: SPACING.xs, paddingHorizontal: SPACING.md },
-  sessItem: { borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  sessItemRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", padding: SPACING.sm, paddingHorizontal: SPACING.md },
-  sessNom: { fontSize: FONT_SIZES.sm, fontWeight: "600", color: COLORS.text, marginBottom: 2 },
   noItems: { fontSize: FONT_SIZES.sm, color: COLORS.textLight, padding: SPACING.md, fontStyle: "italic" },
 
-  // Load More Button
-  loadMoreButton: {
-    marginTop: SPACING.lg,
-    marginBottom: SPACING.md,
-    borderRadius: BORDER_RADIUS.lg,
-    overflow: "hidden",
-    elevation: 3,
-    shadowColor: COLORS.shadowDark,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-  },
-  loadMoreGradient: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: SPACING.md,
-    gap: SPACING.sm,
-  },
-  loadMoreText: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: "600",
-    color: "white",
-  },
+  loadMoreButton: { marginTop: SPACING.lg, marginBottom: SPACING.md, borderRadius: BORDER_RADIUS.lg, overflow: "hidden", elevation: 3, shadowColor: COLORS.shadowDark, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4 },
+  loadMoreGradient: { flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: SPACING.md, gap: SPACING.sm },
+  loadMoreText: { fontSize: FONT_SIZES.md, fontWeight: "600", color: "white" },
 });
 
 // ─────────────────────────────────────────────
-// 🎨 STYLES PAGE HISTORIQUE
+// 🎨 STYLES PAGE HISTORIQUE (mini-modal interne)
 // ─────────────────────────────────────────────
 const hist = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
