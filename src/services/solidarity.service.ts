@@ -18,8 +18,18 @@ export const createSolidarityPayment = async (payload: any, accessToken: string)
 };
 
 export const fetchSocialFundCurrent = async (accessToken: string): Promise<SocialFund> => {
-  const { data } = await axios.get<SocialFund>(API_BASE_URL + API_ENDPOINTS.socialFundCurrent, {
-    headers: { Authorization: `Bearer ${accessToken}` }
-  });
-  return data;
+  try {
+    const { data } = await axios.get<SocialFund>(API_BASE_URL + API_ENDPOINTS.socialFundCurrent, {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    return data;
+  } catch (error: any) {
+    // Si l'API retourne une erreur "Aucun fonds", on la lance explicitement
+    if (error.response?.status === 404 || error.response?.data?.detail?.includes("Aucun")) {
+      const err = new Error("NO_CURRENT_SOCIAL_FUND");
+      (err as any).isNoDataError = true;
+      throw err;
+    }
+    throw error;
+  }
 };

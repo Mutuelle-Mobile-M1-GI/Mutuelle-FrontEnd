@@ -36,6 +36,7 @@ export const API_ENDPOINTS = {
   // Sessions
   sessions: "/core/sessions/",
   sessionCurrent: "/core/sessions/current/",
+  closeSession: (id: string) => `/core/sessions/${id}/clore/`, // 🆕 Clore une session
 
   // Solidarité & Fonds social
   solidarityPayments: "/transactions/paiements-solidarite/",

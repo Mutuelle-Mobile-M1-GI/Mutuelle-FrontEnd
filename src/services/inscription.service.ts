@@ -11,10 +11,20 @@ export const fetchInscriptionPayments = async (accessToken: string): Promise<any
 };
 
 export const fetchCaisseInscriptionCurrent = async (accessToken: string): Promise<CaisseInscription> => {
-  const { data } = await axios.get(API_BASE_URL + API_ENDPOINTS.caisse_inscription_current, {
-    headers: { Authorization: `Bearer ${accessToken}` }
-  });
-  return data;
+  try {
+    const { data } = await axios.get(API_BASE_URL + API_ENDPOINTS.caisse_inscription_current, {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    return data;
+  } catch (error: any) {
+    // Si l'API retourne une erreur "Aucune caisse", on la lance explicitement
+    if (error.response?.status === 404 || error.response?.data?.detail?.includes("Aucun")) {
+      const err = new Error("NO_CURRENT_CAISSE_INSCRIPTION");
+      (err as any).isNoDataError = true;
+      throw err;
+    }
+    throw error;
+  }
 };
 
 export interface InscriptionPaymentPayload {

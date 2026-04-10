@@ -25,6 +25,7 @@ import { useAdminDashboard } from "../../hooks/useDashboard";
 import { useMutuelleConfig } from "../../hooks/useConfig";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { useCurrentExercise, useCurrentSession } from "../../hooks/useExercise";
+import { useCloseSession } from "../../hooks/useSession";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCreateNewSession, useUpdateSession, useDeleteSession } from "../../hooks/useSession";
 import { useOperationsHistory, Operation } from "../../hooks/useOperationsHistory";
@@ -33,10 +34,58 @@ import { useCaisseInscriptionCurrent } from "../../hooks/useInscription";
 import { useUpdateExercise, useDeleteExercise } from "../../hooks/useExercise";
 import { ExerciseEditModal } from "./ExerciseEditModal";
 import { SessionEditModal } from "./SessionEditModal";
+
 const { width } = Dimensions.get("window");
 
 // 🎯 Configuration de la pagination
 const ITEMS_PER_PAGE = 10;
+
+// ─────────────────────────────────────────────
+// 🔧 UTILITAIRES
+// ─────────────────────────────────────────────
+
+/**
+ * Formate les erreurs API pour affichage lisible
+ * Gère: { error: string, details: string }, { field: [messages] }, strings simples
+ */
+const formatErrorMessage = (error: any, defaultMessage: string = "Une erreur est survenue"): string => {
+  if (!error?.response?.data) {
+    return defaultMessage;
+  }
+
+  const errorData = error.response.data;
+
+  // Format: { "error": "...", "details": "..." }
+  if (errorData.error && errorData.details) {
+    return `${errorData.error}\n\n${errorData.details}`;
+  }
+
+  if (errorData.error) {
+    return errorData.error;
+  }
+
+  if (errorData.details) {
+    return errorData.details;
+  }
+
+  // Format simple string
+  if (typeof errorData === "string") {
+    return errorData;
+  }
+
+  // Format: { field: [messages] } ou { field: message }
+  if (typeof errorData === "object") {
+    const messages = Object.entries(errorData)
+      .map(([field, msgs]) => {
+        const msgText = Array.isArray(msgs) ? msgs.join(", ") : msgs;
+        return `${field}: ${msgText}`;
+      })
+      .join("\n");
+    return messages || defaultMessage;
+  }
+
+  return defaultMessage;
+};
 
 // ─────────────────────────────────────────────
 // 🎨 CONFIG TYPE D'OPÉRATION
@@ -695,6 +744,7 @@ export default function AdminDashboardScreen() {
   // ✅ Mutations pour modifier et supprimer sessions
   const updateSessionMutation = useUpdateSession();
   const deleteSessionMutation = useDeleteSession();
+  const closeSessionMutation = useCloseSession(); // 🏁 Clore une session
 
   // ── Données exercices (pour enrichir les cartes de sessions en mode "toutes") ──
   const { data: allExercicesRaw } = useExercises();
@@ -728,9 +778,15 @@ export default function AdminDashboardScreen() {
   const [historiqueTitle, setHistoriqueTitle] = useState("Historique des opérations");
 
   const sessionLoading = createSessionMutation.isPending;
-  const { data: currentExercise, isLoading: exerciseLoading } = useCurrentExercise();
-  const { data: currentSession, isLoading: sessionLoading2 } = useCurrentSession();
-  const { data: caisseInscription } = useCaisseInscriptionCurrent();
+  const { data: currentExercise, isLoading: exerciseLoading, error: exerciseError } = useCurrentExercise();
+  const { data: currentSession, isLoading: sessionLoading2, error: sessionError } = useCurrentSession();
+  const { data: caisseInscription, error: caisseInscriptionError } = useCaisseInscriptionCurrent();
+
+  // ⚠️ Condition pour vérifier s'il n'y a vraiment pas de données en cours
+  // (éviter d'afficher les données du cache quand l'API retourne "Aucun")
+  const hasCurrentExercise = currentExercise && !exerciseError?.message?.includes("NO_");
+  const hasCurrentSession = currentSession && !sessionError?.message?.includes("NO_");
+  const hasCaisseInscription = caisseInscription && !caisseInscriptionError?.message?.includes("NO_");
   
   useFocusEffect(
     React.useCallback(() => {
@@ -825,22 +881,7 @@ export default function AdminDashboardScreen() {
       setEditingExercise(null);
       queryClient.invalidateQueries({ queryKey: ["exercises"] });
     } catch (error: any) {
-      let errorMessage = "Impossible de modifier l'exercice";
-      if (error.response?.data) {
-        const errorData = error.response.data;
-        if (typeof errorData === 'object') {
-          errorMessage = Object.entries(errorData)
-            .map(([field, messages]) => {
-              const msg = Array.isArray(messages) ? messages.join(', ') : messages;
-              return `${field}: ${msg}`;
-            })
-            .join('\n');
-        } else if (typeof errorData === 'string') {
-          errorMessage = errorData;
-        } else if (errorData.error) {
-          errorMessage = errorData.error;
-        }
-      }
+      const errorMessage = formatErrorMessage(error, "Impossible de modifier l'exercice");
       Alert.alert("Erreur", errorMessage);
     }
   };
@@ -860,15 +901,7 @@ export default function AdminDashboardScreen() {
               Alert.alert("Succès", "Exercice supprimé avec succès !");
               queryClient.invalidateQueries({ queryKey: ["exercises"] });
             } catch (error: any) {
-              let errorMessage = "Impossible de supprimer l'exercice";
-              if (error.response?.data) {
-                const errorData = error.response.data;
-                if (typeof errorData === 'object') {
-                  errorMessage = errorData.error || errorData.details || "Impossible de supprimer cet exercice";
-                } else if (typeof errorData === 'string') {
-                  errorMessage = errorData;
-                }
-              }
+              const errorMessage = formatErrorMessage(error, "Impossible de supprimer l'exercice");
               Alert.alert("Erreur", errorMessage);
             }
           },
@@ -901,22 +934,7 @@ export default function AdminDashboardScreen() {
       setEditingSession(null);
       queryClient.invalidateQueries({ queryKey: ["sessions"] });
     } catch (error: any) {
-      let errorMessage = "Impossible de modifier la session";
-      if (error.response?.data) {
-        const errorData = error.response.data;
-        if (typeof errorData === 'object') {
-          errorMessage = Object.entries(errorData)
-            .map(([field, messages]) => {
-              const msg = Array.isArray(messages) ? messages.join(', ') : messages;
-              return `${field}: ${msg}`;
-            })
-            .join('\n');
-        } else if (typeof errorData === 'string') {
-          errorMessage = errorData;
-        } else if (errorData.error) {
-          errorMessage = errorData.error;
-        }
-      }
+      const errorMessage = formatErrorMessage(error, "Impossible de modifier la session");
       Alert.alert("Erreur", errorMessage);
     }
   };
@@ -936,15 +954,7 @@ export default function AdminDashboardScreen() {
               Alert.alert("Succès", "Session supprimée avec succès !");
               queryClient.invalidateQueries({ queryKey: ["sessions"] });
             } catch (error: any) {
-              let errorMessage = "Impossible de supprimer la session";
-              if (error.response?.data) {
-                const errorData = error.response.data;
-                if (typeof errorData === 'object') {
-                  errorMessage = errorData.error || errorData.details || "Impossible de supprimer cette session";
-                } else if (typeof errorData === 'string') {
-                  errorMessage = errorData;
-                }
-              }
+              const errorMessage = formatErrorMessage(error, "Impossible de supprimer la session");
               Alert.alert("Erreur", errorMessage);
             }
           },
@@ -980,6 +990,12 @@ export default function AdminDashboardScreen() {
   };*/
 
   const handleCreateSession = async (sessionData: any) => {
+    // ⚠️ Vérifier qu'on a vraiment un exercice en cours
+    if (!hasCurrentExercise) {
+      Alert.alert("Erreur", "Aucun exercice n'est actuellement ouvert. Veuillez d'abord créer un exercice.");
+      return;
+    }
+
     try {
       const montantDepense = parseFloat(sessionData.montant_depense) || 0;
       const hasDepense     = montantDepense > 0;
@@ -1002,30 +1018,48 @@ export default function AdminDashboardScreen() {
       Alert.alert("Succès", "Session créée avec succès !");
       setShowSessionModal(false);
     } catch (error: any) {
-      let errorMessage = "Impossible de créer la session";
-      if (error.response?.data) {
-        const errorData = error.response.data;
-        if (typeof errorData === "object") {
-          errorMessage = Object.entries(errorData)
-            .map(([f, m]) => `${f}: ${Array.isArray(m) ? m.join(", ") : m}`)
-            .join("\n");
-        }
-      }
+      const errorMessage = formatErrorMessage(error, "Impossible de créer la session");
       Alert.alert("Erreur", errorMessage);
     }
+  };
+
+  // 🏁 Handler pour clore la session actuelle
+  const handleCloseSession = async () => {
+    if (!currentSession?.id) return;
+    
+    Alert.alert(
+      "Confirmation",
+      `Êtes-vous sûr de vouloir terminer la session "${currentSession.nom}" ?`,
+      [
+        { text: "Annuler", style: "cancel" },
+        {
+          text: "Terminer",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await closeSessionMutation.mutateAsync(currentSession.id);
+              Alert.alert("Succès", "Session terminée avec succès !");
+            } catch (error: any) {
+              const errorMessage = formatErrorMessage(error, "Impossible de terminer la session");
+              Alert.alert("Erreur", errorMessage);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const stats = React.useMemo(() => {
     if (!dashboardData) return null;
     return {
-      fondInscription: parseFloat(caisseInscription?.montant_total || "0") || 0,
+      fondInscription: hasCaisseInscription ? (parseFloat(caisseInscription?.montant_total || "0") || 0) : 0,
       fondSocial: dashboardData.fonds_social?.montant_total || 0,
       fondEpargne: dashboardData.tresor?.cumul_total_epargnes || 0,
       membres: dashboardData.tresor?.nombre_membres || 0,
       empruntsEnCours: dashboardData.emprunts_en_cours?.nombre || 0,
       alertesCount: dashboardData.alertes?.length || 0,
     };
-  }, [dashboardData, caisseInscription]);
+  }, [dashboardData, caisseInscription, caisseInscriptionError]);
 
   if (isLoading) {
     return (
@@ -1179,7 +1213,7 @@ export default function AdminDashboardScreen() {
 
         {/* ══ EXERCICE & SESSION ══ */}
         <View style={styles.exerciseSessionContainer}>
-          <Text style={styles.sectionTitle}>Exercices & Sessions</Text>
+          <Text style={styles.sectionTitle}>Exercices & Sessions en cours</Text>
           <View style={styles.exerciseSessionGrid}>
 
             {/* Bouton Exercice → ouvre la liste des exercices */}
@@ -1195,7 +1229,7 @@ export default function AdminDashboardScreen() {
               </View>
               {exerciseLoading ? (
                 <ActivityIndicator size="small" color="#4361EE" />
-              ) : currentExercise ? (
+              ) : hasCurrentExercise ? (
                 <View style={styles.cardContent}>
                   <Text style={styles.cardMainText}>{currentExercise.nom}</Text>
                   <Text style={styles.cardSubText}>
@@ -1228,7 +1262,7 @@ export default function AdminDashboardScreen() {
               </View>
               {sessionLoading2 ? (
                 <ActivityIndicator size="small" color="#38A3A5" />
-              ) : currentSession ? (
+              ) : hasCurrentSession ? (
                 <View style={styles.cardContent}>
                   <Text style={styles.cardMainText}>{currentSession.nom}</Text>
                   <Text style={styles.cardSubText}>
@@ -1294,21 +1328,29 @@ export default function AdminDashboardScreen() {
           </View>
         </View>
 
-        {/* ══ BOUTON NOUVELLE SESSION ══ */}
+        {/* ══ BOUTON NOUVELLE SESSION / TERMINER SESSION ══ */}
         <View style={styles.actionContainer}>
           <TouchableOpacity
             style={styles.newSessionButton}
-            onPress={() => setShowSessionModal(true)}
+            onPress={() => {
+              if (hasCurrentSession) {
+                handleCloseSession();
+              } else {
+                setShowSessionModal(true);
+              }
+            }}
             activeOpacity={0.9}
           >
             <LinearGradient
-              colors={["#4361EE", "#3A86FF"]}
+              colors={hasCurrentSession ? ["#CC0000", "#FF6666"] : ["#4361EE", "#3A86FF"]}
               style={styles.newSessionGradient}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
             >
-              <Ionicons name="add-circle" size={24} color="white" />
-              <Text style={styles.newSessionText}>Nouvelle Session</Text>
+              <Ionicons name={hasCurrentSession ? "stop-circle" : "add-circle"} size={24} color="white" />
+              <Text style={styles.newSessionText}>
+                {hasCurrentSession ? "Terminer la session" : "Nouvelle Session"}
+              </Text>
               <Ionicons name="arrow-forward" size={20} color="white" />
             </LinearGradient>
           </TouchableOpacity>

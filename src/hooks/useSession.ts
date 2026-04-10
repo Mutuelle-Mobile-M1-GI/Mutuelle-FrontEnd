@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createNewSession, updateSession, deleteSession } from "../services/session.service";
+import { createNewSession, updateSession, deleteSession, closeSession } from "../services/session.service";
 import { getStoredAccessToken } from "../services/auth.service";
 import { API_BASE_URL, API_ENDPOINTS } from "../constants/api";
 import axios from "axios";
@@ -103,6 +103,23 @@ export function useDeleteSession() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["sessions"] });
       queryClient.invalidateQueries({ queryKey: ["current-session"] });
+    },
+  });
+}
+
+// 🏁 Hook pour clore une session (la passer à "Terminé")
+export function useCloseSession() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (sessionId: string) => {
+      const token = await getStoredAccessToken();
+      if (!token) throw new Error("Token manquant");
+      return closeSession(sessionId, token);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["current-session"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-dashboard"] });
     },
   });
 }

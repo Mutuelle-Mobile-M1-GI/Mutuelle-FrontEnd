@@ -38,5 +38,7 @@ export function useSocialFundCurrent() {
       return fetchSocialFundCurrent(token);
     },
     staleTime: 0, // Forcer la refetch immédiate après invalidation
+    retry: false, // ⚠️ Ne pas réessayer automatiquement
+    networkMode: "always"
   });
 }

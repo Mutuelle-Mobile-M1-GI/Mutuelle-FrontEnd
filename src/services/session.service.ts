@@ -83,3 +83,21 @@ export const deleteSession = async (
   );
   return data;
 };
+
+// 🏁 Service pour clore une session (la passer à "Terminé")
+export const closeSession = async (
+  sessionId: string,
+  accessToken: string
+): Promise<any> => {
+  const { data } = await axios.patch(
+    `${API_BASE_URL}${API_ENDPOINTS.closeSession(sessionId)}`,
+    {},
+    {
+      headers: { 
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      }
+    }
+  );
+  return data;
+};

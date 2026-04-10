@@ -4,27 +4,44 @@ import { getStoredAccessToken } from "./auth.service";
 
 // 🆕 Service pour récupérer l'exercice en cours
 export const fetchCurrentExercise = async (accessToken: string): Promise<any> => {
-  console.log("FESTHHH")
-  const { data } = await axios.get(
-    API_BASE_URL + API_ENDPOINTS.exerciseCurrent,
-    {
-      headers: { Authorization: `Bearer ${accessToken}` }
+  try {
+    const { data } = await axios.get(
+      API_BASE_URL + API_ENDPOINTS.exerciseCurrent,
+      {
+        headers: { Authorization: `Bearer ${accessToken}` }
+      }
+    );
+    return data;
+  } catch (error: any) {
+    // Si l'API retourne "Aucun exercice en cours", on lance une erreur explicite
+    if (error.response?.status === 404 || error.response?.data?.detail?.includes("Aucun")) {
+      const err = new Error("NO_CURRENT_EXERCISE");
+      (err as any).isNoDataError = true;
+      throw err;
     }
-  );
-  console.log("EXERCICE RECUPERE : ," ,data)
-  return data;
+    throw error;
+  }
 };
 
 // 🆕 Service pour récupérer la session actuelle
 export const fetchCurrentSession = async (accessToken: string): Promise<any> => {
-  const { data } = await axios.get(
-    API_BASE_URL + API_ENDPOINTS.sessionCurrent,
-    {
-      headers: { Authorization: `Bearer ${accessToken}` }
+  try {
+    const { data } = await axios.get(
+      API_BASE_URL + API_ENDPOINTS.sessionCurrent,
+      {
+        headers: { Authorization: `Bearer ${accessToken}` }
+      }
+    );
+    return data;
+  } catch (error: any) {
+    // Si l'API retourne "Aucune session en cours", on lance une erreur explicite
+    if (error.response?.status === 404 || error.response?.data?.detail?.includes("Aucun")) {
+      const err = new Error("NO_CURRENT_SESSION");
+      (err as any).isNoDataError = true;
+      throw err;
     }
-  );
-  console.log("SESSION RECUPERE : ," ,data)
-  return data;
+    throw error;
+  }
 };
 
 // 🆕 Service pour récupérer tous les exercices

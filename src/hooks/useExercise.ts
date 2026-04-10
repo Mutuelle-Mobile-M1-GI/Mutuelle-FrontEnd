@@ -9,10 +9,11 @@ export function useCurrentExercise() {
     queryFn: async () => {
       const token = await getStoredAccessToken();
       if (!token) throw new Error("Token manquant");
-      console.log("appel de fetch exercise")
       return fetchCurrentExercise(token);
     },
     staleTime: 5 * 60 * 1000, // 5 min
+    retry: false, // ⚠️ Ne pas réessayer automatiquement
+    networkMode: "always"
   });
 }
 
@@ -23,10 +24,11 @@ export function useCurrentSession() {
     queryFn: async () => {
       const token = await getStoredAccessToken();
       if (!token) throw new Error("Token manquant");
-      console.log("appel de fetch session")
       return fetchCurrentSession(token);
     },
     staleTime: 2 * 60 * 1000, // 2 min
+    retry: false, // ⚠️ Ne pas réessayer automatiquement
+    networkMode: "always"
   });
 }
 

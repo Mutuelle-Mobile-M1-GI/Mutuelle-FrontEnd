@@ -3,10 +3,20 @@ import { API_BASE_URL, API_ENDPOINTS } from "../constants/api";
 import { MutuelleConfig } from "../types/config.types";
 
 export const fetchConfigCurrent = async (accessToken: string): Promise<MutuelleConfig> => {
-  const { data } = await axios.get<MutuelleConfig>(API_BASE_URL + API_ENDPOINTS.configCurrent, {
-    headers: { Authorization: `Bearer ${accessToken}` }
-  });
-  return data;
+  try {
+    const { data } = await axios.get<MutuelleConfig>(API_BASE_URL + API_ENDPOINTS.configCurrent, {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    return data;
+  } catch (error: any) {
+    // Si l'API retourne une erreur "Aucune config", on la lance explicitement
+    if (error.response?.status === 404 || error.response?.data?.detail?.includes("Aucun")) {
+      const err = new Error("NO_CURRENT_CONFIG");
+      (err as any).isNoDataError = true;
+      throw err;
+    }
+    throw error;
+  }
 };
 
 // ✅ CORRECTION : Ordre logique des paramètres

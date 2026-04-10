@@ -33,5 +33,7 @@ export function useCaisseInscriptionCurrent() {
       return fetchCaisseInscriptionCurrent(token);
     },
     enabled: true,
+    retry: false, // ⚠️ Ne pas réessayer automatiquement
+    networkMode: "always"
   });
 }
