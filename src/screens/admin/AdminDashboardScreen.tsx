@@ -26,10 +26,13 @@ import { useMutuelleConfig } from "../../hooks/useConfig";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { useCurrentExercise, useCurrentSession } from "../../hooks/useExercise";
 import { useQueryClient } from "@tanstack/react-query";
-import { useCreateNewSession } from "../../hooks/useSession";
+import { useCreateNewSession, useUpdateSession, useDeleteSession } from "../../hooks/useSession";
 import { useOperationsHistory, Operation } from "../../hooks/useOperationsHistory";
 import { useExercises, useSessions } from "../../hooks/useListData";
-
+import { useCaisseInscriptionCurrent } from "../../hooks/useInscription";
+import { useUpdateExercise, useDeleteExercise } from "../../hooks/useExercise";
+import { ExerciseEditModal } from "./ExerciseEditModal";
+import { SessionEditModal } from "./SessionEditModal";
 const { width } = Dimensions.get("window");
 
 // 🎯 Configuration de la pagination
@@ -198,11 +201,14 @@ interface ExerciceListModalProps {
   visible: boolean;
   onClose: () => void;
   onSelectExercice: (exe: any) => void;
+  onEdit?: (exe: any) => void;
+  onDelete?: (exe: any) => void;
 }
 
-const ExerciceListModal = ({ visible, onClose, onSelectExercice }: ExerciceListModalProps) => {
+const ExerciceListModal = ({ visible, onClose, onSelectExercice, onEdit, onDelete }: ExerciceListModalProps) => {
   const [displayedItems, setDisplayedItems] = useState(ITEMS_PER_PAGE);
-  const { data: exercices = [], isLoading, error } = useExercises();
+  const { data: exercicesRaw, isLoading, error } = useExercises();
+  const exercices: any[] = Array.isArray(exercicesRaw) ? exercicesRaw : (exercicesRaw as any)?.results ?? [];
 
   const paginatedExercices = React.useMemo(
     () => exercices.slice(0, displayedItems),
@@ -288,15 +294,13 @@ const ExerciceListModal = ({ visible, onClose, onSelectExercice }: ExerciceListM
                 <View style={listModal.actionRow}>
                   <TouchableOpacity
                     style={listModal.btnModifier}
-                    onPress={() => Alert.alert("Modifier", `Modification de ${exe.nom} (simulé)`)}
+                    onPress={() => onEdit && onEdit(exe)}
                   >
                     <Text style={listModal.btnModifierText}>Modifier</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={listModal.btnSupprimer}
-                    onPress={() =>
-                      confirmDelete(exe.nom, () => Alert.alert("Info", "Suppression simulée"))
-                    }
+                    onPress={() => onDelete && onDelete(exe)}
                   >
                     <Text style={listModal.btnSupprimerText}>Supprimer</Text>
                   </TouchableOpacity>
@@ -342,6 +346,8 @@ interface SessionListModalProps {
   exerciceNom?: string;
   // Toutes les sessions : on a besoin des exercices pour afficher leur nom
   allExercices?: any[];
+  onEdit?: (session: any) => void;
+  onDelete?: (session: any) => void;
 }
 
 const SessionListModal = ({
@@ -351,11 +357,14 @@ const SessionListModal = ({
   exerciceId,
   exerciceNom,
   allExercices = [],
+  onEdit,
+  onDelete,
 }: SessionListModalProps) => {
   const [displayedItems, setDisplayedItems] = useState(ITEMS_PER_PAGE);
 
   // Si exerciceId fourni → sessions filtrées, sinon toutes les sessions
-  const { data: sessions = [], isLoading, error } = useSessions(exerciceId);
+  const { data: sessionsRaw, isLoading, error } = useSessions(exerciceId);
+  const sessions: any[] = Array.isArray(sessionsRaw) ? sessionsRaw : (sessionsRaw as any)?.results ?? [];
 
   const paginatedSessions = React.useMemo(
     () => sessions.slice(0, displayedItems),
@@ -476,15 +485,13 @@ const SessionListModal = ({
                   <View style={listModal.actionRow}>
                     <TouchableOpacity
                       style={listModal.btnModifier}
-                      onPress={() => Alert.alert("Modifier", `Modification de ${sess.nom} (simulé)`)}
+                      onPress={() => onEdit && onEdit(sess)}
                     >
                       <Text style={listModal.btnModifierText}>Modifier</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={listModal.btnSupprimer}
-                      onPress={() =>
-                        confirmDelete(sess.nom, () => Alert.alert("Info", "Suppression simulée"))
-                      }
+                      onPress={() => onDelete && onDelete(sess)}
                     >
                       <Text style={listModal.btnSupprimerText}>Supprimer</Text>
                     </TouchableOpacity>
@@ -680,9 +687,18 @@ export default function AdminDashboardScreen() {
   const { data: config } = useMutuelleConfig();
   const queryClient = useQueryClient();
   const createSessionMutation = useCreateNewSession();
+  
+  // ✅ Mutations pour modifier et supprimer exercices
+  const updateExerciseMutation = useUpdateExercise();
+  const deleteExerciseMutation = useDeleteExercise();
+  
+  // ✅ Mutations pour modifier et supprimer sessions
+  const updateSessionMutation = useUpdateSession();
+  const deleteSessionMutation = useDeleteSession();
 
   // ── Données exercices (pour enrichir les cartes de sessions en mode "toutes") ──
-  const { data: allExercices = [] } = useExercises();
+  const { data: allExercicesRaw } = useExercises();
+  const allExercices: any[] = Array.isArray(allExercicesRaw) ? allExercicesRaw : (allExercicesRaw as any)?.results ?? [];
 
   const [refreshing, setRefreshing] = useState(false);
   const [showSessionModal, setShowSessionModal] = useState(false);
@@ -697,6 +713,14 @@ export default function AdminDashboardScreen() {
   const [selectedExercice, setSelectedExercice] = useState<any>(null);
   const [showSessionsForExercice, setShowSessionsForExercice] = useState(false);
 
+  // ✅ Modal de modification d'exercice
+  const [exerciseEditModalVisible, setExerciseEditModalVisible] = useState(false);
+  const [editingExercise, setEditingExercise] = useState<any>(null);
+
+  // ✅ Modal de modification de session
+  const [sessionEditModalVisible, setSessionEditModalVisible] = useState(false);
+  const [editingSession, setEditingSession] = useState<any>(null);
+
   // Mini-historique interne (raccourcis soldes)
   const [historiqueVisible, setHistoriqueVisible] = useState(false);
   const [historiqueFilters, setHistoriqueFilters] = useState<string[]>([]);
@@ -706,7 +730,8 @@ export default function AdminDashboardScreen() {
   const sessionLoading = createSessionMutation.isPending;
   const { data: currentExercise, isLoading: exerciseLoading } = useCurrentExercise();
   const { data: currentSession, isLoading: sessionLoading2 } = useCurrentSession();
-
+  const { data: caisseInscription } = useCaisseInscriptionCurrent();
+  
   useFocusEffect(
     React.useCallback(() => {
       const refreshData = async () => {
@@ -776,6 +801,158 @@ export default function AdminDashboardScreen() {
     } as never);
   };
 
+  // ✅ Handlers pour la modification d'exercice
+  const handleOpenEditExercise = (exercise: any) => {
+    setEditingExercise(exercise);
+    setExerciseEditModalVisible(true);
+  };
+
+  const handleSubmitEditExercise = async (data: any) => {
+    if (!editingExercise?.id) return;
+    
+    try {
+      await updateExerciseMutation.mutateAsync({
+        exerciseId: editingExercise.id,
+        exerciseData: {
+          nom: data.nom,
+          date_debut: data.date_debut,
+          date_fin: data.date_fin || null,
+          description: data.description,
+        },
+      });
+      Alert.alert("Succès", "Exercice modifié avec succès !");
+      setExerciseEditModalVisible(false);
+      setEditingExercise(null);
+      queryClient.invalidateQueries({ queryKey: ["exercises"] });
+    } catch (error: any) {
+      let errorMessage = "Impossible de modifier l'exercice";
+      if (error.response?.data) {
+        const errorData = error.response.data;
+        if (typeof errorData === 'object') {
+          errorMessage = Object.entries(errorData)
+            .map(([field, messages]) => {
+              const msg = Array.isArray(messages) ? messages.join(', ') : messages;
+              return `${field}: ${msg}`;
+            })
+            .join('\n');
+        } else if (typeof errorData === 'string') {
+          errorMessage = errorData;
+        } else if (errorData.error) {
+          errorMessage = errorData.error;
+        }
+      }
+      Alert.alert("Erreur", errorMessage);
+    }
+  };
+
+  const handleDeleteExercise = (exercise: any) => {
+    Alert.alert(
+      "Confirmation",
+      `Êtes-vous sûr de vouloir supprimer l'exercice "${exercise.nom}" ?`,
+      [
+        { text: "Annuler", style: "cancel" },
+        {
+          text: "Supprimer",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await deleteExerciseMutation.mutateAsync(exercise.id);
+              Alert.alert("Succès", "Exercice supprimé avec succès !");
+              queryClient.invalidateQueries({ queryKey: ["exercises"] });
+            } catch (error: any) {
+              let errorMessage = "Impossible de supprimer l'exercice";
+              if (error.response?.data) {
+                const errorData = error.response.data;
+                if (typeof errorData === 'object') {
+                  errorMessage = errorData.error || errorData.details || "Impossible de supprimer cet exercice";
+                } else if (typeof errorData === 'string') {
+                  errorMessage = errorData;
+                }
+              }
+              Alert.alert("Erreur", errorMessage);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // ✅ Handlers pour la modification de session
+  const handleOpenEditSession = (session: any) => {
+    setEditingSession(session);
+    setSessionEditModalVisible(true);
+  };
+
+  const handleSubmitEditSession = async (data: any) => {
+    if (!editingSession?.id) return;
+    
+    try {
+      await updateSessionMutation.mutateAsync({
+        sessionId: editingSession.id,
+        sessionData: {
+          nom: data.nom,
+          date_session: data.date_session,
+          montant_collation: data.montant_collation,
+          description: data.description,
+        },
+      });
+      Alert.alert("Succès", "Session modifiée avec succès !");
+      setSessionEditModalVisible(false);
+      setEditingSession(null);
+      queryClient.invalidateQueries({ queryKey: ["sessions"] });
+    } catch (error: any) {
+      let errorMessage = "Impossible de modifier la session";
+      if (error.response?.data) {
+        const errorData = error.response.data;
+        if (typeof errorData === 'object') {
+          errorMessage = Object.entries(errorData)
+            .map(([field, messages]) => {
+              const msg = Array.isArray(messages) ? messages.join(', ') : messages;
+              return `${field}: ${msg}`;
+            })
+            .join('\n');
+        } else if (typeof errorData === 'string') {
+          errorMessage = errorData;
+        } else if (errorData.error) {
+          errorMessage = errorData.error;
+        }
+      }
+      Alert.alert("Erreur", errorMessage);
+    }
+  };
+
+  const handleDeleteSession = (session: any) => {
+    Alert.alert(
+      "Confirmation",
+      `Êtes-vous sûr de vouloir supprimer la session "${session.nom}" ?`,
+      [
+        { text: "Annuler", style: "cancel" },
+        {
+          text: "Supprimer",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await deleteSessionMutation.mutateAsync(session.id);
+              Alert.alert("Succès", "Session supprimée avec succès !");
+              queryClient.invalidateQueries({ queryKey: ["sessions"] });
+            } catch (error: any) {
+              let errorMessage = "Impossible de supprimer la session";
+              if (error.response?.data) {
+                const errorData = error.response.data;
+                if (typeof errorData === 'object') {
+                  errorMessage = errorData.error || errorData.details || "Impossible de supprimer cette session";
+                } else if (typeof errorData === 'string') {
+                  errorMessage = errorData;
+                }
+              }
+              Alert.alert("Erreur", errorMessage);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   /*const handleCreateSession = async (sessionData: any) => {
     try {
       const apiData = {
@@ -841,14 +1018,14 @@ export default function AdminDashboardScreen() {
   const stats = React.useMemo(() => {
     if (!dashboardData) return null;
     return {
-      fondInscription: 0,
+      fondInscription: parseFloat(caisseInscription?.montant_total || "0") || 0,
       fondSocial: dashboardData.fonds_social?.montant_total || 0,
       fondEpargne: dashboardData.tresor?.cumul_total_epargnes || 0,
       membres: dashboardData.tresor?.nombre_membres || 0,
       empruntsEnCours: dashboardData.emprunts_en_cours?.nombre || 0,
       alertesCount: dashboardData.alertes?.length || 0,
     };
-  }, [dashboardData]);
+  }, [dashboardData, caisseInscription]);
 
   if (isLoading) {
     return (
@@ -932,7 +1109,11 @@ export default function AdminDashboardScreen() {
 
           <TouchableOpacity
             style={styles.soldeCard}
-            onPress={() => openHistorique("Historique — Fond Inscription", ["INSCRIPTION"])}
+            onPress={() =>
+              navigation.navigate("Historique" as never, {
+                filterPreset: ["paiement-inscription"],
+              } as never)
+            }
             activeOpacity={0.8}
           >
             <View style={styles.soldeLeft}>
@@ -951,7 +1132,11 @@ export default function AdminDashboardScreen() {
 
           <TouchableOpacity
             style={styles.soldeCard}
-            onPress={() => openHistorique("Historique — Fond Social", ["SOLIDARITE", "AIDE"])}
+            onPress={() =>
+              navigation.navigate("Historique" as never, {
+                filterPreset: ["solidarite", "renflouement", "assistance"],
+              } as never)
+            }
             activeOpacity={0.8}
           >
             <View style={styles.soldeLeft}>
@@ -970,7 +1155,11 @@ export default function AdminDashboardScreen() {
 
           <TouchableOpacity
             style={styles.soldeCard}
-            onPress={() => openHistorique("Historique — Fond Épargne", ["EPARGNE"])}
+            onPress={() =>
+              navigation.navigate("Historique" as never, {
+                filterPreset: ["epargne", "remboursement", "emprunt"],
+              } as never)
+            }
             activeOpacity={0.8}
           >
             <View style={styles.soldeLeft}>
@@ -1155,6 +1344,32 @@ export default function AdminDashboardScreen() {
         loading={sessionLoading}
       />
 
+      {/* ✅ Modification d'exercice */}
+      <ExerciseEditModal
+        visible={exerciseEditModalVisible}
+        onClose={() => {
+          setExerciseEditModalVisible(false);
+          setEditingExercise(null);
+        }}
+        onSubmit={handleSubmitEditExercise}
+        initialData={editingExercise}
+        loading={updateExerciseMutation.isPending}
+        isEditing={true}
+      />
+
+      {/* ✅ Modification de session */}
+      <SessionEditModal
+        visible={sessionEditModalVisible}
+        onClose={() => {
+          setSessionEditModalVisible(false);
+          setEditingSession(null);
+        }}
+        onSubmit={handleSubmitEditSession}
+        initialData={editingSession}
+        loading={updateSessionMutation.isPending}
+        isEditing={true}
+      />
+
       {/* Liste des exercices (clic sur exercice → ouvre sessions de cet exercice) */}
       <ExerciceListModal
         visible={showExerciceModal}
@@ -1163,6 +1378,8 @@ export default function AdminDashboardScreen() {
           setSelectedExercice(exe);
           setShowSessionsForExercice(true);
         }}
+        onEdit={handleOpenEditExercise}
+        onDelete={handleDeleteExercise}
       />
 
       {/* Toutes les sessions (bouton "Session" du dashboard) */}
@@ -1171,6 +1388,8 @@ export default function AdminDashboardScreen() {
         onClose={() => setShowAllSessionsModal(false)}
         onSelectSession={handleSelectSession}
         allExercices={allExercices}
+        onEdit={handleOpenEditSession}
+        onDelete={handleDeleteSession}
         // pas d'exerciceId → toutes les sessions
       />
 
@@ -1182,6 +1401,8 @@ export default function AdminDashboardScreen() {
         exerciceId={selectedExercice?.id}
         exerciceNom={selectedExercice?.nom}
         allExercices={allExercices}
+        onEdit={handleOpenEditSession}
+        onDelete={handleDeleteSession}
       />
 
       {/* Mini-historique interne (raccourcis soldes uniquement) */}
@@ -1318,10 +1539,10 @@ const listModal = StyleSheet.create({
   statusText: { fontSize: FONT_SIZES.xs, fontWeight: "600" },
 
   actionRow: { flexDirection: "row", gap: SPACING.sm, paddingHorizontal: SPACING.md, paddingBottom: SPACING.md },
-  btnModifier: { flex: 1, paddingVertical: SPACING.sm, borderRadius: BORDER_RADIUS.sm, backgroundColor: "#4361EE15", alignItems: "center" },
-  btnModifierText: { fontSize: FONT_SIZES.sm, fontWeight: "600", color: "#4361EE" },
-  btnSupprimer: { flex: 1, paddingVertical: SPACING.sm, borderRadius: BORDER_RADIUS.sm, backgroundColor: "#FF000015", alignItems: "center" },
-  btnSupprimerText: { fontSize: FONT_SIZES.sm, fontWeight: "600", color: "#CC0000" },
+  btnModifier: { flex: 1, paddingVertical: SPACING.sm, borderRadius: BORDER_RADIUS.sm, backgroundColor: "#4361EE", alignItems: "center" },
+  btnModifierText: { fontSize: FONT_SIZES.sm, fontWeight: "600", color: "white" },
+  btnSupprimer: { flex: 1, paddingVertical: SPACING.sm, borderRadius: BORDER_RADIUS.sm, backgroundColor: "#CC0000", alignItems: "center" },
+  btnSupprimerText: { fontSize: FONT_SIZES.sm, fontWeight: "600", color: "white" },
 
   noItems: { fontSize: FONT_SIZES.sm, color: COLORS.textLight, padding: SPACING.md, fontStyle: "italic" },
 

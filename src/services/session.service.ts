@@ -42,3 +42,44 @@ export const createNewSession = async (
   );
   return data;
 };
+
+// 🔄 Service pour modifier une session EN_COURS
+export const updateSession = async (
+  sessionId: string,
+  sessionData: {
+    nom?: string;
+    description?: string;
+    date_session?: string;
+    montant_collation?: number;
+  },
+  accessToken: string
+): Promise<any> => {
+  const { data } = await axios.patch(
+    `${API_BASE_URL}${API_ENDPOINTS.sessions}${sessionId}/update_params/`,
+    sessionData,
+    {
+      headers: { 
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      }
+    }
+  );
+  return data;
+};
+
+// 🗑️ Service pour supprimer une session
+export const deleteSession = async (
+  sessionId: string,
+  accessToken: string
+): Promise<any> => {
+  const { data } = await axios.delete(
+    `${API_BASE_URL}${API_ENDPOINTS.sessions}${sessionId}/`,
+    {
+      headers: { 
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      }
+    }
+  );
+  return data;
+};

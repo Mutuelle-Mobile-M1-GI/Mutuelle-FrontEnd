@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { fetchMembers, fetchMemberById, fetchMemberFullData, addInscriptionPayment, createFullMember, fetchMemberByUserId } from "../services/member.service";
+import { fetchMembers, fetchMemberById, fetchMemberFullData, addInscriptionPayment, createFullMember, fetchMemberByUserId, activateMember, deactivateMember } from "../services/member.service";
 import { Member } from "../types/member.types";
 import { getStoredAccessToken } from "../services/auth.service";
 
@@ -70,7 +70,7 @@ export function useCreateFullMember() {
   });
 }
 
-export function useAddInscriptionPayment() {
+export function useAddInscriptionPayment(sessionId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({
@@ -84,9 +84,38 @@ export function useAddInscriptionPayment() {
     }) => {
       const token = await getStoredAccessToken();
       if (!token) throw new Error("Token manquant");
-      return addInscriptionPayment(membre_id, montant, notes, token);
+      if (!sessionId) throw new Error("Session manquante");
+      return addInscriptionPayment(membre_id, montant, notes, sessionId, token);
     },
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ["members"] }),
+  });
+}
+
+export function useActivateMember() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (memberId: string) => {
+      const token = await getStoredAccessToken();
+      if (!token) throw new Error("Token manquant");
+      return activateMember(memberId, token);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["members"] });
+    },
+  });
+}
+
+export function useDeactivateMember() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (memberId: string) => {
+      const token = await getStoredAccessToken();
+      if (!token) throw new Error("Token manquant");
+      return deactivateMember(memberId, token);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["members"] });
+    },
   });
 }

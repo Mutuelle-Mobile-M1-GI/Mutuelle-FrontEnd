@@ -37,3 +37,38 @@ export const fetchExercises = async (accessToken: string): Promise<any[]> => {
   );
   return data.results || data; // Selon la pagination de ton API
 };
+
+// 🔄 Service pour modifier un exercice EN_COURS
+export const updateExercise = async (
+  exerciseId: string,
+  exerciseData: {
+    nom?: string;
+    description?: string;
+    date_debut?: string;
+    date_fin?: string;
+  },
+  accessToken: string
+): Promise<any> => {
+  const { data } = await axios.patch(
+    `${API_BASE_URL}${API_ENDPOINTS.exercises}${exerciseId}/update_params/`,
+    exerciseData,
+    {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    }
+  );
+  return data;
+};
+
+// 🗑️ Service pour supprimer un exercice
+export const deleteExercise = async (
+  exerciseId: string,
+  accessToken: string
+): Promise<any> => {
+  const { data } = await axios.delete(
+    `${API_BASE_URL}${API_ENDPOINTS.exercises}${exerciseId}/`,
+    {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    }
+  );
+  return data;
+};

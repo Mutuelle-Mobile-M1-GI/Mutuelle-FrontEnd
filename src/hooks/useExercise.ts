@@ -1,5 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
-import { fetchCurrentExercise, fetchCurrentSession, fetchExercises } from "../services/exercice.service";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { fetchCurrentExercise, fetchCurrentSession, fetchExercises, updateExercise, deleteExercise } from "../services/exercice.service";
 import { getStoredAccessToken } from "../services/auth.service";
 
 // 🆕 Hook pour l'exercice en cours
@@ -40,5 +40,37 @@ export function useExercises() {
       return fetchExercises(token);
     },
     staleTime: 10 * 60 * 1000, // 10 min
+  });
+}
+
+// 🔄 Hook pour modifier un exercice
+export function useUpdateExercise() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: { exerciseId: string; exerciseData: any }) => {
+      const token = await getStoredAccessToken();
+      if (!token) throw new Error("Token manquant");
+      return updateExercise(payload.exerciseId, payload.exerciseData, token);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["exercises"] });
+      queryClient.invalidateQueries({ queryKey: ["current-exercise"] });
+    },
+  });
+}
+
+// 🗑️ Hook pour supprimer un exercice
+export function useDeleteExercise() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (exerciseId: string) => {
+      const token = await getStoredAccessToken();
+      if (!token) throw new Error("Token manquant");
+      return deleteExercise(exerciseId, token);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["exercises"] });
+      queryClient.invalidateQueries({ queryKey: ["current-exercise"] });
+    },
   });
 }

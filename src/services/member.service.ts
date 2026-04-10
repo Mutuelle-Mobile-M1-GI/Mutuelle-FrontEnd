@@ -93,11 +93,41 @@ export const addInscriptionPayment = async (
   membre_id: string,
   montant: number,
   notes: string,
+  sessionId: string,
   accessToken: string
 ): Promise<any> => {
   const { data } = await axios.post(
-    API_BASE_URL + API_ENDPOINTS.adminMemberManagement + "ajouter_paiement_inscription/",
-    { membre_id, montant, notes },
+    API_BASE_URL + API_ENDPOINTS.inscriptionPayments,
+    { 
+      membre: membre_id, 
+      montant: montant.toString(), 
+      session: sessionId,
+      notes: notes || undefined
+    },
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  return data;
+};
+
+export const activateMember = async (
+  memberId: string,
+  accessToken: string
+): Promise<any> => {
+  const { data } = await axios.post(
+    API_BASE_URL + API_ENDPOINTS.activateMember(memberId),
+    {},
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  return data;
+};
+
+export const deactivateMember = async (
+  memberId: string,
+  accessToken: string
+): Promise<any> => {
+  const { data } = await axios.post(
+    API_BASE_URL + API_ENDPOINTS.deactivateMember(memberId),
+    {},
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
   return data;

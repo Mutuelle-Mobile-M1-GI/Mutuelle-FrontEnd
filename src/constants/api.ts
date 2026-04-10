@@ -2,7 +2,7 @@
 
 import { createLoan } from "../services/loan.service";
 
-export const API_BASE_URL = "http://192.168.1.101:8000/api";
+export const API_BASE_URL = "http://192.168.150.100:8000/api";
 
 export const API_ENDPOINTS = {
   // Auth
@@ -93,4 +93,13 @@ export const API_ENDPOINTS = {
 
   // Création membre complet (admin)
   adminCreateMember: "/administration/gestion-membres/creer_membre_complet/",
+
+  // Inscription et paiements
+  inscriptionPayments: "/transactions/paiements-inscription/",
+  registerInscription: "/administration/gestion-membres/enregistrer_inscription/",
+  caisse_inscription_current: "/core/caisse-inscription/current/",
+
+  // Activation/Désactivation membres
+  activateMember: (id: string) => `/core/membres/${id}/activer/`,
+  deactivateMember: (id: string) => `/core/membres/${id}/desactiver/`,
 };

@@ -19,7 +19,7 @@ import { BlurView } from "expo-blur";
 import * as ImagePicker from 'expo-image-picker';
 import { COLORS, SPACING, BORDER_RADIUS, FONT_SIZES } from "../../constants/config";
 import { useMembers, useMemberFinance } from "../../hooks/useMember";
-import { useCreateFullMember, useAddInscriptionPayment } from "../../hooks/useMember";
+import { useCreateFullMember, useAddInscriptionPayment, useActivateMember, useDeactivateMember } from "../../hooks/useMember";
 import { useCurrentSession } from "../../hooks/useSession";
 import { Member, MemberFinancialData } from "../../types/member.types";
 import { Image } from "react-native";
@@ -71,12 +71,14 @@ interface MemberCardProps {
   onPayment: () => void;
   onDetail: () => void;
   onDeactivate: () => void;
+  onActivate: () => void;
 }
 
-const MemberCard = ({ member, onPress, onPayment, onDetail, onDeactivate }: MemberCardProps) => {
+const MemberCard = ({ member, onPress, onPayment, onDetail, onDeactivate, onActivate }: MemberCardProps) => {
   const isComplete = member.donnees_financieres?.inscription?.inscription_complete;
   const progress = member.donnees_financieres?.inscription?.pourcentage_inscription || 0;
   const isSuspended = member.statut === "SUSPENDU";
+  const isActive = member.utilisateur?.is_active !== false;
 
   const getStatusColor = () => {
     switch (member.statut) {
@@ -97,7 +99,7 @@ const MemberCard = ({ member, onPress, onPayment, onDetail, onDeactivate }: Memb
   };
 
   return (
-    <View style={styles.memberCard}>
+    <View style={[styles.memberCard, !isActive && styles.memberCardInactive]}>
       <View style={styles.memberCardContent}>
         {/* Avatar */}
         <View style={styles.avatarContainer}>
@@ -116,7 +118,10 @@ const MemberCard = ({ member, onPress, onPayment, onDetail, onDeactivate }: Memb
 
         {/* Informations principales */}
         <View style={styles.memberInfo}>
-          <Text style={styles.memberName}>{member.utilisateur.nom_complet}</Text>
+          <Text style={[styles.memberName, !isActive && styles.memberNameInactive]}>
+            {member.utilisateur.nom_complet}
+            {!isActive && " (Désactivé)"}
+          </Text>
           <Text style={styles.memberNumber}>{member.numero_membre}</Text>
           <Text style={styles.memberEmail}>{member.utilisateur.email}</Text>
 
@@ -145,19 +150,47 @@ const MemberCard = ({ member, onPress, onPayment, onDetail, onDeactivate }: Memb
 
         <View style={styles.memberActionDivider} />
 
-        <TouchableOpacity
-          style={[styles.memberActionBtn, isSuspended && styles.memberActionBtnDisabled]}
-          onPress={onDeactivate}
-          disabled={isSuspended}
-          activeOpacity={0.7}
-        >
-          <Text style={[
-            styles.memberActionBtnText,
-            { color: isSuspended ? COLORS.textLight : COLORS.error }
-          ]}>
-            {isSuspended ? "Déjà suspendu" : "Désactiver"}
-          </Text>
-        </TouchableOpacity>
+        {!isComplete && isActive ? (
+          <>
+            <TouchableOpacity
+              style={styles.memberActionBtn}
+              onPress={onPayment}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.memberActionBtnText, { color: COLORS.warning }]}>
+                Enregistrer paiement
+              </Text>
+            </TouchableOpacity>
+
+            <View style={styles.memberActionDivider} />
+          </>
+        ) : null}
+
+        {isActive ? (
+          <TouchableOpacity
+            style={[styles.memberActionBtn, isSuspended && styles.memberActionBtnDisabled]}
+            onPress={onDeactivate}
+            disabled={isSuspended}
+            activeOpacity={0.7}
+          >
+            <Text style={[
+              styles.memberActionBtnText,
+              { color: isSuspended ? COLORS.textLight : COLORS.error }
+            ]}>
+              {isSuspended ? "Déjà suspendu" : "Désactiver"}
+            </Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={styles.memberActionBtn}
+            onPress={onActivate}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.memberActionBtnText, { color: COLORS.success }]}>
+              Activer
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
     </View>
   );
@@ -510,9 +543,10 @@ interface AddMemberModalProps {
   onClose: () => void;
   onSubmit: (data: any) => void;
   loading: boolean;
+  session?: any;
 }
 
-const AddMemberModal = ({ visible, onClose, onSubmit, loading }: AddMemberModalProps) => {
+const AddMemberModal = ({ visible, onClose, onSubmit, loading, session }: AddMemberModalProps) => {
   const [form, setForm] = useState({
     username: "",
     email: "",
@@ -548,10 +582,22 @@ const AddMemberModal = ({ visible, onClose, onSubmit, loading }: AddMemberModalP
       return;
     }
 
+    // Validation du montant d'inscription initial
+    const montantSaisi = form.montant_inscription_initial ? Number(form.montant_inscription_initial) : 0;
+    const montantAttendu = session?.montant_collation || 0;
+
+    if (montantSaisi > 0 && montantAttendu > 0 && montantSaisi < montantAttendu) {
+      Alert.alert(
+        "Montant insuffisant",
+        `Le montant saisi (${montantSaisi.toLocaleString('fr-FR')} FCFA) est inférieur au montant d'inscription requis (${montantAttendu.toLocaleString('fr-FR')} FCFA).\n\nVeuillez saisir un montant égal ou supérieur à ${montantAttendu.toLocaleString('fr-FR')} FCFA.`
+      );
+      return;
+    }
+
     onSubmit({
       ...form,
       password: "000000",
-      montant_inscription_initial: form.montant_inscription_initial ? Number(form.montant_inscription_initial) : 0,
+      montant_inscription_initial: montantSaisi,
       ...(photo ? { photo_profil: photo } : {}),
     });
   };
@@ -729,7 +775,7 @@ const AddMemberModal = ({ visible, onClose, onSubmit, loading }: AddMemberModalP
   );
 };
 
-// 🎯 Composant principal
+// export default function InscriptionsScreen() {
 export default function InscriptionsScreen() {
   const [search, setSearch] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
@@ -745,7 +791,9 @@ export default function InscriptionsScreen() {
   const { data: membersRaw, isLoading, refetch } = useMembers();
   const { data: session } = useCurrentSession();
   const createMember = useCreateFullMember();
-  const addPayment = useAddInscriptionPayment();
+  const addPayment = useAddInscriptionPayment(session?.id || "");
+  const activateMutation = useActivateMember();
+  const deactivateMutation = useDeactivateMember();
 
   // Détail membre
   const { data: memberFinance, isLoading: loadingDetail } = useMemberFinance(selectedMember?.id || "");
@@ -755,10 +803,18 @@ export default function InscriptionsScreen() {
 
   // Filtrage et stats
   const filteredMembers = useMemo(() => {
-    return members.filter((member) => {
-      const searchStr = `${member.utilisateur.first_name} ${member.utilisateur.last_name} ${member.utilisateur.email} ${member.numero_membre}`.toLowerCase();
-      return searchStr.includes(search.toLowerCase());
-    });
+    return members
+      .filter((member) => {
+        const searchStr = `${member.utilisateur.first_name} ${member.utilisateur.last_name} ${member.utilisateur.email} ${member.numero_membre}`.toLowerCase();
+        return searchStr.includes(search.toLowerCase());
+      })
+      .sort((a, b) => {
+        // Les membres actifs en premier, les inactifs en bas
+        const aIsActive = a.utilisateur?.is_active !== false;
+        const bIsActive = b.utilisateur?.is_active !== false;
+        if (aIsActive === bIsActive) return 0;
+        return aIsActive ? -1 : 1;
+      });
   }, [members, search]);
 
   // Pagination
@@ -773,28 +829,64 @@ export default function InscriptionsScreen() {
   };
 
   const handleDeactivate = (member: Member) => {
-  Alert.alert(
-    "Désactiver le membre",
-    `Voulez-vous vraiment désactiver ${member.utilisateur.nom_complet} ?\nCette action suspendra son accès à la mutuelle.`,
-    [
-      { text: "Annuler", style: "cancel" },
-      {
-        text: "Désactiver",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            // TODO: remplacer par le vrai appel API quand l'endpoint sera prêt
-            // await deactivateMember(member.id);
-            Alert.alert("Succès", `${member.utilisateur.nom_complet} a été désactivé.`);
-            refetch();
-          } catch (error: any) {
-            Alert.alert("Erreur", error?.response?.data?.error || "Impossible de désactiver le membre");
-          }
+    Alert.alert(
+      "Désactiver le membre",
+      `Voulez-vous vraiment désactiver ${member.utilisateur.nom_complet} ?\n\nAttention: Cette action ne sera possible que si le membre n'a pas d'emprunt en cours ou en retard.`,
+      [
+        { text: "Annuler", style: "cancel" },
+        {
+          text: "Désactiver",
+          style: "destructive",
+          onPress: () => {
+            deactivateMutation.mutate(member.id, {
+              onSuccess: () => {
+                Alert.alert("Succès", `${member.utilisateur.nom_complet} a été désactivé.`);
+                refetch();
+              },
+              onError: (error: any) => {
+                let errorMessage = "Impossible de désactiver le membre";
+                if (error?.response?.status === 400) {
+                  errorMessage = error?.response?.data?.message || "Le membre a un emprunt en cours ou en retard.";
+                } else if (error?.response?.data?.message) {
+                  errorMessage = error.response.data.message;
+                }
+                Alert.alert("Erreur", errorMessage);
+              }
+            });
+          },
         },
-      },
-    ]
-  );
-};
+      ]
+    );
+  };
+
+  const handleActivate = (member: Member) => {
+    Alert.alert(
+      "Activer le membre",
+      `Voulez-vous vraiment activer ${member.utilisateur.nom_complet} ?\n\nCe membre recevra à nouveau les intérêts redistribués.`,
+      [
+        { text: "Annuler", style: "cancel" },
+        {
+          text: "Activer",
+          style: "default",
+          onPress: () => {
+            activateMutation.mutate(member.id, {
+              onSuccess: () => {
+                Alert.alert("Succès", `${member.utilisateur.nom_complet} a été activé.`);
+                refetch();
+              },
+              onError: (error: any) => {
+                let errorMessage = "Impossible d'activer le membre";
+                if (error?.response?.data?.message) {
+                  errorMessage = error.response.data.message;
+                }
+                Alert.alert("Erreur", errorMessage);
+              }
+            });
+          },
+        },
+      ]
+    );
+  };
 
   // Reset pagination when search changes
   useMemo(() => {
@@ -866,7 +958,17 @@ export default function InscriptionsScreen() {
         Alert.alert("Succès", "Paiement ajouté avec succès !");
       },
       onError: (error: any) => {
-        const errorMessage = error?.response?.data?.error || "Impossible d'ajouter le paiement";
+        let errorMessage = "Impossible d'ajouter le paiement";
+        
+        // Gestion spécifique de l'erreur 400 (montant insuffisant)
+        if (error?.response?.status === 400) {
+          errorMessage = "Le montant est insuffisant pour compléter l'inscription. Veuillez vérifier le montant saisi.";
+        } else if (error?.response?.data?.error) {
+          errorMessage = error.response.data.error;
+        } else if (error?.message) {
+          errorMessage = error.message;
+        }
+        
         Alert.alert("Erreur", errorMessage);
       }
     });
@@ -989,6 +1091,7 @@ export default function InscriptionsScreen() {
                   setShowDetailModal(true);
                 }}
                 onDeactivate={() => handleDeactivate(member)}
+                onActivate={() => handleActivate(member)}
               />
             ))}
 
@@ -1033,10 +1136,11 @@ export default function InscriptionsScreen() {
         onClose={() => setShowAddModal(false)}
         onSubmit={handleAddMember}
         loading={createMember.isPending}
+        session={session}
       />
 
       <MemberDetailModal
-        visible={showDetailModal}
+        visible={showDetailModal}f
         member={selectedMember}
         onClose={() => {
           setShowDetailModal(false);
@@ -1309,6 +1413,10 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2,
   },
+  memberCardInactive: {
+    opacity: 0.6,
+    backgroundColor: COLORS.background,
+  },
   memberCardContent: {
     flexDirection: "row",
     alignItems: "center",
@@ -1383,6 +1491,10 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     color: COLORS.text,
     marginBottom: SPACING.xs,
+  },
+  memberNameInactive: {
+    color: COLORS.textSecondary,
+    fontStyle: "italic",
   },
   memberNumber: {
     fontSize: FONT_SIZES.sm,

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createNewSession } from "../services/session.service";
+import { createNewSession, updateSession, deleteSession } from "../services/session.service";
 import { getStoredAccessToken } from "../services/auth.service";
 import { API_BASE_URL, API_ENDPOINTS } from "../constants/api";
 import axios from "axios";
@@ -72,5 +72,37 @@ export function useSessions(params?: { exercice?: string | number }) {
       return data;
     },
     enabled: !!params?.exercice,
+  });
+}
+
+// 🔄 Hook pour modifier une session
+export function useUpdateSession() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: { sessionId: string; sessionData: any }) => {
+      const token = await getStoredAccessToken();
+      if (!token) throw new Error("Token manquant");
+      return updateSession(payload.sessionId, payload.sessionData, token);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["current-session"] });
+    },
+  });
+}
+
+// 🗑️ Hook pour supprimer une session
+export function useDeleteSession() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (sessionId: string) => {
+      const token = await getStoredAccessToken();
+      if (!token) throw new Error("Token manquant");
+      return deleteSession(sessionId, token);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["current-session"] });
+    },
   });
 }

@@ -189,7 +189,13 @@ const MemberCard = ({ member, montantAttendu, onPress }: MemberCardProps) => {
           {getStatusText()}
         </Text>
         {!member.is_complete && (
-          <Ionicons name="add-circle" size={20} color={COLORS.primary} />
+          <TouchableOpacity 
+            style={styles.newPaymentButton}
+            onPress={onPress}
+          >
+            <Ionicons name="add" size={18} color="white" />
+            <Text style={styles.newPaymentButtonText}>Nouveau paiement</Text>
+          </TouchableOpacity>
         )}
       </View>
     </TouchableOpacity>
@@ -665,7 +671,7 @@ export default function SolidarityScreen() {
         transparent
         statusBarTranslucent
       >
-        <BlurView intensity={20} style={StyleSheet.absoluteFillObject} />
+        <BlurView intensity={80} style={StyleSheet.absoluteFillObject} />
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
             <LinearGradient
@@ -1079,6 +1085,20 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   statusText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: "600",
+  },
+  newPaymentButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.xs,
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: BORDER_RADIUS.md,
+  },
+  newPaymentButtonText: {
+    color: "white",
     fontSize: FONT_SIZES.sm,
     fontWeight: "600",
   },

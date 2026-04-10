@@ -44,6 +44,9 @@ type RouteParams = {
   exerciceId?: string | null;
   sessionName?: string;
   exerciceName?: string;
+  // filterPreset : liste de types pré-activés (depuis les boutons soldes du Dashboard)
+  // ex. ["paiement-inscription"] | ["solidarite","renflouement","assistance"] | ["epargne","remboursement","emprunt"]
+  filterPreset?: string[];
 };
 
 // ─── Design system ────────────────────────────────────────────────────────────
@@ -313,7 +316,17 @@ const SessionSummaryGrid = ({ totals }: { totals: Record<string, number> }) => (
 
 // ─── Filtre chips ─────────────────────────────────────────────────────────────
 
-const FilterChips = ({ selected, onChange }: { selected: string; onChange: (k: string) => void }) => {
+// FilterChips gère maintenant plusieurs filtres actifs simultanément (string[]).
+// "all" = tableau vide → tout afficher.
+// Cliquer sur un type l'ajoute/retire de la sélection.
+// Cliquer sur "Tout" remet la sélection à vide.
+const FilterChips = ({
+  activeFilters,
+  onChange,
+}: {
+  activeFilters: string[];
+  onChange: (filters: string[]) => void;
+}) => {
   const filters = [
     { key: "all",                  label: "Tout",           icon: "list"             },
     { key: "emprunt",              label: "Emprunts",       icon: "trending-up"      },
@@ -324,16 +337,27 @@ const FilterChips = ({ selected, onChange }: { selected: string; onChange: (k: s
     { key: "assistance",           label: "Assistances",    icon: "heart"            },
     { key: "paiement-inscription", label: "Inscriptions",   icon: "school"           },
   ];
+
+  const toggle = (key: string) => {
+    if (key === "all") { onChange([]); return; }
+    if (activeFilters.includes(key)) {
+      const next = activeFilters.filter((k) => k !== key);
+      onChange(next);
+    } else {
+      onChange([...activeFilters, key]);
+    }
+  };
+
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.filterScroll}>
       <View style={s.filterRow}>
         {filters.map((f) => {
-          const active = selected === f.key;
+          const active = f.key === "all" ? activeFilters.length === 0 : activeFilters.includes(f.key);
           return (
             <TouchableOpacity
               key={f.key}
               style={[s.filterChip, active && s.filterChipActive]}
-              onPress={() => onChange(f.key)}
+              onPress={() => toggle(f.key)}
             >
               <Ionicons name={f.icon as any} size={13} color={active ? "white" : THEME.colors.neutral[600]} />
               <Text style={[s.filterChipText, active && { color: "white" }]}>{f.label}</Text>
@@ -348,14 +372,16 @@ const FilterChips = ({ selected, onChange }: { selected: string; onChange: (k: s
 // ─── Barre de recherche par membre ───────────────────────────────────────────
 
 const MemberSearchBar = ({
-  searchText, onSearchChange, selectedFilter, filteredCount, totalCount,
+  searchText, onSearchChange, activeFilters, filteredCount, totalCount,
 }: {
   searchText: string; onSearchChange: (t: string) => void;
-  selectedFilter: string; filteredCount: number; totalCount: number;
+  activeFilters: string[]; filteredCount: number; totalCount: number;
 }) => {
-  const filterLabel = selectedFilter === "all"
+  const filterLabel = activeFilters.length === 0
     ? "toutes les opérations"
-    : OPERATION_CONFIG[selectedFilter as keyof typeof OPERATION_CONFIG]?.label?.toLowerCase() ?? "opérations";
+    : activeFilters.length === 1
+      ? (OPERATION_CONFIG[activeFilters[0] as keyof typeof OPERATION_CONFIG]?.label?.toLowerCase() ?? "opérations")
+      : `${activeFilters.length} types sélectionnés`;
 
   return (
     <View style={s.searchWrapper}>
@@ -374,7 +400,7 @@ const MemberSearchBar = ({
           </TouchableOpacity>
         )}
       </View>
-      {(searchText || selectedFilter !== "all") && (
+      {(searchText || activeFilters.length > 0) && (
         <Text style={s.searchCount}>
           {filteredCount} résultat{filteredCount !== 1 ? "s" : ""} sur {totalCount}
         </Text>
@@ -619,19 +645,25 @@ const SessionsView = ({
 
 // ─── Vue opérations ───────────────────────────────────────────────────────────
 
-const OperationsView = ({ session }: { session: Session }) => {
-  const { data: loansRaw }        = useLoans({ session: session.id });
-  const { data: repaymentsRaw }   = useRepayments({ session: session.id });
-  const { data: solidarityRaw }   = useSolidarityPayments({ session: session.id });
-  const { data: renflouementRaw } = useRenflouements({ session: session.id });
-  const { data: savingsRaw }      = useSavings({ session: session.id });
-  const { data: assistancesRaw }  = useAssistances({ session: session.id });
-  // Inscriptions : reconstruites depuis les membres (pas d'endpoint dédié)
+const OperationsView = ({
+  session,
+  initialFilters,
+}: {
+  session: Session;
+  initialFilters?: string[];
+}) => {  const { data: loansRaw }               = useLoans({ session: session.id });
+  const { data: repaymentsRaw }          = useRepayments({ session: session.id });
+  const { data: solidarityRaw }          = useSolidarityPayments({ session: session.id });
+  const { data: renflouementRaw }        = useRenflouements({ session: session.id });
+  const { data: savingsRaw }             = useSavings({ session: session.id });
+  const { data: assistancesRaw }         = useAssistances({ session: session.id });
   const { data: membersRaw }      = useMembers();
 
   const [selectedItem,   setSelectedItem]   = useState<TimelineItem | null>(null);
   const [searchText,     setSearchText]     = useState("");
-  const [selectedFilter, setSelectedFilter] = useState("all");
+  // activeFilters : [] = tout afficher, sinon liste des types actifs
+  // Initialisé depuis le preset de route si fourni
+  const [activeFilters, setActiveFilters]   = useState<string[]>(initialFilters ?? []);
   const [page,           setPage]           = useState(1);
 
   const timeline = useMemo<TimelineItem[]>(() => {
@@ -717,7 +749,8 @@ const OperationsView = ({ session }: { session: Session }) => {
 
   const filteredTimeline = useMemo(() => {
     let f = timeline;
-    if (selectedFilter !== "all") f = f.filter((i) => i.type === selectedFilter);
+    // Filtre par types ([] = tout afficher)
+    if (activeFilters.length > 0) f = f.filter((i) => activeFilters.includes(i.type));
     if (searchText.trim()) {
       const q = searchText.toLowerCase().trim();
       f = f.filter((i) =>
@@ -726,9 +759,9 @@ const OperationsView = ({ session }: { session: Session }) => {
       );
     }
     return f;
-  }, [timeline, selectedFilter, searchText]);
+  }, [timeline, activeFilters, searchText]);
 
-  useMemo(() => setPage(1), [searchText, selectedFilter]);
+  useMemo(() => setPage(1), [searchText, activeFilters]);
 
   const totalPages    = Math.max(1, Math.ceil(filteredTimeline.length / OPS_PER_PAGE));
   const pagedTimeline = filteredTimeline.slice((page - 1) * OPS_PER_PAGE, page * OPS_PER_PAGE);
@@ -754,14 +787,14 @@ const OperationsView = ({ session }: { session: Session }) => {
         </View>
 
         <View style={{ paddingHorizontal: SPACING.lg, marginBottom: SPACING.sm }}>
-          <FilterChips selected={selectedFilter} onChange={setSelectedFilter} />
+          <FilterChips activeFilters={activeFilters} onChange={setActiveFilters} />
         </View>
 
         <View style={{ paddingHorizontal: SPACING.lg }}>
           <MemberSearchBar
             searchText={searchText}
             onSearchChange={setSearchText}
-            selectedFilter={selectedFilter}
+            activeFilters={activeFilters}
             filteredCount={filteredTimeline.length}
             totalCount={timeline.length}
           />
@@ -831,11 +864,14 @@ export default function AdminHistoryScreen() {
   const paramExerciceId   = routeParams?.exerciceId  || null;   // string UUID ou null
   const paramSessionName  = routeParams?.sessionName  ?? null;
   const paramExerciceName = routeParams?.exerciceName ?? null;
+  // filterPreset : pré-sélection de filtres depuis les boutons soldes du Dashboard
+  const paramFilterPreset = routeParams?.filterPreset ?? null;
 
   // ── Décision d'affichage ──
-  // Règle : si des params valides sont présents dans la route, ils ont la priorité
-  // sur la navigation manuelle. Sinon, on utilise l'état manuel.
+  // hasRouteParams : vrai si on vient d'une navigation depuis le Dashboard (session ou filtre seul)
   const hasRouteParams = paramSessionId != null && paramSessionName != null;
+  // hasFilterPreset : vrai si on vient des boutons soldes (pas de session, juste des filtres)
+  const hasFilterPreset = paramFilterPreset != null && paramFilterPreset.length > 0 && !hasRouteParams;
 
   // Session et exercice actifs : soit depuis les params, soit depuis la navigation manuelle
   const activeSession: Session | null = hasRouteParams
@@ -855,9 +891,9 @@ export default function AdminHistoryScreen() {
   const pagedExercices = exercices.slice((exPage - 1) * EXERCISES_PER_PAGE, exPage * EXERCISES_PER_PAGE);
 
   // Loader uniquement si on est en navigation manuelle sans rien de sélectionné
-  if (!hasRouteParams && !activeExercice && !activeSession && isLoading)
+  if (!hasRouteParams && !hasFilterPreset && !activeExercice && !activeSession && isLoading)
     return <LoadingView message="Chargement des exercices…" />;
-  if (!hasRouteParams && !activeExercice && !activeSession && error)
+  if (!hasRouteParams && !hasFilterPreset && !activeExercice && !activeSession && error)
     return <ErrorView message="Impossible de charger les exercices" onRetry={refetch} />;
 
   // ── Retour arrière ──
@@ -867,15 +903,20 @@ export default function AdminHistoryScreen() {
   // l'état manuel à null également.
   const navigation = useNavigation<any>();
 
+  const clearRouteParams = () => {
+    navigation.setParams({
+      sessionId: undefined,
+      exerciceId: undefined,
+      sessionName: undefined,
+      exerciceName: undefined,
+      filterPreset: undefined,
+    });
+  };
+
   const handleBack = () => {
-    if (hasRouteParams) {
-      // On est en mode "params" : vider les params et revenir à la liste des exercices
-      navigation.setParams({
-        sessionId: undefined,
-        exerciceId: undefined,
-        sessionName: undefined,
-        exerciceName: undefined,
-      });
+    if (hasRouteParams || hasFilterPreset) {
+      // Vider tous les params → retour à la liste des exercices
+      clearRouteParams();
     } else if (activeSession) {
       setManualSession(null);
     } else if (activeExercice) {
@@ -884,12 +925,7 @@ export default function AdminHistoryScreen() {
   };
 
   const handleReset = () => {
-    navigation.setParams({
-      sessionId: undefined,
-      exerciceId: undefined,
-      sessionName: undefined,
-      exerciceName: undefined,
-    });
+    clearRouteParams();
     setManualSession(null);
     setManualExercice(null);
   };
@@ -901,25 +937,29 @@ export default function AdminHistoryScreen() {
       {/* ── Header ── */}
       <LinearGradient colors={THEME.gradients.dark} style={s.header}>
         <View style={s.headerRow}>
-          {(activeExercice || activeSession) && (
+          {(activeExercice || activeSession || hasFilterPreset) && (
             <TouchableOpacity style={s.backBtn} onPress={handleBack}>
               <Ionicons name="arrow-back" size={22} color="white" />
             </TouchableOpacity>
           )}
           <View style={{ flex: 1 }}>
             <Text style={s.headerTitle} numberOfLines={1}>
-              {activeSession
-                ? activeSession.nom
-                : activeExercice
-                  ? activeExercice.nom
-                  : "Historique"}
+              {hasFilterPreset
+                ? "Historique"
+                : activeSession
+                  ? activeSession.nom
+                  : activeExercice
+                    ? activeExercice.nom
+                    : "Historique"}
             </Text>
             <Text style={s.headerSub}>
-              {activeSession
-                ? `Exercice  ·  ${activeExercice?.nom ?? ""}`
-                : activeExercice
-                  ? "Sélectionnez une session"
-                  : "Tous les exercices"}
+              {hasFilterPreset
+                ? "Toutes les opérations"
+                : activeSession
+                  ? `Exercice  ·  ${activeExercice?.nom ?? ""}`
+                  : activeExercice
+                    ? "Sélectionnez une session"
+                    : "Tous les exercices"}
             </Text>
           </View>
           <View style={s.adminPill}>
@@ -934,12 +974,7 @@ export default function AdminHistoryScreen() {
           onReset={handleReset}
           onBackToExercice={() => {
             if (hasRouteParams) {
-              navigation.setParams({
-                sessionId: undefined,
-                exerciceId: undefined,
-                sessionName: undefined,
-                exerciceName: undefined,
-              });
+              clearRouteParams();
             } else {
               setManualSession(null);
             }
@@ -950,7 +985,7 @@ export default function AdminHistoryScreen() {
       </LinearGradient>
 
       {/* ── Vue 1 : liste des exercices ── */}
-      {!activeExercice && !activeSession && (
+      {!hasFilterPreset && !activeExercice && !activeSession && (
         <ScrollView
           contentContainerStyle={{ paddingHorizontal: SPACING.lg, paddingBottom: 120, paddingTop: SPACING.lg }}
           showsVerticalScrollIndicator={false}
@@ -981,18 +1016,28 @@ export default function AdminHistoryScreen() {
       )}
 
       {/* ── Vue 2 : sessions de l'exercice ── */}
-      {activeExercice && !activeSession && (
+      {!hasFilterPreset && activeExercice && !activeSession && (
         <SessionsView
           exercice={activeExercice}
           onSelectSession={(sess) => setManualSession(sess)}
         />
       )}
 
-      {/* ── Vue 3 : transactions de la session ──
-           key= force le remontage complet quand la session change,
-           garantissant que tous les hooks re-fetchent avec le bon ID. */}
+      {/* ── Vue 3a : transactions d'une session spécifique (depuis Dashboard/SessionsView) ──
+           key= force le remontage complet quand la session change. */}
       {activeExercice && activeSession && (
         <OperationsView key={`ops-${activeSession.id}`} session={activeSession} />
+      )}
+
+      {/* ── Vue 3b : toutes les transactions avec filtres pré-sélectionnés (depuis boutons soldes) ──
+           On crée une session factice id="all" pour déclencher useLoans({session: undefined})
+           en passant undefined plutôt que null pour que les hooks ne filtrent pas par session. */}
+      {hasFilterPreset && (
+        <OperationsView
+          key={`ops-preset-${(paramFilterPreset ?? []).join("-")}`}
+          session={{ id: undefined as any, nom: "" } as any}
+          initialFilters={paramFilterPreset ?? []}
+        />
       )}
     </View>
   );
