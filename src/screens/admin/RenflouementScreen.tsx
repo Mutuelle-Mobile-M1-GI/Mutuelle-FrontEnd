@@ -21,9 +21,8 @@ import { BlurView } from "expo-blur";
 import { useRenflouements, useRenflouementStats, useCreateRenflouementPayment } from "../../hooks/useRenflouement";
 import { Renflouement, RenflouementPayment } from "../../types/renflouement.types";
 import { COLORS, SPACING, BORDER_RADIUS, FONT_SIZES } from "../../constants/config";
-
+import { useAuthContext } from "../../context/AuthContext";
 const { width } = Dimensions.get("window");
-
 // 🎯 Configuration de la pagination
 const ITEMS_PER_PAGE = 10;
 
@@ -71,7 +70,7 @@ interface RenflouementCardProps {
   onDetails: (item: Renflouement) => void;
 }
 
-const RenflouementCard = ({ item, onPayment, onDetails }: RenflouementCardProps) => (
+const RenflouementCard = ({ item, onPayment, onDetails, readOnly }: RenflouementCardProps & { readOnly?: boolean }) => (
   <View style={[
     styles.renflouementCard,
     { borderLeftColor: item.is_solde ? COLORS.success : COLORS.warning }
@@ -179,26 +178,30 @@ const RenflouementCard = ({ item, onPayment, onDetails }: RenflouementCardProps)
         </Text>
       </TouchableOpacity>
       
-      <TouchableOpacity
-        style={[
-          styles.actionButton,
-          styles.paymentButton,
-          { opacity: item.is_solde ? 0.5 : 1 }
-        ]}
-        onPress={() => onPayment(item)}
-        disabled={item.is_solde}
-      >
-        <Ionicons name="card" size={18} color="white" />
-        <Text style={styles.paymentButtonText}>
-          {item.is_solde ? "Soldé" : "Paiement"}
-        </Text>
-      </TouchableOpacity>
+      {!readOnly && (
+        <TouchableOpacity
+          style={[
+            styles.actionButton,
+            styles.paymentButton,
+            { opacity: item.is_solde ? 0.5 : 1 }
+          ]}
+          onPress={() => onPayment(item)}
+          disabled={item.is_solde}
+        >
+          <Ionicons name="card" size={18} color="white" />
+          <Text style={styles.paymentButtonText}>
+            {item.is_solde ? "Soldé" : "Paiement"}
+          </Text>
+        </TouchableOpacity>
+      )}
     </View>
   </View>
 );
 
 // 🎯 Composant principal
 export default function RenflouementScreen() {
+  const { user } = useAuthContext();
+  const readOnly = !user?.can_write; // true pour Trésorier et Président
   const [search, setSearch] = useState("");
   const [showModal, setShowModal] = useState<ModalState>(false);
   const [currentRenflouement, setCurrentRenflouement] = useState<Renflouement | null>(null);
@@ -503,6 +506,7 @@ const processPayment = (montantFinal: number) => {
                   item={item}
                   onPayment={openPaymentModal}
                   onDetails={openDetailsModal}
+                  readOnly={readOnly}
                 />
               )}
               scrollEnabled={false}

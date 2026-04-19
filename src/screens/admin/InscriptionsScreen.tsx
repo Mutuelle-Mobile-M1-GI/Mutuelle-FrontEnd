@@ -24,9 +24,8 @@ import { useCurrentSession } from "../../hooks/useSession";
 import { Member, MemberFinancialData } from "../../types/member.types";
 import { Image } from "react-native";
 import { useNavigation } from "@react-navigation/native";
-
+import { useAuthContext } from "../../context/AuthContext";
 const { width } = Dimensions.get("window");
-
 // 🎯 Configuration de la pagination
 const ITEMS_PER_PAGE = 10;
 
@@ -74,7 +73,7 @@ interface MemberCardProps {
   onActivate: () => void;
 }
 
-const MemberCard = ({ member, onPress, onPayment, onDetail, onDeactivate, onActivate }: MemberCardProps) => {
+const MemberCard = ({ member, onPress, onPayment, onDetail, onDeactivate, onActivate, readOnly }: MemberCardProps & { readOnly?: boolean }) => {
   const isComplete = member.donnees_financieres?.inscription?.inscription_complete;
   const progress = member.donnees_financieres?.inscription?.pourcentage_inscription || 0;
   const isSuspended = member.statut === "SUSPENDU";
@@ -148,48 +147,52 @@ const MemberCard = ({ member, onPress, onPayment, onDetail, onDeactivate, onActi
           </Text>
         </TouchableOpacity>
 
-        <View style={styles.memberActionDivider} />
-
-        {!isComplete && isActive ? (
+        {!readOnly && (
           <>
-            <TouchableOpacity
-              style={styles.memberActionBtn}
-              onPress={onPayment}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.memberActionBtnText, { color: COLORS.warning }]}>
-                Enregistrer paiement
-              </Text>
-            </TouchableOpacity>
-
             <View style={styles.memberActionDivider} />
-          </>
-        ) : null}
 
-        {isActive ? (
-          <TouchableOpacity
-            style={[styles.memberActionBtn, isSuspended && styles.memberActionBtnDisabled]}
-            onPress={onDeactivate}
-            disabled={isSuspended}
-            activeOpacity={0.7}
-          >
-            <Text style={[
-              styles.memberActionBtnText,
-              { color: isSuspended ? COLORS.textLight : COLORS.error }
-            ]}>
-              {isSuspended ? "Déjà suspendu" : "Désactiver"}
-            </Text>
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            style={styles.memberActionBtn}
-            onPress={onActivate}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.memberActionBtnText, { color: COLORS.success }]}>
-              Activer
-            </Text>
-          </TouchableOpacity>
+            {!isComplete && isActive ? (
+              <>
+                <TouchableOpacity
+                  style={styles.memberActionBtn}
+                  onPress={onPayment}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.memberActionBtnText, { color: COLORS.warning }]}>
+                    Enregistrer paiement
+                  </Text>
+                </TouchableOpacity>
+
+                <View style={styles.memberActionDivider} />
+              </>
+            ) : null}
+
+            {isActive ? (
+              <TouchableOpacity
+                style={[styles.memberActionBtn, isSuspended && styles.memberActionBtnDisabled]}
+                onPress={onDeactivate}
+                disabled={isSuspended}
+                activeOpacity={0.7}
+              >
+                <Text style={[
+                  styles.memberActionBtnText,
+                  { color: isSuspended ? COLORS.textLight : COLORS.error }
+                ]}>
+                  {isSuspended ? "Déjà suspendu" : "Désactiver"}
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={styles.memberActionBtn}
+                onPress={onActivate}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.memberActionBtnText, { color: COLORS.success }]}>
+                  Activer
+                </Text>
+              </TouchableOpacity>
+            )}
+          </>
         )}
       </View>
     </View>
@@ -775,8 +778,10 @@ const AddMemberModal = ({ visible, onClose, onSubmit, loading, session }: AddMem
   );
 };
 
-// export default function InscriptionsScreen() {
+// 🎯 Composant principal
 export default function InscriptionsScreen() {
+  const { user } = useAuthContext();
+  const readOnly = !user?.can_write; // true pour Trésorier et Président
   const [search, setSearch] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -1042,16 +1047,18 @@ export default function InscriptionsScreen() {
           )}
         </View>
         
-        <TouchableOpacity style={styles.addButton} onPress={() => setShowAddModal(true)}>
-          <LinearGradient
-            colors={[COLORS.success, "#57CC99"]}
-            style={styles.addButtonGradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-          >
-            <Ionicons name="add" size={24} color="white" />
-          </LinearGradient>
-        </TouchableOpacity>
+        {!readOnly && (
+          <TouchableOpacity style={styles.addButton} onPress={() => setShowAddModal(true)}>
+            <LinearGradient
+              colors={[COLORS.success, "#57CC99"]}
+              style={styles.addButtonGradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+            >
+              <Ionicons name="add" size={24} color="white" />
+            </LinearGradient>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Compteur de résultats */}
@@ -1078,6 +1085,7 @@ export default function InscriptionsScreen() {
               <MemberCard
                 key={member.id}
                 member={member}
+                readOnly={readOnly}
                 onPress={() => {
                   setSelectedMember(member);
                   setShowDetailModal(true);
@@ -1119,7 +1127,7 @@ export default function InscriptionsScreen() {
             <Text style={styles.emptyText}>
               {search ? "Aucun résultat pour votre recherche" : "Commencez par ajouter des membres"}
             </Text>
-            {!search && (
+            {!search && !readOnly && (
               <TouchableOpacity style={styles.emptyButton} onPress={() => setShowAddModal(true)}>
                 <Text style={styles.emptyButtonText}>Ajouter un membre</Text>
               </TouchableOpacity>
@@ -1140,7 +1148,7 @@ export default function InscriptionsScreen() {
       />
 
       <MemberDetailModal
-        visible={showDetailModal}f
+        visible={showDetailModal}
         member={selectedMember}
         onClose={() => {
           setShowDetailModal(false);

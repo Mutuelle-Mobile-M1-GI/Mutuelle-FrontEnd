@@ -22,9 +22,8 @@ import { useCurrentSession } from "../../hooks/useSession";
 import { useNavigation } from "@react-navigation/native";
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-
+import { useAuthContext } from "../../context/AuthContext";
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-
 // 🎨 Couleurs du thème vert
 const GREEN_THEME = {
   primary: '#22C55E',
@@ -527,6 +526,8 @@ const AddRepaymentModal = ({
 
 // 📱 Composant principal
 export default function RepaymentsScreen() {
+  const { user } = useAuthContext();
+  const readOnly = !user?.can_write; // true pour Trésorier et Président
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const [search, setSearch] = useState("");
@@ -627,12 +628,14 @@ export default function RepaymentsScreen() {
             </View>
 
             {/* Bouton d'ajout */}
-            <TouchableOpacity
-              style={styles.addButton}
-              onPress={() => setModalVisible(true)}
-            >
-              <Ionicons name="add" size={24} color={GREEN_THEME.primary} />
-            </TouchableOpacity>
+            {!readOnly ? (
+              <TouchableOpacity
+                style={styles.addButton}
+                onPress={() => setModalVisible(true)}
+              >
+                <Ionicons name="add" size={24} color={GREEN_THEME.primary} />
+              </TouchableOpacity>
+            ) : <View style={{ width: 44 }} />}
           </View>
 
           {/* Compteur simple */}
@@ -675,7 +678,7 @@ export default function RepaymentsScreen() {
                   : "Les remboursements apparaîtront ici"
                 }
               </Text>
-              {!search && (
+              {!search && !readOnly && (
                 <TouchableOpacity
                   style={styles.emptyButton}
                   onPress={() => setModalVisible(true)}

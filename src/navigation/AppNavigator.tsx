@@ -4,6 +4,8 @@ import { usePinContext } from "../context/PinContext";
 import AuthNavigator from "./AuthNavigator";
 import MemberNavigator from "./MemberNavigator";
 import AdminNavigator from "./AdminNavigator";
+import TresorierNavigator from "./TresorierNavigator";
+import PresidentNavigator from "./PresidentNavigator";
 import PinScreen from "../screens/auth/PinScreen";
 import { ActivityIndicator, View } from "react-native";
 import { COLORS } from "../constants/config";
@@ -20,24 +22,22 @@ export default function AppNavigator() {
     );
   }
 
-  // Pas d'utilisateur = écrans d'auth
-  if (!user) {
-    return <AuthNavigator />;
-  }
+  if (!user) return <AuthNavigator />;
 
-  // Utilisateur connecté MAIS doit définir un PIN (premier login ou PIN oublié)
-  if (requirePinSetup) {
-    return <PinScreen mode="setup" />;
-  }
+  if (requirePinSetup) return <PinScreen mode="setup" />;
 
-  // Utilisateur connecté MAIS doit saisir son PIN (ouverture app)
-  if (requirePinEntry) {
-    return <PinScreen mode="enter" />;
-  }
+  if (requirePinEntry) return <PinScreen mode="enter" />;
 
-  // Utilisateur connecté ET PIN validé = navigation normale
-  if (user.is_administrateur) {
+  if (user.role === 'SECRETAIRE_GENERALE' || user.is_administrateur) {
     return <AdminNavigator />;
+  }
+
+  if (user.role === 'TRESORIER') {
+    return <TresorierNavigator />;
+  }
+
+  if (user.role === 'PRESIDENT') {
+    return <PresidentNavigator />;
   }
 
   return <MemberNavigator />;

@@ -25,10 +25,9 @@ import { SolidarityPayment } from "../../types/solidarity.types";
 import { Member } from "../../types/member.types";
 import { useNavigation } from "@react-navigation/native";
 import { useMutuelleConfig } from "../../hooks/useConfig";
-
+import { useAuthContext } from "../../context/AuthContext";
 
 const { width } = Dimensions.get("window");
-
 // 🎯 Configuration de la pagination
 const ITEMS_PER_PAGE = 10;
 
@@ -103,7 +102,7 @@ interface MemberCardProps {
   onPress: () => void;
 }
 
-const MemberCard = ({ member, montantAttendu, onPress }: MemberCardProps) => {
+const MemberCard = ({ member, montantAttendu, onPress, readOnly }: MemberCardProps & { readOnly?: boolean }) => {
   const getStatusColor = () => {
     if (member.is_complete) return COLORS.success;
     if (member.montant_paye > 0) return COLORS.warning;
@@ -133,7 +132,7 @@ const MemberCard = ({ member, montantAttendu, onPress }: MemberCardProps) => {
       ]}
       onPress={onPress}
       activeOpacity={0.8}
-      disabled={member.is_complete}
+      disabled={member.is_complete || readOnly}
     >
       {/* Header avec avatar et statut */}
       <View style={styles.memberHeader}>
@@ -204,6 +203,8 @@ const MemberCard = ({ member, montantAttendu, onPress }: MemberCardProps) => {
 
 // 🎯 Composant principal
 export default function SolidarityScreen() {
+  const { user } = useAuthContext();
+  const readOnly = !user?.can_write;
   const [search, setSearch] = useState("");
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedMember, setSelectedMember] = useState<MemberWithProgress | null>(null);
