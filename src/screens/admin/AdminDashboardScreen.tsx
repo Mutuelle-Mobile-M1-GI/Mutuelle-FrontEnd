@@ -252,9 +252,11 @@ interface ExerciceListModalProps {
   onSelectExercice: (exe: any) => void;
   onEdit?: (exe: any) => void;
   onDelete?: (exe: any) => void;
+  readOnly: boolean;
+
 }
 
-const ExerciceListModal = ({ visible, onClose, onSelectExercice, onEdit, onDelete }: ExerciceListModalProps) => {
+const ExerciceListModal = ({ visible, onClose, onSelectExercice, onEdit, onDelete, readOnly }: ExerciceListModalProps) => {
   const [displayedItems, setDisplayedItems] = useState(ITEMS_PER_PAGE);
   const { data: exercicesRaw, isLoading, error } = useExercises();
   const exercices: any[] = Array.isArray(exercicesRaw) ? exercicesRaw : (exercicesRaw as any)?.results ?? [];
@@ -340,20 +342,22 @@ const ExerciceListModal = ({ visible, onClose, onSelectExercice, onEdit, onDelet
                   </View>
                 </TouchableOpacity>
 
-                <View style={listModal.actionRow}>
-                  <TouchableOpacity
-                    style={listModal.btnModifier}
-                    onPress={() => onEdit && onEdit(exe)}
-                  >
-                    <Text style={listModal.btnModifierText}>Modifier</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={listModal.btnSupprimer}
-                    onPress={() => onDelete && onDelete(exe)}
-                  >
-                    <Text style={listModal.btnSupprimerText}>Supprimer</Text>
-                  </TouchableOpacity>
-                </View>
+                {!readOnly && (
+                  <View style={listModal.actionRow}>
+                    <TouchableOpacity
+                      style={listModal.btnModifier}
+                      onPress={() => onEdit && onEdit(exe)}
+                    >
+                      <Text style={listModal.btnModifierText}>Modifier</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={listModal.btnSupprimer}
+                      onPress={() => onDelete && onDelete(exe)}
+                    >
+                      <Text style={listModal.btnSupprimerText}>Supprimer</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
               </View>
             ))}
 
@@ -397,6 +401,8 @@ interface SessionListModalProps {
   allExercices?: any[];
   onEdit?: (session: any) => void;
   onDelete?: (session: any) => void;
+  readOnly: boolean;
+
 }
 
 const SessionListModal = ({
@@ -408,11 +414,12 @@ const SessionListModal = ({
   allExercices = [],
   onEdit,
   onDelete,
+  readOnly,
 }: SessionListModalProps) => {
   const [displayedItems, setDisplayedItems] = useState(ITEMS_PER_PAGE);
 
   // Si exerciceId fourni → sessions filtrées, sinon toutes les sessions
-  const { data: sessionsRaw, isLoading, error } = useSessions(exerciceId);
+  const { data: sessionsRaw, isLoading, error } = useSessions(Number(exerciceId));
   const sessions: any[] = Array.isArray(sessionsRaw) ? sessionsRaw : (sessionsRaw as any)?.results ?? [];
 
   const paginatedSessions = React.useMemo(
@@ -531,20 +538,22 @@ const SessionListModal = ({
                     </View>
                   </TouchableOpacity>
 
-                  <View style={listModal.actionRow}>
-                    <TouchableOpacity
-                      style={listModal.btnModifier}
-                      onPress={() => onEdit && onEdit(sess)}
-                    >
-                      <Text style={listModal.btnModifierText}>Modifier</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={listModal.btnSupprimer}
-                      onPress={() => onDelete && onDelete(sess)}
-                    >
-                      <Text style={listModal.btnSupprimerText}>Supprimer</Text>
-                    </TouchableOpacity>
-                  </View>
+                  {!readOnly && (
+                    <View style={listModal.actionRow}>
+                      <TouchableOpacity
+                        style={listModal.btnModifier}
+                        onPress={() => onEdit && onEdit(sess)}
+                      >
+                        <Text style={listModal.btnModifierText}>Modifier</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={listModal.btnSupprimer}
+                        onPress={() => onDelete && onDelete(sess)}
+                      >
+                        <Text style={listModal.btnSupprimerText}>Supprimer</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
                 </View>
               );
             })}
@@ -590,7 +599,7 @@ const NewSessionModal = ({ visible, onClose, onSubmit, loading }: NewSessionModa
     montant_depense: "",
     motif_depense: "",
   });
- 
+
   // Réinitialiser le formulaire à chaque ouverture
   React.useEffect(() => {
     if (visible) {
@@ -603,9 +612,9 @@ const NewSessionModal = ({ visible, onClose, onSubmit, loading }: NewSessionModa
       });
     }
   }, [visible]);
- 
+
   const hasDepense = formData.montant_depense.trim() !== "";
- 
+
   return (
     <Modal visible={visible} transparent animationType="fade" statusBarTranslucent>
       <BlurView intensity={20} style={StyleSheet.absoluteFillObject} />
@@ -622,7 +631,6 @@ const NewSessionModal = ({ visible, onClose, onSubmit, loading }: NewSessionModa
               <Ionicons name="close" size={24} color={COLORS.textSecondary} />
             </TouchableOpacity>
           </View>
- 
           <ScrollView
             style={styles.modalBody}
             showsVerticalScrollIndicator={false}
@@ -636,7 +644,6 @@ const NewSessionModal = ({ visible, onClose, onSubmit, loading }: NewSessionModa
               value={formData.nom}
               onChangeText={(text) => setFormData({ ...formData, nom: text })}
             />
- 
             <Text style={styles.inputLabel}>Date de session</Text>
             <TextInput
               style={styles.input}
@@ -644,7 +651,6 @@ const NewSessionModal = ({ visible, onClose, onSubmit, loading }: NewSessionModa
               value={formData.date_session}
               onChangeText={(text) => setFormData({ ...formData, date_session: text })}
             />
- 
             <Text style={styles.inputLabel}>Montant collation (FCFA)</Text>
             <TextInput
               style={styles.input}
@@ -731,7 +737,11 @@ const NewSessionModal = ({ visible, onClose, onSubmit, loading }: NewSessionModa
 // ─────────────────────────────────────────────
 export default function AdminDashboardScreen() {
   const navigation = useNavigation();
+
+  // ✅ useAuthContext ICI, dans le composant
   const { user } = useAuthContext();
+  const readOnly = !user?.can_write; // true pour Trésorier et Président
+
   const { data: dashboardData, isLoading, error, refetch } = useAdminDashboard();
   const { data: config } = useMutuelleConfig();
   const queryClient = useQueryClient();
@@ -788,6 +798,14 @@ export default function AdminDashboardScreen() {
   const hasCurrentSession = currentSession && !sessionError?.message?.includes("NO_");
   const hasCaisseInscription = caisseInscription && !caisseInscriptionError?.message?.includes("NO_");
   
+  
+  // Label du rôle affiché dans le header
+  const roleLabel =
+    user?.role === "SECRETAIRE_GENERALE" ? "Secrétaire Générale"
+    : user?.role === "TRESORIER"         ? "Trésorier"
+    : user?.role === "PRESIDENT"         ? "Président"
+    : "Membre";
+    
   useFocusEffect(
     React.useCallback(() => {
       const refreshData = async () => {
@@ -1090,7 +1108,7 @@ export default function AdminDashboardScreen() {
     (user?.first_name && user?.last_name ? `${user.first_name} ${user.last_name}` : null) ||
     user?.username ||
     user?.email?.split("@")[0] ||
-    "Administrateur";
+    "Utilisateur";
 
   return (
     <>
@@ -1108,7 +1126,8 @@ export default function AdminDashboardScreen() {
           <View style={styles.headerLeft}>
             <Text style={styles.greeting}>Bonjour </Text>
             <Text style={styles.userName}>{userName}</Text>
-            <Text style={styles.userRole}>Administrateur</Text>
+            {/* ✅ Affiche le vrai rôle */}
+            <Text style={styles.userRole}>{roleLabel}</Text>
           </View>
           <View style={styles.headerRight}>
             <TouchableOpacity
@@ -1280,12 +1299,14 @@ export default function AdminDashboardScreen() {
               ) : (
                 <View style={styles.cardContent}>
                   <Text style={styles.cardEmptyText}>Aucune session active</Text>
-                  <TouchableOpacity
-                    style={styles.createButton}
-                    onPress={() => setShowSessionModal(true)}
-                  >
-                    <Text style={styles.createButtonText}>Créer</Text>
-                  </TouchableOpacity>
+                  {!readOnly && (
+                    <TouchableOpacity
+                      style={styles.createButton}
+                      onPress={() => setShowSessionModal(true)}
+                    >
+                      <Text style={styles.createButtonText}>Créer</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               )}
             </TouchableOpacity>
@@ -1329,32 +1350,34 @@ export default function AdminDashboardScreen() {
         </View>
 
         {/* ══ BOUTON NOUVELLE SESSION / TERMINER SESSION ══ */}
-        <View style={styles.actionContainer}>
-          <TouchableOpacity
-            style={styles.newSessionButton}
-            onPress={() => {
-              if (hasCurrentSession) {
-                handleCloseSession();
-              } else {
-                setShowSessionModal(true);
-              }
-            }}
-            activeOpacity={0.9}
-          >
-            <LinearGradient
-              colors={hasCurrentSession ? ["#CC0000", "#FF6666"] : ["#4361EE", "#3A86FF"]}
-              style={styles.newSessionGradient}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
+        {!readOnly && (
+          <View style={styles.actionContainer}>
+            <TouchableOpacity
+              style={styles.newSessionButton}
+              onPress={() => {
+                if (hasCurrentSession) {
+                  handleCloseSession();
+                } else {
+                  setShowSessionModal(true);
+                }
+              }}
+              activeOpacity={0.9}
             >
-              <Ionicons name={hasCurrentSession ? "stop-circle" : "add-circle"} size={24} color="white" />
-              <Text style={styles.newSessionText}>
-                {hasCurrentSession ? "Terminer la session" : "Nouvelle Session"}
-              </Text>
-              <Ionicons name="arrow-forward" size={20} color="white" />
-            </LinearGradient>
-          </TouchableOpacity>
-        </View>
+              <LinearGradient
+                colors={hasCurrentSession ? ["#CC0000", "#FF6666"] : ["#4361EE", "#3A86FF"]}
+                style={styles.newSessionGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+              >
+                <Ionicons name={hasCurrentSession ? "stop-circle" : "add-circle"} size={24} color="white" />
+                <Text style={styles.newSessionText}>
+                  {hasCurrentSession ? "Terminer la session" : "Nouvelle Session"}
+                </Text>
+                <Ionicons name="arrow-forward" size={20} color="white" />
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* ══ ALERTES ══ */}
         {dashboardData?.alertes && dashboardData.alertes.length > 0 && (
@@ -1379,39 +1402,40 @@ export default function AdminDashboardScreen() {
       {/* ══════════ MODALS ══════════ */}
 
       {/* Nouvelle session */}
-      <NewSessionModal
-        visible={showSessionModal}
-        onClose={() => setShowSessionModal(false)}
-        onSubmit={handleCreateSession}
-        loading={sessionLoading}
-      />
+      {!readOnly && (
+        <NewSessionModal
+          visible={showSessionModal}
+          onClose={() => setShowSessionModal(false)}
+          onSubmit={handleCreateSession}
+          loading={sessionLoading}
+        />
 
-      {/* ✅ Modification d'exercice */}
-      <ExerciseEditModal
-        visible={exerciseEditModalVisible}
-        onClose={() => {
-          setExerciseEditModalVisible(false);
-          setEditingExercise(null);
-        }}
-        onSubmit={handleSubmitEditExercise}
-        initialData={editingExercise}
-        loading={updateExerciseMutation.isPending}
-        isEditing={true}
-      />
+        {/* ✅ Modification d'exercice */}
+        <ExerciseEditModal
+          visible={exerciseEditModalVisible}
+          onClose={() => {
+            setExerciseEditModalVisible(false);
+            setEditingExercise(null);
+          }}
+          onSubmit={handleSubmitEditExercise}
+          initialData={editingExercise}
+          loading={updateExerciseMutation.isPending}
+          isEditing={true}
+        />
 
-      {/* ✅ Modification de session */}
-      <SessionEditModal
-        visible={sessionEditModalVisible}
-        onClose={() => {
-          setSessionEditModalVisible(false);
-          setEditingSession(null);
-        }}
-        onSubmit={handleSubmitEditSession}
-        initialData={editingSession}
-        loading={updateSessionMutation.isPending}
-        isEditing={true}
-      />
-
+        {/* ✅ Modification de session */}
+        <SessionEditModal
+          visible={sessionEditModalVisible}
+          onClose={() => {
+            setSessionEditModalVisible(false);
+            setEditingSession(null);
+          }}
+          onSubmit={handleSubmitEditSession}
+          initialData={editingSession}
+          loading={updateSessionMutation.isPending}
+          isEditing={true}
+        />
+      )}
       {/* Liste des exercices (clic sur exercice → ouvre sessions de cet exercice) */}
       <ExerciceListModal
         visible={showExerciceModal}
@@ -1422,6 +1446,7 @@ export default function AdminDashboardScreen() {
         }}
         onEdit={handleOpenEditExercise}
         onDelete={handleDeleteExercise}
+        readOnly={readOnly}
       />
 
       {/* Toutes les sessions (bouton "Session" du dashboard) */}
@@ -1432,6 +1457,7 @@ export default function AdminDashboardScreen() {
         allExercices={allExercices}
         onEdit={handleOpenEditSession}
         onDelete={handleDeleteSession}
+        readOnly={readOnly}
         // pas d'exerciceId → toutes les sessions
       />
 
@@ -1445,6 +1471,7 @@ export default function AdminDashboardScreen() {
         allExercices={allExercices}
         onEdit={handleOpenEditSession}
         onDelete={handleDeleteSession}
+        readOnly={readOnly}
       />
 
       {/* Mini-historique interne (raccourcis soldes uniquement) */}

@@ -3,9 +3,11 @@ import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from "react-nati
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from "../../constants/config";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
-
+import { useAuthContext } from "../../context/AuthContext";
 export default function MembersManagementScreen() {
   const navigation = useNavigation();
+  const { user } = useAuthContext();
+  const readOnly = !user?.can_write; // true pour Trésorier et Président
 
   return (
     <View style={styles.container}>
@@ -15,9 +17,11 @@ export default function MembersManagementScreen() {
           <Ionicons name="arrow-back" size={24} color={COLORS.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Gestion des Membres</Text>
-        <TouchableOpacity>
-          <Ionicons name="add" size={24} color={COLORS.primary} />
-        </TouchableOpacity>
+        {!readOnly ? (
+          <TouchableOpacity>
+            <Ionicons name="add" size={24} color={COLORS.primary} />
+          </TouchableOpacity>
+        ) : <View style={{ width: 24 }} />}
       </View>
 
       {/* Quick Stats */}
@@ -39,16 +43,18 @@ export default function MembersManagementScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Actions rapides</Text>
           
-          <TouchableOpacity style={styles.actionCard}>
-            <View style={styles.actionLeft}>
-              <Ionicons name="person-add-outline" size={24} color={COLORS.primary} />
-              <View style={styles.actionInfo}>
-                <Text style={styles.actionTitle}>Ajouter un membre</Text>
-                <Text style={styles.actionSubtitle}>Créer un nouveau compte membre</Text>
+          {!readOnly && (
+            <TouchableOpacity style={styles.actionCard}>
+              <View style={styles.actionLeft}>
+                <Ionicons name="person-add-outline" size={24} color={COLORS.primary} />
+                <View style={styles.actionInfo}>
+                  <Text style={styles.actionTitle}>Ajouter un membre</Text>
+                  <Text style={styles.actionSubtitle}>Créer un nouveau compte membre</Text>
+                </View>
               </View>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
-          </TouchableOpacity>
+              <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
+            </TouchableOpacity>
+          )}
 
           <TouchableOpacity style={styles.actionCard}>
             <View style={styles.actionLeft}>

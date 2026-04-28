@@ -11,6 +11,7 @@ import { useSolidarityPayments } from "../../hooks/useSolidarity";
 import { useRenflouements } from "../../hooks/useRenflouement";
 import { useSavings } from "../../hooks/useSaving";
 import { useAssistances } from "../../hooks/useAssistance";
+import { useInscriptionPayments } from "../../hooks/useInscription";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useExercises } from "../../hooks/useExercise";
@@ -18,7 +19,7 @@ import { useSessions } from "../../hooks/useSession";
 import { useMembers } from "../../hooks/useMember";
 import { Exercise } from "../../types/exercise.types";
 import { Session } from "../../types/session.types";
-
+import { useAuthContext } from "../../context/AuthContext";
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 const EXERCISES_PER_PAGE = 6;
 const OPS_PER_PAGE = 10;
@@ -841,6 +842,8 @@ const OperationsView = ({
 export default function AdminHistoryScreen() {
   const insets = useSafeAreaInsets();
   const route  = useRoute<any>();
+  const { user } = useAuthContext();
+  const readOnly = !user?.can_write; // true pour Trésorier et Président
 
   // ── Chargement des exercices ──
   const { data: exercicesRaw, isLoading, error, refetch } = useExercises();

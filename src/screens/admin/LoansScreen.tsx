@@ -30,9 +30,8 @@ import { min } from "lodash";
 import { useMutuelleConfig } from "../../hooks/useConfig";
 // Feedback visuel et haptique
 import { Vibration } from 'react-native';
-
+import { useAuthContext } from "../../context/AuthContext";
 const { width } = Dimensions.get("window");
-
 // 🎨 Thème jaune
 const YELLOW_THEME = {
   primary: "#F59E0B",
@@ -153,7 +152,7 @@ interface LoanCardProps {
   onAddRepayment: () => void;
 }
 
-const LoanCard = ({ loan, onPress, onAddRepayment }: LoanCardProps) => {
+const LoanCard = ({ loan, onPress, onAddRepayment, readOnly }: LoanCardProps & { readOnly?: boolean }) => {
   const getStatusColor = () => {
     switch (loan.statut) {
       case 'REMBOURSE': return COLORS.success;
@@ -263,7 +262,7 @@ const LoanCard = ({ loan, onPress, onAddRepayment }: LoanCardProps) => {
             {loan.taux_interet}% d'intérêt
           </Text>
         </View>
-        {loan.statut !== 'REMBOURSE' && (
+        {loan.statut !== 'REMBOURSE' && !readOnly && (
           <TouchableOpacity
             style={styles.addRepaymentButton}
             onPress={(e) => {
@@ -344,6 +343,8 @@ const RepaymentCard = ({ repayment }: RepaymentCardProps) => (
 
 // 🎯 Composant principal
 export default function LoansScreen() {
+  const { user } = useAuthContext();
+  const readOnly = !user?.can_write; // true pour Trésorier et Président
   const [activeTab, setActiveTab] = useState<'overview' | 'active' | 'completed' | 'overdue' | 'repayments'>('active');
   const [search, setSearch] = useState("");
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -811,13 +812,15 @@ export default function LoansScreen() {
             <View style={styles.recentLoansSection}>
               <View style={styles.sectionHeader}>
                 <Text style={styles.sectionTitle}>Emprunts récents</Text>
-                <TouchableOpacity
-                  style={styles.addButton}
-                  onPress={() => setShowCreateModal(true)}
-                >
-                  <Ionicons name="add" size={20} color="white" />
-                  <Text style={styles.addButtonText}>Nouveau</Text>
-                </TouchableOpacity>
+                {!readOnly && (
+                  <TouchableOpacity
+                    style={styles.addButton}
+                    onPress={() => setShowCreateModal(true)}
+                  >
+                    <Ionicons name="add" size={20} color="white" />
+                    <Text style={styles.addButtonText}>Nouveau</Text>
+                  </TouchableOpacity>
+                )}
               </View>
               {loansWithStats.slice(0, 5).map((loan) => (
                 <View key={loan.id} style={{ marginBottom: SPACING.md }}>
@@ -825,6 +828,7 @@ export default function LoansScreen() {
                     loan={loan}
                     onPress={() => handleLoanPress(loan)}
                     onAddRepayment={() => handleAddRepayment(loan)}
+                    readOnly={readOnly}
                   />
                 </View>
               ))}
@@ -898,13 +902,15 @@ export default function LoansScreen() {
                   </TouchableOpacity>
                 )}
               </View>
-              <TouchableOpacity
-                style={styles.addButton}
-                onPress={() => setShowCreateModal(true)}
-              >
-                <Ionicons name="add" size={20} color="white" />
-                <Text style={styles.addButtonText}>Nouvel emprunt</Text>
-              </TouchableOpacity>
+              {!readOnly && (
+                <TouchableOpacity
+                  style={styles.addButton}
+                  onPress={() => setShowCreateModal(true)}
+                >
+                  <Ionicons name="add" size={20} color="white" />
+                  <Text style={styles.addButtonText}>Nouvel emprunt</Text>
+                </TouchableOpacity>
+              )}
             </View>
 
             {/* Liste des emprunts */}
@@ -1491,7 +1497,7 @@ export default function LoansScreen() {
                   </View>
 
                   {/* Action */}
-                  {selectedLoan.statut !== 'REMBOURSE' && (
+                  {selectedLoan.statut !== 'REMBOURSE' && !readOnly && (
                     <TouchableOpacity
                       style={styles.addRepaymentModalButton}
                       onPress={() => {

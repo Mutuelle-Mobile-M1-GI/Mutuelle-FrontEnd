@@ -26,9 +26,9 @@ import { Member } from "../../types/member.types";
 import { COLORS, SPACING, BORDER_RADIUS, FONT_SIZES } from "../../constants/config";
 import { useNavigation } from "@react-navigation/native";
 import { ScrollView } from "react-native";
+import { useAuthContext } from "../../context/AuthContext";
 
 const { width } = Dimensions.get("window");
-
 // 🎯 Configuration de la pagination
 const ITEMS_PER_PAGE = 10;
 const MODAL_ITEMS_PER_PAGE = 10; // Pour les listes dans le modal
@@ -201,6 +201,8 @@ const AssistanceCard = ({ item, onPress }: AssistanceCardProps) => {
 
 // 🎯 Composant principal
 export default function AssistanceScreen() {
+  const { user } = useAuthContext();
+  const readOnly = !user?.can_write; // true pour Trésorier et Président
   const [search, setSearch] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
@@ -567,13 +569,15 @@ export default function AssistanceScreen() {
           <Text style={styles.sectionTitle}>
             Assistances ({filteredAssistances.length})
           </Text>
-          <TouchableOpacity
-            style={styles.addButton}
-            onPress={handleOpenAdd}
-          >
-            <Ionicons name="add" size={20} color="white" />
-            <Text style={styles.addButtonText}>Nouvelle</Text>
-          </TouchableOpacity>
+          {!readOnly && (
+            <TouchableOpacity
+              style={styles.addButton}
+              onPress={handleOpenAdd}
+            >
+              <Ionicons name="add" size={20} color="white" />
+              <Text style={styles.addButtonText}>Nouvelle</Text>
+            </TouchableOpacity>
+         )}
         </View>
 
         <View style={styles.searchContainer}>
@@ -628,14 +632,14 @@ export default function AssistanceScreen() {
           <Text style={styles.emptyText}>
             {search ? "Aucun résultat pour votre recherche." : "Aucune assistance enregistrée."}
           </Text>
-          {!search && (
+          {!search && !readOnly && (
             <TouchableOpacity
               style={styles.emptyActionButton}
               onPress={handleOpenAdd}
             >
               <Text style={styles.emptyActionText}>Créer la première assistance</Text>
             </TouchableOpacity>
-          )}
+         )}
         </View>
       ) : (
         // Liste des assistances avec pagination

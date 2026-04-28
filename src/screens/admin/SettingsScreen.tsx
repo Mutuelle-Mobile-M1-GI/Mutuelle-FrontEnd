@@ -1,4 +1,4 @@
-  import React, { useState } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -15,6 +15,7 @@ import {
 } from "react-native";
 import { COLORS, SPACING, BORDER_RADIUS, FONT_SIZES } from "../../constants/config";
 import { useAuth } from "../../hooks/useAuth";
+import { useAuthContext } from "../../context/AuthContext";
 import { 
   useMutuelleConfig, 
   useUpdateMutuelleConfig, 
@@ -376,6 +377,8 @@ const AssistanceManagerModal = (props: any = {}) => { // Ajout du = {} ici
 
 export default function SettingsScreen() {
   const { logout, currentUserQuery } = useAuth();
+  const { user: authUser } = useAuthContext();
+  const readOnly = !authUser?.can_write; // true pour Trésorier et Président
   const { data: config, isLoading: configLoading, refetch: refetchConfig } = useMutuelleConfig();
   const [isTiersExpanded, setIsTiersExpanded] = useState(false);
   // ✅ MUTATIONS
@@ -686,7 +689,12 @@ const openTierModal = (index: number) => {
               <View style={styles.profileDetails}>
                 <Text style={styles.profileName}>{user?.nom_complet}</Text>
                 <Text style={styles.profileEmail}>{user?.email}</Text>
-                <Text style={styles.profileRole}>Administrateur</Text>
+                <Text style={styles.profileRole}>
+                    {authUser?.role === "SECRETAIRE_GENERALE" ? "Secrétaire Générale"
+                      : authUser?.role === "TRESORIER" ? "Trésorier"
+                      : authUser?.role === "PRESIDENT" ? "Président"
+                      : "Membre"}
+                  </Text>
               </View>
             </View>
             <TouchableOpacity
@@ -701,12 +709,18 @@ const openTierModal = (index: number) => {
         {/* Configuration Mutuelle */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Configuration Mutuelle</Text>
-          {configItems.map((item) => (
+          {(readOnly
+            // Trésorier/Président : seulement montant_inscription, montant_solidarite, taux_interet
+            ? configItems.filter(item =>
+                ['montant_inscription', 'montant_solidarite', 'taux_interet'].includes(item.key)
+              )
+            : configItems
+          ).map((item) => (
             <TouchableOpacity
               key={item.key}
-              style={styles.settingItem}
-              onPress={() => openConfigModal(item.key, item.title)}
-              disabled={updateConfigMutation.isPending}
+              style={[styles.settingItem, readOnly && { opacity: 0.6 }]}
+              onPress={readOnly ? undefined : () => openConfigModal(item.key, item.title)}
+              disabled={readOnly || updateConfigMutation.isPending}
             >
               <View style={styles.settingItemLeft}>
                 <View style={styles.settingIcon}>
@@ -717,38 +731,41 @@ const openTierModal = (index: number) => {
                   <Text style={styles.settingValue}>{item.value}</Text>
                 </View>
               </View>
-              {updateConfigMutation.isPending ? (
-                <ActivityIndicator size="small" color={COLORS.primary} />
-              ) : (
-                <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
+              {/* Pas de flèche en readOnly car pas cliquable */}
+              {!readOnly && (
+                updateConfigMutation.isPending
+                  ? <ActivityIndicator size="small" color={COLORS.primary} />
+                  : <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
               )}
             </TouchableOpacity>
           ))}
-          <TouchableOpacity
-            style={styles.settingItem}
-            onPress={() => setAssistanceManagerVisible(true)}
-          >
-            <View style={styles.settingItemLeft}>
-              <View style={styles.settingIcon}>
-                <Ionicons name="medical-outline" size={20} color={COLORS.primary} />
+          {/* Types d'Assistance — masqué pour Trésorier/Président */}
+          {!readOnly && (
+            <TouchableOpacity
+              style={styles.settingItem}
+              onPress={() => setAssistanceManagerVisible(true)}
+            >
+              <View style={styles.settingItemLeft}>
+                <View style={styles.settingIcon}>
+                  <Ionicons name="medical-outline" size={20} color={COLORS.primary} />
+                </View>
+                <View style={styles.settingInfo}>
+                  <Text style={styles.settingTitle}>Types d'Assistance</Text>
+                  <Text style={styles.settingValue}>Gérer les aides (Mariage, Décès...)</Text>
+                </View>
               </View>
-              <View style={styles.settingInfo}>
-                <Text style={styles.settingTitle}>Types d'Assistance</Text>
-                <Text style={styles.settingValue}>Gérer les aides (Mariage, Décès...)</Text>
-              </View>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
-          </TouchableOpacity>
+              <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
+            </TouchableOpacity>
+          )}
         </View>
 
-  {/* Section Coefficients avec le style identique à Configuration Mutuelle */}
-<View style={styles.section}>
+  {/* Section Coefficients — masquée pour Trésorier/Président */}
+{!readOnly && (
+  <>
+  <View style={styles.section}>
   <Text style={styles.sectionTitle}>Coefficients d'emprunt par tranches</Text>
-  
 
-{/* Section Coefficients d'emprunt par tranches */}
 <View style={styles.section}>
-  {/* Header : Style identique aux cartes du haut */}
   <TouchableOpacity 
     style={styles.settingItem} 
     onPress={() => setIsTiersExpanded(!isTiersExpanded)}
@@ -777,7 +794,7 @@ const openTierModal = (index: number) => {
       {editableTiers.map((tier, index) => (
         <TouchableOpacity 
           key={index} 
-          style={styles.tierCard} 
+          style={styles.tierCard}
           onPress={() => openTierModal(index)}
         >
           <View style={styles.tierInfo}>
@@ -795,32 +812,35 @@ const openTierModal = (index: number) => {
     </View>
   )}
 </View>
+  </>
+)}
 {/*modif*/}
-        {/* ✅ NOUVEL EXERCICE */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Exercices</Text>
-          
-          <TouchableOpacity
-            style={styles.settingItem}
-            onPress={handleCreateNewExercise}
-            disabled={createExerciseMutation.isPending}
-          >
-            <View style={styles.settingItemLeft}>
-              <View style={styles.settingIcon}>
-                <Ionicons name="add-circle-outline" size={20} color={COLORS.success} />
+        {/* Section Exercices — masquée pour Trésorier/Président */}
+        {!readOnly && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Exercices</Text>
+            <TouchableOpacity
+              style={styles.settingItem}
+              onPress={handleCreateNewExercise}
+              disabled={createExerciseMutation.isPending}
+            >
+              <View style={styles.settingItemLeft}>
+                <View style={styles.settingIcon}>
+                  <Ionicons name="add-circle-outline" size={20} color={COLORS.success} />
+                </View>
+                <View style={styles.settingInfo}>
+                  <Text style={styles.settingTitle}>Créer nouvel exercice</Text>
+                  <Text style={styles.settingDescription}>Démarrer un nouvel exercice financier</Text>
+                </View>
               </View>
-              <View style={styles.settingInfo}>
-                <Text style={styles.settingTitle}>Créer nouvel exercice</Text>
-                <Text style={styles.settingDescription}>Démarrer un nouvel exercice financier</Text>
-              </View>
-            </View>
-            {createExerciseMutation.isPending ? (
-              <ActivityIndicator size="small" color={COLORS.success} />
-            ) : (
-              <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
-            )}
-          </TouchableOpacity>
-        </View>
+              {createExerciseMutation.isPending ? (
+                <ActivityIndicator size="small" color={COLORS.success} />
+              ) : (
+                <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Sécurité */}
         <View style={styles.section}>

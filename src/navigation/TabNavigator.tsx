@@ -17,26 +17,29 @@ import ChatbotFAB from "../components/ChatbotFAB";
 
 const Tab = createBottomTabNavigator();
 
-interface CustomTabBarIconProps {
+const CustomTabBarIcon = ({
+  route,
+  focused,
+  color,
+  size,
+}: {
   route: string;
   focused: boolean;
   color: string;
   size: number;
-}
-
-const CustomTabBarIcon = ({ route, focused, color, size }: CustomTabBarIconProps) => {
+}) => {
   const getIconName = () => {
     switch (route) {
       case "AccueilAdmin":
+      case "AccueilBureau":
       case "Accueil":
         return focused ? "home" : "home-outline";
-      case "Bilan":
-        return focused ? "bar-chart" : "bar-chart-outline";
       case "Renflouement":
         return focused ? "refresh-circle" : "refresh-circle-outline";
       case "Historique":
         return focused ? "time" : "time-outline";
       case "ParamètresAdmin":
+      case "ParamètresBureau":
       case "Paramètres":
         return focused ? "settings" : "settings-outline";
       default:
@@ -46,38 +49,37 @@ const CustomTabBarIcon = ({ route, focused, color, size }: CustomTabBarIconProps
 
   return (
     <View style={styles.iconContainer}>
-      {/* Indicateur de focus */}
       {focused && <View style={styles.activeIndicator} />}
-      
-      {/* Icône */}
-      <Ionicons 
-        name={getIconName() as any} 
-        size={size} 
-        color={focused ? COLORS.primary : color} 
+      <Ionicons
+        name={getIconName() as any}
+        size={size}
+        color={focused ? COLORS.primary : color}
       />
     </View>
   );
 };
 
-interface CustomTabBarLabelProps {
+const CustomTabBarLabel = ({
+  route,
+  focused,
+  color,
+}: {
   route: string;
   focused: boolean;
   color: string;
-}
-
-const CustomTabBarLabel = ({ route, focused, color }: CustomTabBarLabelProps) => {
+}) => {
   const getLabel = () => {
     switch (route) {
       case "AccueilAdmin":
+      case "AccueilBureau":
       case "Accueil":
         return "Accueil";
-      case "Bilan":
-        return "Bilan";
       case "Renflouement":
         return "Renflouement";
       case "Historique":
         return "Historique";
       case "ParamètresAdmin":
+      case "ParamètresBureau":
       case "Paramètres":
         return "Paramètres";
       default:
@@ -103,6 +105,16 @@ const CustomTabBarLabel = ({ route, focused, color }: CustomTabBarLabelProps) =>
 export default function TabNavigator() {
   const { user } = useAuthContext();
 
+  const isMembre            = user?.role === "MEMBRE" || user?.is_membre === true;
+  const isBureauLectureSeule = user?.role === "TRESORIER" || user?.role === "PRESIDENT";
+
+  // initialRouteName correspond TOUJOURS à un onglet existant dans le bon set
+  const initialRoute = isMembre
+    ? "Accueil"
+    : isBureauLectureSeule
+    ? "AccueilBureau"
+    : "AccueilAdmin";
+
   const commonScreenOptions = ({ route }: { route: any }) => ({
     headerShown: false,
     tabBarStyle: {
@@ -117,18 +129,34 @@ export default function TabNavigator() {
       borderWidth: 1,
       borderColor: COLORS.border,
       shadowColor: COLORS.shadowDark,
-      shadowOffset: {
-        width: 0,
-        height: 10,
-      },
+      shadowOffset: { width: 0, height: 10 },
       shadowOpacity: 0.15,
       shadowRadius: 20,
       elevation: 8,
     },
-    tabBarIcon: ({ focused, color, size }: { focused: boolean; color: string; size: number }) => (
-      <CustomTabBarIcon route={route.name} focused={focused} color={color} size={size} />
+    tabBarIcon: ({
+      focused,
+      color,
+      size,
+    }: {
+      focused: boolean;
+      color: string;
+      size: number;
+    }) => (
+      <CustomTabBarIcon
+        route={route.name}
+        focused={focused}
+        color={color}
+        size={size}
+      />
     ),
-    tabBarLabel: ({ focused, color }: { focused: boolean; color: string }) => (
+    tabBarLabel: ({
+      focused,
+      color,
+    }: {
+      focused: boolean;
+      color: string;
+    }) => (
       <CustomTabBarLabel route={route.name} focused={focused} color={color} />
     ),
     tabBarActiveTintColor: COLORS.primary,
@@ -139,73 +167,39 @@ export default function TabNavigator() {
     },
   });
 
-  return (<View style={{ flex: 1 }}>
-    <Tab.Navigator
-      initialRouteName={user?.is_administrateur ? "AccueilAdmin" : "Accueil"}
-      screenOptions={commonScreenOptions}
-    >
-      {user?.is_administrateur ? (
-        // 👑 NAVIGATION ADMIN (4 onglets)
-        <>
-          <Tab.Screen
-            name="AccueilAdmin"
-            component={AdminDashboardScreen}
-            options={{
-              title: "Accueil",
-            }}
-          />
-          <Tab.Screen
-            name="Historique"
-            component={FinancialReportsScreen}
-            options={{
-              title: "Historique",
-            }}
-          />
-          <Tab.Screen
-            name="Renflouement"
-            component={RenflouementScreen}
-            options={{
-              title: "Renflouement",
-            }}
-          />
-          <Tab.Screen
-            name="ParamètresAdmin"
-            component={SettingsScreen}
-            options={{
-              title: "Paramètres",
-            }}
-          />
-        </>
-      ) : (
-        // 👤 NAVIGATION MEMBRE (3 onglets)
-        <>
-          <Tab.Screen
-            name="Accueil"
-            component={MemberDashboardScreen}
-            options={{
-              title: "Accueil",
-            }}
-          />
-          <Tab.Screen
-            name="Historique"
-            component={MemberHistoryScreen}
-            options={{
-              title: "Historique",
-            }}
-          />
-          <Tab.Screen
-            name="Paramètres"
-            component={MemberSettingsScreen}
-            options={{
-              title: "Paramètres",
-            }}
-          />
-        </>
-      )}
-    </Tab.Navigator>
-    <ChatbotFAB />
-    
-  </View>
+  return (
+    <View style={{ flex: 1 }}>
+      <Tab.Navigator
+        initialRouteName={initialRoute}
+        screenOptions={commonScreenOptions}
+      >
+        {isMembre ? (
+          // 👤 MEMBRE — 3 onglets
+          <>
+            <Tab.Screen name="Accueil"    component={MemberDashboardScreen} />
+            <Tab.Screen name="Historique" component={MemberHistoryScreen} />
+            <Tab.Screen name="Paramètres" component={MemberSettingsScreen} />
+          </>
+        ) : isBureauLectureSeule ? (
+          // 👁 TRÉSORIER / PRÉSIDENT — 4 onglets AVEC Paramètres (lecture seule)
+          <>
+            <Tab.Screen name="AccueilBureau"    component={AdminDashboardScreen} />
+            <Tab.Screen name="Historique"        component={FinancialReportsScreen} />
+            <Tab.Screen name="Renflouement"      component={RenflouementScreen} />
+            <Tab.Screen name="ParamètresBureau"  component={SettingsScreen} />
+          </>
+        ) : (
+          // 👑 SECRÉTAIRE GÉNÉRALE — 4 onglets complets
+          <>
+            <Tab.Screen name="AccueilAdmin"   component={AdminDashboardScreen} />
+            <Tab.Screen name="Historique"      component={FinancialReportsScreen} />
+            <Tab.Screen name="Renflouement"    component={RenflouementScreen} />
+            <Tab.Screen name="ParamètresAdmin" component={SettingsScreen} />
+          </>
+        )}
+      </Tab.Navigator>
+      <ChatbotFAB />
+    </View>
   );
 }
 
@@ -217,7 +211,6 @@ const styles = StyleSheet.create({
     height: 40,
     position: "relative",
   },
-  
   activeIndicator: {
     position: "absolute",
     top: -4,

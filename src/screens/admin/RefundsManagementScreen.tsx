@@ -2,8 +2,10 @@ import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { COLORS, SPACING, FONT_SIZES } from "../../constants/config";
-
+import { useAuthContext } from "../../context/AuthContext";
 export default function RefundsManagementScreen() {
+  const { user } = useAuthContext();
+  const readOnly = !user?.can_write; // true pour Trésorier et Président
   return (
     <View style={styles.container}>
       <View style={styles.header}>

@@ -24,9 +24,8 @@ import { COLORS, SPACING, BORDER_RADIUS, FONT_SIZES } from "../../constants/conf
 import { SavingTransaction, SavingTransactionType } from "../../types/saving.types";
 import { Member } from "../../types/member.types";
 import { useNavigation } from "@react-navigation/native";
-
+import { useAuthContext } from "../../context/AuthContext";
 const { width } = Dimensions.get("window");
-
 // 🎯 Configuration de la pagination
 const ITEMS_PER_PAGE = 10;
 
@@ -113,7 +112,7 @@ interface MemberSavingsCardProps {
   onAddSaving: () => void;
 }
 
-const MemberSavingsCard = ({ member, onPress, onAddSaving }: MemberSavingsCardProps) => {
+const MemberSavingsCard = ({ member, onPress, onAddSaving, readOnly }: MemberSavingsCardProps & { readOnly?: boolean }) => {
   const getSavingsLevelColor = () => {
     if (member.total_epargne >= 100000) return COLORS.success;
     if (member.total_epargne >= 50000) return COLORS.warning;
@@ -138,15 +137,17 @@ const MemberSavingsCard = ({ member, onPress, onAddSaving }: MemberSavingsCardPr
           <Text style={styles.memberNumber}>{member.numero_membre}</Text>
           <Text style={styles.memberEmail} numberOfLines={1}>{member.email}</Text>
         </View>
-        <TouchableOpacity
-          style={styles.addSavingButton}
-          onPress={(e) => {
-            e.stopPropagation();
-            onAddSaving();
-          }}
-        >
-          <Ionicons name="add" size={20} color="white" />
-        </TouchableOpacity>
+        {!readOnly && (
+          <TouchableOpacity
+            style={styles.addSavingButton}
+            onPress={(e) => {
+              e.stopPropagation();
+              onAddSaving();
+            }}
+          >
+            <Ionicons name="add" size={20} color="white" />
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Montants */}
@@ -273,6 +274,8 @@ const TransactionCard = ({ transaction }: TransactionCardProps) => {
 
 // 🎯 Composant principal
 export default function SavingsScreen() {
+  const { user } = useAuthContext();
+  const readOnly = !user?.can_write; // true pour Trésorier et Président
   const [activeTab, setActiveTab] = useState<'overview' | 'members' | 'transactions'>('overview');
   const [search, setSearch] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
@@ -724,6 +727,7 @@ case 'members':
                 member={member}
                 onPress={() => handleMemberPress(member)}
                 onAddSaving={() => handleAddSaving(member)}
+                readOnly={readOnly}
               />
             </View>
           ))}
@@ -1049,16 +1053,18 @@ case 'members':
                   </View>
 
                   {/* Action */}
-                  <TouchableOpacity
-                    style={styles.addSavingModalButton}
-                    onPress={() => {
-                      setShowMemberDetail(false);
-                      handleAddSaving(selectedMemberDetail);
-                    }}
-                  >
-                    <Ionicons name="add" size={20} color="white" />
-                    <Text style={styles.addSavingModalButtonText}>Ajouter un dépôt</Text>
-                  </TouchableOpacity>
+                  {!readOnly && (
+                    <TouchableOpacity
+                      style={styles.addSavingModalButton}
+                      onPress={() => {
+                        setShowMemberDetail(false);
+                        handleAddSaving(selectedMemberDetail);
+                      }}
+                    >
+                      <Ionicons name="add" size={20} color="white" />
+                      <Text style={styles.addSavingModalButtonText}>Ajouter un dépôt</Text>
+                    </TouchableOpacity>
+                  )}
                 </>
               )}
             </ScrollView>
