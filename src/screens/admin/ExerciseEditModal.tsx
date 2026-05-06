@@ -58,22 +58,56 @@ export const ExerciseEditModal = ({
     }
   }, [initialData, isEditing, visible]);
 
+  // Fonction pour valider le format de date YYYY-MM-DD
+  const isValidDateFormat = (dateString: string): boolean => {
+    if (!dateString) return false;
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    if (!dateRegex.test(dateString)) return false;
+    
+    // Vérifier que la date est valide
+    const date = new Date(dateString);
+    return date instanceof Date && !isNaN(date.getTime());
+  };
+
   const handleSubmit = async () => {
+    // Validation du nom
     if (!formData.nom.trim()) {
       Alert.alert("Erreur", "Le nom de l'exercice est requis");
       return;
     }
 
+    // Validation de la date de début
     if (!formData.date_debut.trim()) {
       Alert.alert("Erreur", "La date de début est requise");
       return;
+    }
+
+    if (!isValidDateFormat(formData.date_debut)) {
+      Alert.alert("Erreur", "Le format de la date de début doit être YYYY-MM-DD (ex: 2026-01-01)");
+      return;
+    }
+
+    // Validation de la date de fin (optionnelle mais doit être au bon format si fournie)
+    if (formData.date_fin.trim() && !isValidDateFormat(formData.date_fin)) {
+      Alert.alert("Erreur", "Le format de la date de fin doit être YYYY-MM-DD (ex: 2026-12-31)");
+      return;
+    }
+
+    // Vérifier que la date de fin est après la date de début
+    if (formData.date_fin.trim()) {
+      const dateDebut = new Date(formData.date_debut);
+      const dateFin = new Date(formData.date_fin);
+      if (dateFin <= dateDebut) {
+        Alert.alert("Erreur", "La date de fin doit être après la date de début");
+        return;
+      }
     }
 
     try {
       await onSubmit({
         nom: formData.nom.trim(),
         date_debut: formData.date_debut,
-        date_fin: formData.date_fin || null,
+        date_fin: formData.date_fin ? formData.date_fin : null,
         description: formData.description.trim(),
       });
       onClose();

@@ -76,7 +76,7 @@ const handleOpenAdd = () => {
   setFormVisible(true);
 };
 
-const handleOpenEdit = (type) => {
+const handleOpenEdit = (type: any) => {
   setSelectedType(type);
   setFormVisible(true);
 };
@@ -151,8 +151,13 @@ const handleOpenEdit = (type) => {
   );
 };
 
-const AssistanceModal = ({ visible, onClose, initialData, onSubmit, loading }) => {
-  const [formData, setFormData] = useState({
+const AssistanceModal = ({ visible, onClose, initialData, onSubmit, loading }: {
+  visible: boolean;
+  onClose: () => void;
+  initialData: any;
+  onSubmit: (data: any) => void;
+  loading: boolean;
+}) => {  const [formData, setFormData] = useState({
     nom: "",
     montant: "",
     description: "",
@@ -396,7 +401,7 @@ export default function SettingsScreen() {
 // States (remplacez les vôtres)
 const [assistanceManagerVisible, setAssistanceManagerVisible] = useState(false);
 const [formVisible, setFormVisible] = useState(false);
-const [selectedType, setSelectedType] = useState(null);
+const [selectedType, setSelectedType] = useState<any>(null);
   
 
  // Fonctions (remplacez les vôtres)
@@ -414,7 +419,7 @@ const handleOpenEdit = (type: any) => {
 
 
 //
-const handleAssistanceSubmit = async (data) => {
+const handleAssistanceSubmit = async (data: any) => {
   try {
     const payload = {
       nom: data.nom,
@@ -451,7 +456,7 @@ const handleAssistanceSubmit = async (data) => {
     setExerciseModalVisible(true);
   };
   
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
   
   const [modalVisible, setModalVisible] = useState(false);
   const [currentConfigField, setCurrentConfigField] = useState<{
@@ -924,13 +929,13 @@ const openTierModal = (index: number) => {
   />
 
       {/* MODAL 2: Le Formulaire (Créer/Modifier) - celui créé précédemment */}
-      <AssistanceModal
-        visible={formVisible}
-        onClose={() => setFormVisible(false)}
-        initialData={selectedType}
-        onSubmit={handleAssistanceSubmit}
-        loading={createMutation.isPending || updateMutation.isPending}
-      />
+        <AssistanceModal
+          visible={formVisible}
+          onClose={() => setFormVisible(false)}
+          initialData={selectedType}
+          onSubmit={handleAssistanceSubmit}
+          loading={createMutation.isPending || updateMutation.isPending}
+        />
     </>
   );
 }
@@ -1260,9 +1265,6 @@ const stylesAssistance = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     color: COLORS.text,
-  },
-  modalBodyCompact: {
-    padding: 16,
   },
   label: {
     fontSize: 15,

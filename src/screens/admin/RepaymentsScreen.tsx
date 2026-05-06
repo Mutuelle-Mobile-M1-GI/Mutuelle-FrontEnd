@@ -20,7 +20,7 @@ import { useRepayments, useCreateRepayment, useLoans } from "../../hooks/useLoan
 import { useMembers } from "../../hooks/useMember";
 import { useCurrentSession } from "../../hooks/useSession";
 import { useNavigation } from "@react-navigation/native";
-import { LinearGradient } from 'expo-linear-gradient';
+  import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthContext } from "../../context/AuthContext";
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -30,7 +30,7 @@ const GREEN_THEME = {
   secondary: '#16A34A',
   light: '#DCFCE7',
   gradient: ['#22C55E', '#16A34A'],
-  gradientLight: ['#F0FDF4', '#DCFCE7'],
+  gradientLight: ['#F0FDF4', '#DCFCE7'] as const,
   success: '#15803D',
   accent: '#059669',
 };
@@ -606,7 +606,7 @@ export default function RepaymentsScreen() {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Header avec gradient et navigation */}
       <LinearGradient
-        colors={GREEN_THEME.gradient}
+        colors={GREEN_THEME.gradient as [string, string]}
         style={styles.header}
       >
         <View style={styles.headerContent}>

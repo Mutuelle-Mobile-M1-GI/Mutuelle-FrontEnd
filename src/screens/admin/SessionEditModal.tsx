@@ -58,16 +58,48 @@ export const SessionEditModal = ({
     }
   }, [initialData, isEditing, visible]);
 
+  // Fonction pour valider le format de date YYYY-MM-DD
+  const isValidDateFormat = (dateString: string): boolean => {
+    if (!dateString) return false;
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    if (!dateRegex.test(dateString)) return false;
+    
+    // Vérifier que la date est valide
+    const date = new Date(dateString);
+    return date instanceof Date && !isNaN(date.getTime());
+  };
+
   const handleSubmit = async () => {
+    // Validation du nom
     if (!formData.nom.trim()) {
       Alert.alert("Erreur", "Le nom de la session est requis");
       return;
     }
 
+    // Validation du format de la date de session
+    if (!formData.date_session.trim()) {
+      Alert.alert("Erreur", "La date de session est requise");
+      return;
+    }
+
+    if (!isValidDateFormat(formData.date_session)) {
+      Alert.alert("Erreur", "Le format de la date doit être YYYY-MM-DD (ex: 2026-03-15)");
+      return;
+    }
+
+    // Validation du montant collation
+    const montantValue = parseFloat(formData.montant_collation);
+    if (isNaN(montantValue) || montantValue < 0) {
+      Alert.alert("Erreur", "Le montant collation doit être un nombre positif");
+      return;
+    }
+
     try {
       await onSubmit({
-        ...formData,
-        montant_collation: parseFloat(formData.montant_collation) || 0,
+        nom: formData.nom.trim(),
+        date_session: formData.date_session,
+        montant_collation: montantValue,
+        description: formData.description.trim(),
       });
       onClose();
     } catch (error) {

@@ -34,7 +34,6 @@ import { useCaisseInscriptionCurrent } from "../../hooks/useInscription";
 import { useUpdateExercise, useDeleteExercise } from "../../hooks/useExercise";
 import { ExerciseEditModal } from "./ExerciseEditModal";
 import { SessionEditModal } from "./SessionEditModal";
-
 const { width } = Dimensions.get("window");
 
 // 🎯 Configuration de la pagination
@@ -256,7 +255,7 @@ interface ExerciceListModalProps {
 
 }
 
-const ExerciceListModal = ({ visible, onClose, onSelectExercice, onEdit, onDelete, readOnly }: ExerciceListModalProps) => {
+const ExerciceListModal = ({ visible, onClose, onSelectExercice, onEdit, onDelete, readOnly}: ExerciceListModalProps) => {
   const [displayedItems, setDisplayedItems] = useState(ITEMS_PER_PAGE);
   const { data: exercicesRaw, isLoading, error } = useExercises();
   const exercices: any[] = Array.isArray(exercicesRaw) ? exercicesRaw : (exercicesRaw as any)?.results ?? [];
@@ -341,7 +340,6 @@ const ExerciceListModal = ({ visible, onClose, onSelectExercice, onEdit, onDelet
                     </Text>
                   </View>
                 </TouchableOpacity>
-
                 {!readOnly && (
                   <View style={listModal.actionRow}>
                     <TouchableOpacity
@@ -537,7 +535,6 @@ const SessionListModal = ({
                       </Text>
                     </View>
                   </TouchableOpacity>
-
                   {!readOnly && (
                     <View style={listModal.actionRow}>
                       <TouchableOpacity
@@ -555,6 +552,7 @@ const SessionListModal = ({
                     </View>
                   )}
                 </View>
+                
               );
             })}
 
@@ -590,7 +588,7 @@ interface NewSessionModalProps {
   onSubmit: (data: any) => void;
   loading: boolean;
 }
- 
+
 const NewSessionModal = ({ visible, onClose, onSubmit, loading }: NewSessionModalProps) => {
   const [formData, setFormData] = useState({
     nom: "",
@@ -631,6 +629,7 @@ const NewSessionModal = ({ visible, onClose, onSubmit, loading }: NewSessionModa
               <Ionicons name="close" size={24} color={COLORS.textSecondary} />
             </TouchableOpacity>
           </View>
+
           <ScrollView
             style={styles.modalBody}
             showsVerticalScrollIndicator={false}
@@ -644,6 +643,7 @@ const NewSessionModal = ({ visible, onClose, onSubmit, loading }: NewSessionModa
               value={formData.nom}
               onChangeText={(text) => setFormData({ ...formData, nom: text })}
             />
+
             <Text style={styles.inputLabel}>Date de session</Text>
             <TextInput
               style={styles.input}
@@ -651,6 +651,7 @@ const NewSessionModal = ({ visible, onClose, onSubmit, loading }: NewSessionModa
               value={formData.date_session}
               onChangeText={(text) => setFormData({ ...formData, date_session: text })}
             />
+
             <Text style={styles.inputLabel}>Montant collation (FCFA)</Text>
             <TextInput
               style={styles.input}
@@ -660,7 +661,7 @@ const NewSessionModal = ({ visible, onClose, onSubmit, loading }: NewSessionModa
               keyboardType="numeric"
             />
             <Text style={styles.helperText}>Montant par défaut : 45 000 FCFA</Text>
- 
+
             {/* ── Séparateur section dépense ── */}
             <View style={styles.sectionDivider}>
               <View style={styles.sectionDividerLine} />
@@ -670,11 +671,11 @@ const NewSessionModal = ({ visible, onClose, onSubmit, loading }: NewSessionModa
               </View>
               <View style={styles.sectionDividerLine} />
             </View>
- 
+
             <Text style={styles.sectionHint}>
               Facultatif : Remplir ce champ uniquement si une dépense est associée à cette session.
             </Text>
- 
+
             <Text style={styles.inputLabel}>Montant de la dépense (FCFA)</Text>
             <TextInput
               style={styles.input}
@@ -683,7 +684,7 @@ const NewSessionModal = ({ visible, onClose, onSubmit, loading }: NewSessionModa
               onChangeText={(text) => setFormData({ ...formData, montant_depense: text })}
               keyboardType="numeric"
             />
- 
+
             <Text style={[styles.inputLabel, !hasDepense && styles.inputLabelDisabled]}>
               Motif / Description
             </Text>
@@ -701,10 +702,10 @@ const NewSessionModal = ({ visible, onClose, onSubmit, loading }: NewSessionModa
                 ⚠ Veuillez renseigner un motif pour cette dépense.
               </Text>
             )}
- 
+
             <View style={{ height: SPACING.md }} />
           </ScrollView>
- 
+
           {/* ── Boutons ── */}
           <View style={styles.modalActions}>
             <TouchableOpacity style={styles.cancelButton} onPress={onClose}>
@@ -736,9 +737,7 @@ const NewSessionModal = ({ visible, onClose, onSubmit, loading }: NewSessionModa
 // 🏠 ÉCRAN PRINCIPAL
 // ─────────────────────────────────────────────
 export default function AdminDashboardScreen() {
-  const navigation = useNavigation();
-
-  // ✅ useAuthContext ICI, dans le composant
+const navigation = useNavigation<any>();
   const { user } = useAuthContext();
   const readOnly = !user?.can_write; // true pour Trésorier et Président
 
@@ -805,7 +804,7 @@ export default function AdminDashboardScreen() {
     : user?.role === "TRESORIER"         ? "Trésorier"
     : user?.role === "PRESIDENT"         ? "Président"
     : "Membre";
-    
+  
   useFocusEffect(
     React.useCallback(() => {
       const refreshData = async () => {
@@ -1250,7 +1249,7 @@ export default function AdminDashboardScreen() {
                 <ActivityIndicator size="small" color="#4361EE" />
               ) : hasCurrentExercise ? (
                 <View style={styles.cardContent}>
-                  <Text style={styles.cardMainText}>{currentExercise.nom}</Text>
+                 <Text style={styles.cardMainText}>{currentExercise.nom}</Text>
                   <Text style={styles.cardSubText}>
                     {new Date(currentExercise.date_debut).toLocaleDateString("fr-FR")} -{" "}
                     {currentExercise.date_fin
@@ -1351,9 +1350,9 @@ export default function AdminDashboardScreen() {
 
         {/* ══ BOUTON NOUVELLE SESSION / TERMINER SESSION ══ */}
         {!readOnly && (
-          <View style={styles.actionContainer}>
-            <TouchableOpacity
-              style={styles.newSessionButton}
+        <View style={styles.actionContainer}>
+          <TouchableOpacity
+            style={styles.newSessionButton}
               onPress={() => {
                 if (hasCurrentSession) {
                   handleCloseSession();
@@ -1361,22 +1360,22 @@ export default function AdminDashboardScreen() {
                   setShowSessionModal(true);
                 }
               }}
-              activeOpacity={0.9}
-            >
-              <LinearGradient
+            activeOpacity={0.9}
+          >
+            <LinearGradient
                 colors={hasCurrentSession ? ["#CC0000", "#FF6666"] : ["#4361EE", "#3A86FF"]}
-                style={styles.newSessionGradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-              >
+              style={styles.newSessionGradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+            >
                 <Ionicons name={hasCurrentSession ? "stop-circle" : "add-circle"} size={24} color="white" />
                 <Text style={styles.newSessionText}>
                   {hasCurrentSession ? "Terminer la session" : "Nouvelle Session"}
                 </Text>
-                <Ionicons name="arrow-forward" size={20} color="white" />
-              </LinearGradient>
-            </TouchableOpacity>
-          </View>
+              <Ionicons name="arrow-forward" size={20} color="white" />
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
         )}
 
         {/* ══ ALERTES ══ */}
@@ -1403,38 +1402,40 @@ export default function AdminDashboardScreen() {
 
       {/* Nouvelle session */}
       {!readOnly && (
-        <NewSessionModal
-          visible={showSessionModal}
-          onClose={() => setShowSessionModal(false)}
-          onSubmit={handleCreateSession}
-          loading={sessionLoading}
-        />
+        <>
+          <NewSessionModal
+            visible={showSessionModal}
+            onClose={() => setShowSessionModal(false)}
+            onSubmit={handleCreateSession}
+            loading={sessionLoading}
+          />
 
-        {/* ✅ Modification d'exercice */}
-        <ExerciseEditModal
-          visible={exerciseEditModalVisible}
-          onClose={() => {
-            setExerciseEditModalVisible(false);
-            setEditingExercise(null);
-          }}
-          onSubmit={handleSubmitEditExercise}
-          initialData={editingExercise}
-          loading={updateExerciseMutation.isPending}
-          isEditing={true}
-        />
+          {/* ✅ Modification d'exercice */}
+          <ExerciseEditModal
+            visible={exerciseEditModalVisible}
+            onClose={() => {
+              setExerciseEditModalVisible(false);
+              setEditingExercise(null);
+            }}
+            onSubmit={handleSubmitEditExercise}
+            initialData={editingExercise}
+            loading={updateExerciseMutation.isPending}
+            isEditing={true}
+          />
 
-        {/* ✅ Modification de session */}
-        <SessionEditModal
-          visible={sessionEditModalVisible}
-          onClose={() => {
-            setSessionEditModalVisible(false);
-            setEditingSession(null);
-          }}
-          onSubmit={handleSubmitEditSession}
-          initialData={editingSession}
-          loading={updateSessionMutation.isPending}
-          isEditing={true}
-        />
+          {/* ✅ Modification de session */}
+          <SessionEditModal
+            visible={sessionEditModalVisible}
+            onClose={() => {
+              setSessionEditModalVisible(false);
+              setEditingSession(null);
+            }}
+            onSubmit={handleSubmitEditSession}
+            initialData={editingSession}
+            loading={updateSessionMutation.isPending}
+            isEditing={true}
+          />
+        </>
       )}
       {/* Liste des exercices (clic sur exercice → ouvre sessions de cet exercice) */}
       <ExerciceListModal
