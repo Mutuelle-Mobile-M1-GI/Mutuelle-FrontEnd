@@ -875,7 +875,13 @@ export default function AdminHistoryScreen() {
   const hasRouteParams = paramSessionId != null && paramSessionName != null;
   // hasFilterPreset : vrai si on vient des boutons soldes (pas de session, juste des filtres)
   const hasFilterPreset = paramFilterPreset != null && paramFilterPreset.length > 0 && !hasRouteParams;
-
+  React.useEffect(() => {
+    if (hasFilterPreset || hasRouteParams) {
+      setManualSession(null);
+      setManualExercice(null);
+    }
+  }, [hasFilterPreset, hasRouteParams]);
+  
   // Session et exercice actifs : soit depuis les params, soit depuis la navigation manuelle
   const activeSession: Session | null = hasRouteParams
     ? ({ id: paramSessionId, nom: paramSessionName } as unknown as Session)

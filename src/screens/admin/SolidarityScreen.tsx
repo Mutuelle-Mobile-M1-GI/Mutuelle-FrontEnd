@@ -43,6 +43,7 @@ interface MemberWithProgress {
   pourcentage_complete: number;
   is_complete: boolean;
   montant_restant: number;
+  montant_attendu_exercice: number;
 }
 
 interface SolidarityStats {
@@ -228,8 +229,8 @@ export default function SolidarityScreen() {
     if (Array.isArray(solidarityPaymentsData)) {
       return solidarityPaymentsData;
     }
-    if (solidarityPaymentsData && Array.isArray(solidarityPaymentsData.results)) {
-      return solidarityPaymentsData.results;
+    if (solidarityPaymentsData && Array.isArray((solidarityPaymentsData as any).results)) {
+      return (solidarityPaymentsData as any).results;
     }
     return [];
   }, [solidarityPaymentsData]);
@@ -238,52 +239,65 @@ export default function SolidarityScreen() {
     if (Array.isArray(membersData)) {
       return membersData;
     }
-    if (membersData && Array.isArray(membersData.results)) {
-      return membersData.results;
+    if (membersData && Array.isArray((membersData as any).results)) {
+      return (membersData as any).results;
     }
     return [];
   }, [membersData]);
 
-  // Montant attendu par membre pour la session courante
-  const montantAttendu = currentConfig?.montant_solidarite || 0;
+  // Accumule TOUS les paiements (toutes sessions) par membre
+  const memberTotalPaymentsMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    
+    solidarityPayments.forEach(payment => {
+      const key = String(payment.membre);
+      map[key] = (map[key] || 0) + Number(payment.montant || 0);
+    });
+    
+    return map;
+  }, [solidarityPayments]);
 
-  // Paiements pour la session courante uniquement
-  const sessionSolidarityPayments = useMemo(() => {
-    if (!currentSession?.id) return [];
-    return solidarityPayments.filter(payment => payment.session === currentSession.id);
-  }, [solidarityPayments, currentSession?.id]);
+  // Extrait le montant attendu pour l'exercice par membre
+  const memberExpectedAmountMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    
+    solidarityPayments.forEach(payment => {
+      const key = String(payment.membre);
+      if (!map[key]) {
+        map[key] = Number(payment.montant_solidarite_du || 0);
+      }
+    });
+    
+    return map;
+  }, [solidarityPayments]);
 
- const memberPaymentsMap = useMemo(() => {
-  const map: Record<string, number> = {};
-  
-  // Log pour voir ce qui arrive vraiment
-  console.log("solidarityPayments reçus:", solidarityPayments);
-  
-  solidarityPayments.forEach(payment => {
-    if (payment.session !== currentSession?.id) return;
-    const key = String(payment.membre);
-    map[key] = (map[key] || 0) + Number(payment.montant || 0);
-  });
-  
-  console.log("map reconstruit:", map);
-  return map;
-}, [solidarityPayments, currentSession?.id]);
+  // Montant attendu pour l'exercice (à afficher dans le header)
+  const montantAttendu = useMemo(() => {
+    const firstPayment = solidarityPayments[0];
+    if (firstPayment) {
+      return Number(firstPayment.montant_solidarite_du || 0);
+    }
+    return currentConfig?.montant_solidarite || 0;
+  }, [solidarityPayments, currentConfig?.montant_solidarite]);
 
-  // Membres avec progression
+  // Membres avec progression (toutes sessions incluses)
   const membersWithProgress: MemberWithProgress[] = useMemo(() => {
     return members.map(member => {
-      // Normalisation pour éviter les problèmes d'imprécision flottante
-      const montantPayeRaw = memberPaymentsMap[member.id] || 0;
-      const montantPaye = Math.round(montantPayeRaw);
-      const montantAttenduRounded = Math.round(montantAttendu);
+      // Total payé pour TOUTES les sessions
+      const montantPayeTotal = memberTotalPaymentsMap[member.id] || 0;
+      // Montant attendu pour l'exercice complet
+      const montantAttenduExercice = memberExpectedAmountMap[member.id] || currentConfig?.montant_solidarite || 0;
+      
+      const montantPayeRounded = Math.round(montantPayeTotal);
+      const montantAttenduRounded = Math.round(montantAttenduExercice);
 
       const pourcentageComplete = montantAttenduRounded > 0
-        ? Math.max(0, Math.min(Math.round((montantPaye / montantAttenduRounded) * 100), 100))
+        ? Math.max(0, Math.min(Math.round((montantPayeRounded / montantAttenduRounded) * 100), 100))
         : 0;
 
-      // On utilise les valeurs arrondies pour la comparaison d'égalité
-      const isComplete = montantAttenduRounded > 0 && montantPaye >= montantAttenduRounded;
-      const montantRestant = montantAttenduRounded > 0 ? Math.max(0, montantAttenduRounded - montantPaye) : 0;
+      // Vérifier si le membre a payé son intégralité pour l'exercice
+      const isComplete = montantAttenduRounded > 0 && montantPayeRounded >= montantAttenduRounded;
+      const montantRestant = montantAttenduRounded > 0 ? Math.max(0, montantAttenduRounded - montantPayeRounded) : 0;
 
       return {
         id: member.id,
@@ -292,13 +306,14 @@ export default function SolidarityScreen() {
         email: member.utilisateur?.email || "",
         telephone: member.utilisateur?.telephone,
         statut: member.statut,
-        montant_paye: montantPaye,
+        montant_paye: montantPayeRounded,
         pourcentage_complete: pourcentageComplete,
         is_complete: isComplete,
         montant_restant: montantRestant,
+        montant_attendu_exercice: montantAttenduRounded,
       };
     });
-  }, [members, memberPaymentsMap, montantAttendu]);
+  }, [members, memberTotalPaymentsMap, memberExpectedAmountMap, currentConfig?.montant_solidarite]);
 
   // Filtrage
   const filteredMembers = useMemo(() => {
@@ -362,7 +377,7 @@ export default function SolidarityScreen() {
     const membersPartial = membersWithProgress.filter(m => !m.is_complete && m.montant_paye > 0).length;
     const membersNone = membersWithProgress.filter(m => m.montant_paye === 0).length;
     const totalCollected = membersWithProgress.reduce((sum, m) => sum + m.montant_paye, 0);
-    const totalExpected = totalMembers * montantAttendu;
+    const totalExpected = membersWithProgress.reduce((sum, m) => sum + m.montant_attendu_exercice, 0);
     const completionRate = totalExpected > 0 ? (totalCollected / totalExpected) * 100 : 0;
 
     return {
@@ -374,7 +389,7 @@ export default function SolidarityScreen() {
       total_expected: totalExpected,
       completion_rate: completionRate,
     };
-  }, [membersWithProgress, montantAttendu]);
+  }, [membersWithProgress]);
 
   // Actions
   const handleRefresh = async () => {
@@ -500,6 +515,31 @@ export default function SolidarityScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* ── Header figé ── */}
+      <LinearGradient
+        colors={["#059669", "#10B981"]}
+        style={styles.header}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      >
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+          <Ionicons name="arrow-back" size={24} color="white" />
+        </TouchableOpacity>
+        <View style={styles.headerContent}>
+          <Ionicons name="wallet" size={32} color="white" style={styles.headerIcon} />
+          <Text style={styles.headerTitle}>Gestion des Solidarités</Text>
+          <Text style={styles.headerSubtitle}>
+            Session: {currentSession?.nom || "Chargement..."}
+          </Text>
+          {montantAttendu > 0 && (
+            <Text style={styles.headerAmount}>
+              Montant attendu: {formatCurrency(montantAttendu)}
+            </Text>
+          )}
+        </View>
+      </LinearGradient>
+
+      {/* ── Contenu scrollable ── */}
       <FlatList
         data={[{ type: 'content' }]}
         keyExtractor={() => 'main-content'}
@@ -508,29 +548,6 @@ export default function SolidarityScreen() {
         }
         renderItem={() => (
           <View>
-            {/* Header avec gradient */}
-            <LinearGradient
-              colors={["#059669", "#10B981"]}
-              style={styles.header}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            >
-              <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={24} color="white" />
-          </TouchableOpacity>
-              <View style={styles.headerContent}>
-                <Ionicons name="wallet" size={32} color="white" style={styles.headerIcon} />
-                <Text style={styles.headerTitle}>Gestion des Solidarités</Text>
-                <Text style={styles.headerSubtitle}>
-                  Session: {currentSession?.nom || "Chargement..."}
-                </Text>
-                {montantAttendu > 0 && (
-                  <Text style={styles.headerAmount}>
-                    Montant attendu: {formatCurrency(montantAttendu)}
-                  </Text>
-                )}
-              </View>
-            </LinearGradient>
 
             {/* Section fonds social */}
             <View style={styles.fundSection}>
@@ -634,7 +651,7 @@ export default function SolidarityScreen() {
                   <View key={member.id} style={{ marginBottom: SPACING.md }}>
                     <MemberCard
                       member={member}
-                      montantAttendu={montantAttendu}
+                      montantAttendu={member.montant_attendu_exercice}
                       onPress={() => handleMemberPress(member)}
                     />
                   </View>

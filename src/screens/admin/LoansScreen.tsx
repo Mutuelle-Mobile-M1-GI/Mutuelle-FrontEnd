@@ -1565,7 +1565,6 @@ totalRow: {
 },
 calcLabel: { color: YELLOW_THEME.text, fontSize: 14 },
 calcValue: { fontWeight: '700' },
-totalLabel: { fontWeight: 'bold', color: YELLOW_THEME.textDark },
 totalValue: { fontWeight: 'bold', color: COLORS.success, fontSize: 18 },
 
   // Header

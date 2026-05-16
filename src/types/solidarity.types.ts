@@ -11,6 +11,7 @@ export interface SolidarityPayment {
     session: string;
     session_nom: string;
     montant: number;
+    montant_solidarite_du: number;
     date_paiement: string;
     notes: string;
   }

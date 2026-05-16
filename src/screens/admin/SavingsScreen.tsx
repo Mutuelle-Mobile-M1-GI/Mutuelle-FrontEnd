@@ -13,23 +13,27 @@ import {
   SafeAreaView,
   RefreshControl,
   ScrollView,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
-import { useSavings, useCreateSaving,useSavingsStats } from "../../hooks/useSaving";
+import { useSavings, useCreateSaving, useSavingsStats } from "../../hooks/useSaving";
 import { useMembers } from "../../hooks/useMember";
 import { useCurrentSession } from "../../hooks/useSession";
 import { COLORS, SPACING, BORDER_RADIUS, FONT_SIZES } from "../../constants/config";
-import { SavingTransaction, SavingTransactionType } from "../../types/saving.types";
+import { SavingTransaction } from "../../types/saving.types";
 import { Member } from "../../types/member.types";
 import { useNavigation } from "@react-navigation/native";
 import { useAuthContext } from "../../context/AuthContext";
-const { width } = Dimensions.get("window");
-// 🎯 Configuration de la pagination
-const ITEMS_PER_PAGE = 10;
 
-// 🎯 Types
+const { width } = Dimensions.get("window");
+const ITEMS_PER_PAGE = 10;
+const MODAL_MEMBERS_PER_PAGE = 8;
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
 interface MemberSavings {
   id: string;
   numero_membre: string;
@@ -43,58 +47,40 @@ interface MemberSavings {
   derniere_transaction?: string;
 }
 
-interface SavingsStats {
-  total_membres: number;
-  total_epargne_globale: number;
-  total_depots: number;
-  total_retraits: number;
-  moyenne_par_membre: number;
-  transactions_ce_mois: number;
-}
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-interface TabConfig {
-  key: 'members'| 'overview'  | 'transactions';
-  title: string;
-  icon: string;
-}
-
-// 🎯 Configuration des onglets
-const TABS: TabConfig[] = [
-  { key: 'members', title: 'Membres', icon: 'people' },
-  { key: 'overview', title: 'Vue d\'ensemble', icon: 'stats-chart' },
-  { key: 'transactions', title: 'Transactions', icon: 'list' },
-];
-
-// 🎯 Formatage monétaire sécurisé
 const formatCurrency = (amount: number | undefined | null): string => {
   if (!amount || isNaN(amount)) return "0 FCFA";
-  return new Intl.NumberFormat('fr-FR', {
-    style: 'currency',
-    currency: 'XAF',
+  return new Intl.NumberFormat("fr-FR", {
+    style: "currency",
+    currency: "XAF",
     minimumFractionDigits: 0,
   }).format(amount);
 };
 
-// 🎯 Composant StatCard
+const getInitials = (name: string) =>
+  name
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .substring(0, 2)
+    .toUpperCase();
+
+// ─── StatCard ─────────────────────────────────────────────────────────────────
+
 interface StatCardProps {
   title: string;
   value: string;
   icon: string;
   color: string;
   subtitle?: string;
-  onPress?: () => void;
 }
 
-const StatCard = ({ title, value, icon, color, subtitle, onPress }: StatCardProps) => (
-  <TouchableOpacity
-    style={[styles.statCard, { borderLeftColor: color }]}
-    onPress={onPress}
-    activeOpacity={onPress ? 0.8 : 1}
-    disabled={!onPress}
-  >
+const StatCard = ({ title, value, icon, color, subtitle }: StatCardProps) => (
+  <View style={[styles.statCard, { borderLeftColor: color }]}>
     <View style={styles.statHeader}>
       <View style={[styles.statIcon, { backgroundColor: `${color}20` }]}>
-        <Ionicons name={icon as any} size={24} color={color} />
+        <Ionicons name={icon as any} size={22} color={color} />
       </View>
       <View style={styles.statTextContainer}>
         <Text style={styles.statTitle}>{title}</Text>
@@ -102,473 +88,268 @@ const StatCard = ({ title, value, icon, color, subtitle, onPress }: StatCardProp
         {subtitle && <Text style={styles.statSubtitle}>{subtitle}</Text>}
       </View>
     </View>
-  </TouchableOpacity>
+  </View>
 );
 
-// 🎯 Composant MemberSavingsCard
-interface MemberSavingsCardProps {
+// ─── SavingCard ───────────────────────────────────────────────────────────────
+
+interface SavingCardProps {
   member: MemberSavings;
-  onPress: () => void;
   onAddSaving: () => void;
+  readOnly?: boolean;
 }
 
-const MemberSavingsCard = ({ member, onPress, onAddSaving, readOnly }: MemberSavingsCardProps & { readOnly?: boolean }) => {
-  const getSavingsLevelColor = () => {
-    if (member.total_epargne >= 100000) return COLORS.success;
-    if (member.total_epargne >= 50000) return COLORS.warning;
-    return COLORS.primary;
-  };
+const SavingCard = ({ member, onAddSaving, readOnly }: SavingCardProps) => {
+  const levelColor =
+    member.total_epargne >= 100000
+      ? COLORS.success
+      : member.total_epargne >= 50000
+      ? COLORS.warning
+      : "#B5179E";
 
   return (
-    <TouchableOpacity
-      style={[styles.memberCard, { borderLeftColor: getSavingsLevelColor() }]}
-      onPress={onPress}
-      activeOpacity={0.8}
-    >
-      {/* Header avec avatar et actions */}
-      <View style={styles.memberHeader}>
-        <View style={[styles.memberAvatar, { backgroundColor: getSavingsLevelColor() }]}>
-          <Text style={styles.memberAvatarText}>
-            {member.nom_complet.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
-          </Text>
+    <View style={[styles.savingCard, { borderLeftColor: levelColor }]}>
+      {/* Header */}
+      <View style={styles.cardHeader}>
+        <View style={[styles.cardAvatar, { backgroundColor: levelColor }]}>
+          <Text style={styles.cardAvatarText}>{getInitials(member.nom_complet)}</Text>
         </View>
-        <View style={styles.memberInfo}>
-          <Text style={styles.memberName}>{member.nom_complet}</Text>
-          <Text style={styles.memberNumber}>{member.numero_membre}</Text>
-          <Text style={styles.memberEmail} numberOfLines={1}>{member.email}</Text>
+        <View style={styles.cardInfo}>
+          <Text style={styles.cardName}>{member.nom_complet}</Text>
+          <Text style={styles.cardNumber}>{member.numero_membre}</Text>
+          {member.email ? (
+            <Text style={styles.cardEmail} numberOfLines={1}>
+              {member.email}
+            </Text>
+          ) : null}
         </View>
         {!readOnly && (
           <TouchableOpacity
-            style={styles.addSavingButton}
-            onPress={(e) => {
-              e.stopPropagation();
-              onAddSaving();
-            }}
+            style={[styles.addButton, { backgroundColor: levelColor }]}
+            onPress={onAddSaving}
+            activeOpacity={0.8}
           >
             <Ionicons name="add" size={20} color="white" />
           </TouchableOpacity>
         )}
       </View>
 
-      {/* Montants */}
-      <View style={styles.savingsAmounts}>
-        <View style={styles.amountSection}>
-          <Text style={styles.amountLabel}>Épargne totale</Text>
-          <Text style={[styles.amountValue, { color: getSavingsLevelColor() }]}>
-            {formatCurrency(member.total_epargne)} 
+      {/* Épargne totale */}
+      <View style={styles.cardAmounts}>
+        <View style={styles.cardAmountMain}>
+          <Text style={styles.cardAmountLabel}>Épargne totale</Text>
+          <Text style={[styles.cardAmountValue, { color: levelColor }]}>
+            {formatCurrency(member.total_epargne)}
           </Text>
         </View>
-        <View style={styles.amountRow}>
-          <View style={styles.amountItem}>
-            <Ionicons name="arrow-up" size={16} color={COLORS.success} />
-            <Text style={styles.amountItemText}>
-              {formatCurrency(member.total_depots)}
-            </Text>
+        <View style={styles.cardAmountRow}>
+          <View style={styles.cardAmountItem}>
+            <Ionicons name="arrow-up" size={14} color={COLORS.success} />
+            <Text style={styles.cardAmountItemText}>{formatCurrency(member.total_depots)}</Text>
           </View>
-          <View style={styles.amountItem}>
-            <Ionicons name="arrow-down" size={16} color={COLORS.error} />
-            <Text style={styles.amountItemText}>
-              {formatCurrency(member.total_retraits)}
-            </Text>
+          <View style={styles.cardAmountItem}>
+            <Ionicons name="arrow-down" size={14} color={COLORS.error} />
+            <Text style={styles.cardAmountItemText}>{formatCurrency(member.total_retraits)}</Text>
           </View>
         </View>
       </View>
 
-      {/* Statistiques */}
-      <View style={styles.memberStats}>
-        <View style={styles.statItem}>
-          <Ionicons name="swap-horizontal" size={14} color={COLORS.textSecondary} />
-          <Text style={styles.statItemText}>
-            {member.nombre_transactions} transaction{member.nombre_transactions > 1 ? 's' : ''}
+      {/* Pied de carte */}
+      <View style={styles.cardFooter}>
+        <View style={styles.cardFooterItem}>
+          <Ionicons name="swap-horizontal" size={13} color={COLORS.textSecondary} />
+          <Text style={styles.cardFooterText}>
+            {member.nombre_transactions} transaction
+            {member.nombre_transactions !== 1 ? "s" : ""}
           </Text>
         </View>
         {member.derniere_transaction && (
-          <View style={styles.statItem}>
-            <Ionicons name="time" size={14} color={COLORS.textSecondary} />
-            <Text style={styles.statItemText}>
-              Dernière: {new Date(member.derniere_transaction).toLocaleDateString('fr-FR')}
+          <View style={styles.cardFooterItem}>
+            <Ionicons name="time-outline" size={13} color={COLORS.textSecondary} />
+            <Text style={styles.cardFooterText}>
+              {new Date(member.derniere_transaction).toLocaleDateString("fr-FR")}
             </Text>
           </View>
         )}
       </View>
-    </TouchableOpacity>
-  );
-};
-
-// 🎯 Composant TransactionCard
-interface TransactionCardProps {
-  transaction: SavingTransaction;
-}
-
-const TransactionCard = ({ transaction }: TransactionCardProps) => {
-  const getTransactionColor = () => {
-    switch (transaction.type_transaction) {
-      case 'DEPOT': return COLORS.success;
-      case 'RETRAIT_PRET': return COLORS.error;
-      case 'INTERET': return COLORS.primary;
-      default: return COLORS.textSecondary;
-    }
-  };
-
-  const getTransactionIcon = () => {
-    switch (transaction.type_transaction) {
-      case 'DEPOT': return 'arrow-up-circle';
-      case 'RETRAIT_PRET': return 'arrow-down-circle';
-      case 'INTERET': return 'trending-up';
-      default: return 'swap-horizontal';
-    }
-  };
-
-  return (
-    <View style={[styles.transactionCard, { borderLeftColor: getTransactionColor() }]}>
-      <View style={styles.transactionHeader}>
-        <View style={styles.transactionMember}>
-          <View style={[styles.transactionIcon, { backgroundColor: `${getTransactionColor()}20` }]}>
-            <Ionicons name={getTransactionIcon() as any} size={20} color={getTransactionColor()} />
-          </View>
-          <View style={styles.transactionMemberInfo}>
-            <Text style={styles.transactionMemberName}>
-              {transaction.membre_info?.nom_complet || "Membre non défini"}
-            </Text>
-            <Text style={styles.transactionMemberNumber}>
-              {transaction.membre_info?.numero_membre || "N/A"}
-            </Text>
-          </View>
-        </View>
-        <View style={styles.transactionAmount}>
-          <Text style={[styles.transactionAmountValue, { color: getTransactionColor() }]}>
-            {transaction.type_transaction === 'RETRAIT_PRET' ? '-' : '+'}
-            {formatCurrency(transaction.montant)}
-          </Text>
-          <Text style={styles.transactionType}>
-            {transaction.type_transaction_display}
-          </Text>
-        </View>
-      </View>
-
-      <View style={styles.transactionDetails}>
-        <View style={styles.transactionDetailItem}>
-          <Ionicons name="calendar" size={14} color={COLORS.textSecondary} />
-          <Text style={styles.transactionDetailText}>
-            {new Date(transaction.date_transaction).toLocaleDateString('fr-FR')}
-          </Text>
-        </View>
-        <View style={styles.transactionDetailItem}>
-          <Ionicons name="business" size={14} color={COLORS.textSecondary} />
-          <Text style={styles.transactionDetailText}>
-            {transaction.session_nom || "Session N/A"}
-          </Text>
-        </View>
-      </View>
-
-      {transaction.notes && (
-        <View style={styles.transactionNotes}>
-          <Text style={styles.transactionNotesText} numberOfLines={2}>
-            {transaction.notes}
-          </Text>
-        </View>
-      )}
     </View>
   );
 };
 
-// 🎯 Composant principal
+// ─── Composant principal ──────────────────────────────────────────────────────
+
 export default function SavingsScreen() {
   const { user } = useAuthContext();
-  const readOnly = !user?.can_write; // true pour Trésorier et Président
-  const [activeTab, setActiveTab] = useState<'overview' | 'members' | 'transactions'>('overview');
-  const [search, setSearch] = useState("");
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [selectedMember, setSelectedMember] = useState<MemberSavings | null>(null);
-  const [savingAmount, setSavingAmount] = useState("");
-  const [savingNotes, setSavingNotes] = useState("");
-  const [transactionTypeFilter, setTransactionTypeFilter] = useState<'all' | SavingTransactionType>('all');
-  const [refreshing, setRefreshing] = useState(false);
+  const readOnly = !user?.can_write;
   const navigation = useNavigation();
 
-  // Navigation
-  const [showMemberDetail, setShowMemberDetail] = useState(false);
-  const [selectedMemberDetail, setSelectedMemberDetail] = useState<MemberSavings | null>(null);
+  // ── State ──────────────────────────────────────────────────────────────────
+  const [search, setSearch] = useState("");
   const [displayedItems, setDisplayedItems] = useState(ITEMS_PER_PAGE);
-  const [displayedTransactions, setDisplayedTransactions] = useState(ITEMS_PER_PAGE);
+  const [refreshing, setRefreshing] = useState(false);
 
-  // Hooks de données
-  const { data: membersData, isLoading: loadingMembers, isError: errorMembers } = useMembers();
-  const { data: currentSession, isLoading: loadingSession, isError: errorSession } = useCurrentSession();
-  const { data: savingsData, isLoading: loadingSavings, isError: errorSavings, refetch: refetchSavings } = useSavings();
-  const { data: serverStats, isLoading: loadingStats, refetch: refetchStats } = useSavingsStats(); // Ajout du hook stats
+  // Modal multi-step
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1);
+
+  // Step 1 : sélection membre
+  const [modalMemberSearch, setModalMemberSearch] = useState("");
+  const [modalMemberPage, setModalMemberPage] = useState(MODAL_MEMBERS_PER_PAGE);
+  const [selectedMember, setSelectedMember] = useState<MemberSavings | null>(null);
+
+  // Step 2 : saisie montant
+  const [savingAmount, setSavingAmount] = useState("");
+  const [savingNotes, setSavingNotes] = useState("");
+
+  // ── Hooks de données ──────────────────────────────────────────────────────
+  const {
+    data: savingsData,
+    isLoading: loadingSavings,
+    isError: errorSavings,
+    refetch: refetchSavings,
+  } = useSavings();
+  const {
+    data: serverStats,
+    isLoading: loadingStats,
+    refetch: refetchStats,
+  } = useSavingsStats();
+  const { data: membersData, isLoading: loadingMembers } = useMembers();
+  const { data: currentSession, isLoading: loadingSession } = useCurrentSession();
   const createSaving = useCreateSaving();
 
-  // 🔧 Protection et normalisation des données
+  // ── Normalisation des données ──────────────────────────────────────────────
   const savings: SavingTransaction[] = useMemo(() => {
-    if (Array.isArray(savingsData)) {
-      return savingsData;
-    }
-    if (savingsData && Array.isArray(savingsData.results)) {
-      return savingsData.results;
-    }
+    if (Array.isArray(savingsData)) return savingsData;
+    if (savingsData && Array.isArray((savingsData as any).results))
+      return (savingsData as any).results;
     return [];
   }, [savingsData]);
 
   const members: Member[] = useMemo(() => {
-    if (Array.isArray(membersData)) {
-      return membersData;
-    }
-    if (membersData && Array.isArray(membersData.results)) {
-      return membersData.results;
-    }
+    if (Array.isArray(membersData)) return membersData;
+    if (membersData && Array.isArray((membersData as any).results))
+      return (membersData as any).results;
     return [];
   }, [membersData]);
 
-  // Calcul des épargnes par membre
-  const memberSavings: MemberSavings[] = useMemo(() => {
-    const savingsMap: Record<string, {
-      depots: number;
-      retraits: number;
-      transactions: SavingTransaction[];
-    }> = {};
-
-    // Regrouper les transactions par membre
-    savings.forEach(transaction => {
-      if (!savingsMap[transaction.membre]) {
-        savingsMap[transaction.membre] = {
-          depots: 0,
-          retraits: 0,
-          transactions: []
-        };
-      }
-      
-      savingsMap[transaction.membre].transactions.push(transaction);
-      
-      if (transaction.type_transaction === 'DEPOT' || transaction.type_transaction === 'INTERET') {
-        savingsMap[transaction.membre].depots += transaction.montant || 0;
-      } else if (transaction.type_transaction === 'RETRAIT_PRET') {
-        savingsMap[transaction.membre].retraits += transaction.montant || 0;
-      }
-    });
-
-    // Créer la liste des membres avec leurs épargnes
-    return members.map(member => {
-      const memberData = savingsMap[member.id] || { depots: 0, retraits: 0, transactions: [] };
-      const totalEpargne = memberData.depots - memberData.retraits;
-      
-      // Trouver la dernière transaction
-      const derniereTransaction = memberData.transactions
-        .sort((a, b) => new Date(b.date_transaction).getTime() - new Date(a.date_transaction).getTime())[0];
-
-      return {
-        id: member.id,
-        numero_membre: member.numero_membre,
-        nom_complet: member.utilisateur?.nom_complet || "Nom non disponible",
-        email: member.utilisateur?.email || "",
-        statut: member.statut,
-        total_epargne: member.donnees_financieres.epargne.epargne_totale || 0,
-        total_depots: memberData.depots,
-        total_retraits: member.donnees_financieres.emprunt.montant_restant_a_rembourser,
-        nombre_transactions: memberData.transactions.length,
-        derniere_transaction: derniereTransaction?.date_transaction,
-      };
-    }).sort((a, b) => b.total_epargne - a.total_epargne); // Trier par épargne décroissante
-  }, [members, savings]);
-
-  // Filtrage des membres
-  const filteredMembers = useMemo(() => {
-    if (!search.trim()) return memberSavings;
-    
-    return memberSavings.filter(member =>
-      [member.nom_complet, member.numero_membre, member.email]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase()
-        .includes(search.toLowerCase())
-    );
-  }, [memberSavings, search]);
-
-  // 🔧 Fusion intelligente : On utilise les montants du serveur + les infos profils locales
+  // ── Liste finale des épargnes par membre (serveur + local) ─────────────────
   const finalMembersList = useMemo((): MemberSavings[] => {
-    // On récupère la liste complète calculée par Django
     const serverList = (serverStats?.tous_les_membres as any[]) || [];
-    
     return serverList.map((sMember): MemberSavings => {
-      // On cherche les infos complémentaires (email, etc.) dans le hook useMembers
-      const localInfo = members.find(m => m.id === sMember.id);
-      
+      const localInfo = members.find((m) => m.id === sMember.id);
       return {
         id: sMember.id,
         numero_membre: sMember.numero,
         nom_complet: sMember.nom,
         email: localInfo?.utilisateur?.email || "",
         statut: sMember.statut || "ACTIF",
-        total_epargne: sMember.montant, // Le montant exact du serveur (ex: 300 000)
+        total_epargne: sMember.montant,
         total_depots: sMember.montant,
-        total_retraits: localInfo?.donnees_financieres?.emprunt?.montant_restant_a_rembourser || 0,
-        nombre_transactions: localInfo?.donnees_financieres?.epargne?.nombre_transactions || 0,
-        derniere_transaction: localInfo?.donnees_financieres?.epargne?.derniere_transaction_date,
+        total_retraits:
+          localInfo?.donnees_financieres?.emprunt?.montant_restant_a_rembourser || 0,
+        nombre_transactions:
+          localInfo?.donnees_financieres?.epargne?.nombre_transactions || 0,
+        derniere_transaction:
+          localInfo?.donnees_financieres?.epargne?.derniere_transaction_date,
       };
     });
   }, [serverStats, members]);
-  // Filtrage pour la recherche
- const searchedMembers = useMemo((): MemberSavings[] => {
+
+  // ── Recherche / pagination principale ─────────────────────────────────────
+  const searchedMembers = useMemo((): MemberSavings[] => {
     if (!search.trim()) return finalMembersList;
-    return finalMembersList.filter((m: MemberSavings) =>
-      m.nom_complet.toLowerCase().includes(search.toLowerCase()) ||
-      m.numero_membre.toLowerCase().includes(search.toLowerCase())
+    return finalMembersList.filter(
+      (m) =>
+        m.nom_complet.toLowerCase().includes(search.toLowerCase()) ||
+        m.numero_membre.toLowerCase().includes(search.toLowerCase())
     );
   }, [finalMembersList, search]);
 
-  // Pagination des membres
-  const paginatedMembers = useMemo(() => {
-    return searchedMembers.slice(0, displayedItems);
-  }, [searchedMembers, displayedItems]);
-
-  const hasMoreMembers = displayedItems < searchedMembers.length;
-
-  const loadMoreMembers = () => {
-    setDisplayedItems(prev => Math.min(prev + ITEMS_PER_PAGE, searchedMembers.length));
-  };
-
-  // Reset pagination when search changes
   useMemo(() => {
     setDisplayedItems(ITEMS_PER_PAGE);
   }, [search]);
 
-  // Filtrage des transactions
-  const filteredTransactions = useMemo(() => {
-    let filtered = savings;
+  const paginatedMembers = useMemo(
+    () => searchedMembers.slice(0, displayedItems),
+    [searchedMembers, displayedItems]
+  );
+  const hasMore = displayedItems < searchedMembers.length;
 
-    // Filtre par type
-    if (transactionTypeFilter !== 'all') {
-      filtered = filtered.filter(t => t.type_transaction === transactionTypeFilter);
-    }
-
-    // Filtre par recherche
-    if (search.trim()) {
-      filtered = filtered.filter(transaction =>
-        [
-          transaction.membre_info?.nom_complet,
-          transaction.membre_info?.numero_membre,
-          transaction.type_transaction_display,
-          transaction.notes,
-        ].filter(Boolean)
-        .join(' ')
-        .toLowerCase()
-        .includes(search.toLowerCase())
-      );
-    }
-
-    return filtered.sort((a, b) => 
-      new Date(b.date_transaction).getTime() - new Date(a.date_transaction).getTime()
+  // ── Transactions filtrées + paginées (liste principale) ──────────────────
+  const filteredSavings = useMemo(() => {
+    if (!search.trim()) return savings;
+    const q = search.toLowerCase();
+    return savings.filter(
+      (tx) =>
+        (tx.membre_info?.nom_complet ?? "").toLowerCase().includes(q) ||
+        (tx.membre_info?.numero_membre ?? "").toLowerCase().includes(q)
     );
-  }, [savings, transactionTypeFilter, search]);
+  }, [savings, search]);
 
-  // Pagination des transactions
-  const paginatedTransactions = useMemo(() => {
-    return filteredTransactions.slice(0, displayedTransactions);
-  }, [filteredTransactions, displayedTransactions]);
+  const paginatedSavings = useMemo(
+    () => filteredSavings.slice(0, displayedItems),
+    [filteredSavings, displayedItems]
+  );
+  const hasSavingsMore = displayedItems < filteredSavings.length;
 
-  const hasMoreTransactions = displayedTransactions < filteredTransactions.length;
+  // ── Membres filtrés pour le modal (step 1) ─────────────────────────────────
+  const modalFilteredMembers = useMemo(() => {
+    if (!modalMemberSearch.trim()) return finalMembersList;
+    return finalMembersList.filter(
+      (m) =>
+        m.nom_complet.toLowerCase().includes(modalMemberSearch.toLowerCase()) ||
+        m.numero_membre.toLowerCase().includes(modalMemberSearch.toLowerCase())
+    );
+  }, [finalMembersList, modalMemberSearch]);
 
-  const loadMoreTransactions = () => {
-    setDisplayedTransactions(prev => Math.min(prev + ITEMS_PER_PAGE, filteredTransactions.length));
-  };
-
-  // Reset pagination when search or filter changes
   useMemo(() => {
-    setDisplayedTransactions(ITEMS_PER_PAGE);
-  }, [search, transactionTypeFilter]);
+    setModalMemberPage(MODAL_MEMBERS_PER_PAGE);
+  }, [modalMemberSearch]);
 
-  // Statistiques globales
-  const stats: SavingsStats = useMemo(() => {
-    const totalDepots = memberSavings.reduce((sum, m) => sum + m.total_epargne, 0);
-    const totalRetraits = memberSavings.reduce((sum, m) => sum + m.total_retraits, 0);
-    const totalEpargneGlobale = totalDepots;
-    const moyenneParMembre = memberSavings.length > 0 ? totalEpargneGlobale / memberSavings.length : 0;
-    
-    // Transactions de ce mois
-    const debutMois = new Date();
-    debutMois.setDate(1);
-    debutMois.setHours(0, 0, 0, 0);
-    
-    const transactionsCeMois = savings.filter(t => 
-      new Date(t.date_transaction) >= debutMois
-    ).length;
+  const paginatedModalMembers = useMemo(
+    () => modalFilteredMembers.slice(0, modalMemberPage),
+    [modalFilteredMembers, modalMemberPage]
+  );
+  const hasMoreModalMembers = modalMemberPage < modalFilteredMembers.length;
 
-    return {
-      total_membres: memberSavings.length,
-      total_epargne_globale: totalEpargneGlobale,
-      total_depots: totalDepots,
-      total_retraits: totalRetraits,
-      moyenne_par_membre: moyenneParMembre,
-      transactions_ce_mois: transactionsCeMois,
-    };
-  }, [memberSavings, savings]);
+  // ── Dernière transaction du membre sélectionné ────────────────────────────
+  const selectedMemberLastTransaction = useMemo(() => {
+    if (!selectedMember) return null;
+    return savings
+      .filter((t) => t.membre === selectedMember.id)
+      .sort(
+        (a, b) =>
+          new Date(b.date_transaction).getTime() -
+          new Date(a.date_transaction).getTime()
+      )[0] || null;
+  }, [selectedMember, savings]);
 
-  // Actions
- const handleRefresh = async () => {
-  setRefreshing(true);
-  try {
-    await Promise.all([refetchSavings(), refetchStats()]); // Rafraîchit les deux en même temps
-  } catch (error) {
-    console.error("Erreur lors du rafraîchissement:", error);
-  }
-  setRefreshing(false);
-};
+  // ── Loading / error ────────────────────────────────────────────────────────
+  const isLoading = loadingSavings || loadingMembers || loadingSession || loadingStats;
 
-  const handleMemberPress = (member: MemberSavings) => {
-    setSelectedMemberDetail(member);
-    setShowMemberDetail(true);
+  // ── Actions ────────────────────────────────────────────────────────────────
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([refetchSavings(), refetchStats()]);
+    } catch (e) {
+      console.error(e);
+    }
+    setRefreshing(false);
   };
 
-  const handleAddSaving = (member: MemberSavings) => {
-    setSelectedMember(member);
+  const openAddModal = (preselected?: MemberSavings) => {
+    if (preselected) {
+      setSelectedMember(preselected);
+      setCurrentStep(2);
+    } else {
+      setSelectedMember(null);
+      setCurrentStep(1);
+    }
+    setModalMemberSearch("");
     setSavingAmount("");
     setSavingNotes("");
     setShowAddModal(true);
-  };
-
-  const handleCreateSaving = () => {
-    if (!selectedMember) {
-      Alert.alert("Erreur", "Aucun membre sélectionné.");
-      return;
-    }
-
-    if (!savingAmount.trim() || isNaN(Number(savingAmount)) || Number(savingAmount) <= 0) {
-      Alert.alert("Erreur", "Veuillez saisir un montant valide.");
-      return;
-    }
-
-    if (!currentSession?.id) {
-      Alert.alert("Erreur", "Aucune session courante disponible.");
-      return;
-    }
-
-    createSaving.mutate(
-      {
-        membre: selectedMember.id,
-        session: currentSession.id,
-        montant: Number(savingAmount),
-        type_transaction: "DEPOT",
-        notes: savingNotes.trim(),
-      },
-      {
-        onSuccess: () => {
-          setShowAddModal(false);
-          setSelectedMember(null);
-          setSavingAmount("");
-          setSavingNotes("");
-          Alert.alert("Succès", "Dépôt d'épargne enregistré avec succès !");
-        },
-        onError: (error: any) => {
-          console.error("Erreur création épargne:", error);
-          Alert.alert(
-            "Erreur",
-            error?.response?.data?.details || 
-            error?.response?.data?.error || 
-            "Impossible d'enregistrer le dépôt."
-          );
-        },
-      }
-    );
   };
 
   const closeAddModal = () => {
@@ -576,504 +357,653 @@ export default function SavingsScreen() {
     setSelectedMember(null);
     setSavingAmount("");
     setSavingNotes("");
+    setCurrentStep(1);
+    setModalMemberSearch("");
   };
 
- // 🎯 État de chargement global (inclut maintenant loadingStats)
-const isLoading = loadingSavings || loadingMembers || loadingSession || loadingStats;
+  const handleCreateSaving = () => {
+    if (!selectedMember || !currentSession?.id) return;
 
-// 🎯 État d'erreur global (Vérifie si l'un des hooks a échoué)
-const hasError = errorSavings || errorMembers || errorSession || (serverStats === undefined && !loadingStats);
-
-  const renderTabContent = () => {
-  // AJOUT : Vérification spécifique pour les statistiques du serveur
-  if (isLoading || loadingStats) {
-    return (
-      <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
-        <Text style={styles.loadingText}>Analyse financière en cours...</Text>
-      </View>
+    createSaving.mutate(
+      {
+        membre: selectedMember.id,
+        session: currentSession.id,
+        montant: Number(savingAmount),
+        type_transaction: "DEPOT",
+        notes: savingNotes.trim() || undefined,
+      },
+      {
+        onSuccess: () => {
+          closeAddModal();
+          Alert.alert("Succès", "Épargne enregistré avec succès !");
+        },
+        onError: (error: any) => {
+          Alert.alert(
+            "Erreur",
+            error?.response?.data?.details ||
+              error?.response?.data?.error ||
+              "Impossible d'enregistrer le dépôt."
+          );
+        },
+      }
     );
-  }
+  };
 
-    if (hasError) {
-      return (
-        <View style={styles.centerContainer}>
-          <Ionicons name="alert-circle" size={64} color={COLORS.error} />
-          <Text style={styles.errorTitle}>Erreur de chargement</Text>
-          <Text style={styles.errorText}>
-            Impossible de charger les données d'épargne.
-          </Text>
-          <TouchableOpacity style={styles.retryButton} onPress={handleRefresh}>
-            <Text style={styles.retryButtonText}>Réessayer</Text>
-          </TouchableOpacity>
-        </View>
-      );
-    }
+  // ── Rendu du modal multi-step ──────────────────────────────────────────────
 
-    switch (activeTab) {
-      case 'overview':
-  return (
-    <View style={styles.tabContent}>
-      <View style={styles.statsSection}>
-        <Text style={styles.sectionTitle}>Statistiques globales</Text>
-        <View style={styles.statsGrid}>
-          {/* Épargne Totale : Somme des dépôts sans déduire les prêts */}
-          <StatCard
-            title="Épargne totale"
-            value={formatCurrency(serverStats?.epargne_totale || 0)}
-            icon="wallet"
-            color="#B5179E"
-            subtitle={`${serverStats?.total_membres || 0} membres`}
-          />
-        
-          {/* Trésor : Le cash réellement disponible en caisse */}
-          <StatCard
-            title="Trésor en Caisse"
-            value={formatCurrency(serverStats?.tresor_total || 0)}
-            icon="cash-outline"
-            color={serverStats?.tresor_total < 0 ? COLORS.error : COLORS.success}
-            subtitle="Liquidités réelles"
-          />
-
-          <StatCard
-            title="Transactions"
-            value={serverStats?.transactions_ce_mois?.toString() || "0"}
-            icon="swap-horizontal"
-            color={COLORS.warning}
-            subtitle="Ce mois-ci"
-          />
-        </View>
-      </View>
-
-      {/* Top épargnants : Utilisation directe de la liste du serveur */}
-      <View style={styles.topSaversSection}>
-        <Text style={styles.sectionTitle}>Meilleurs épargnants</Text>
-        {serverStats?.top_epargnants?.map((member: any, index: number) => (
-          <TouchableOpacity
-            key={index}
-            style={styles.topSaverCard}
+  const renderStepIndicator = () => (
+    <View style={styles.stepIndicator}>
+      {[1, 2, 3].map((step) => (
+        <React.Fragment key={step}>
+          <View
+            style={[
+              styles.stepDot,
+              currentStep >= step ? styles.stepDotActive : styles.stepDotInactive,
+            ]}
           >
-            <View style={styles.topSaverRank}>
-              <Text style={styles.topSaverRankText}>{index + 1}</Text>
-            </View>
-            <View style={styles.topSaverInfo}>
-              <Text style={styles.topSaverName}>{member.nom}</Text>
-              <Text style={styles.topSaverAmount}>
-                {formatCurrency(member.montant)}
-              </Text>
-            </View>
-            <Text style={styles.memberNumber}>{member.numero}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-    </View>
-  );
-  
-case 'members':
-  return (
-    <View style={styles.tabContent}>
-      {/* Barre de recherche */}
-      <View style={styles.searchSection}>
-        <View style={styles.searchContainer}>
-          <Ionicons name="search" size={20} color={COLORS.textSecondary} />
-          <TextInput
-            style={styles.searchInput}
-            value={search}
-            onChangeText={setSearch}
-            placeholder="Rechercher par nom ou numéro..."
-            placeholderTextColor={COLORS.textLight}
-          />
-          {search.length > 0 && (
-            <TouchableOpacity onPress={() => setSearch("")}>
-              <Ionicons name="close-circle" size={20} color={COLORS.textSecondary} />
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
-
-      {/* Compteur de résultats */}
-      {!isLoading && searchedMembers.length > 0 && (
-        <View style={styles.resultsCounter}>
-          <Ionicons name="people" size={18} color={COLORS.primary} />
-          <Text style={styles.resultsCounterText}>
-            Affichage de <Text style={styles.resultsCounterBold}>{paginatedMembers.length}</Text> sur{' '}
-            <Text style={styles.resultsCounterBold}>{searchedMembers.length}</Text> membre{searchedMembers.length > 1 ? 's' : ''}
-          </Text>
-        </View>
-      )}
-
-      {/* Liste des membres basée sur le répertoire complet du backend */}
-      {searchedMembers.length === 0 ? (
-        <View style={styles.centerContainer}>
-          <Ionicons name="people-outline" size={64} color={COLORS.textLight} />
-          <Text style={styles.emptyTitle}>Aucun membre trouvé</Text>
-          <Text style={styles.emptyText}>
-            {search ? "Essayez une autre recherche." : "La liste est vide."}
-          </Text>
-        </View>
-      ) : (
-        <ScrollView 
-          style={styles.membersListContainer} 
-          showsVerticalScrollIndicator={false}
-        >
-          <Text style={styles.sectionTitle}>
-            Répertoire des membres ({searchedMembers.length})
-          </Text>
-          
-          {/* Typage explicite (member: MemberSavings) pour éviter l'erreur TS */}
-          {paginatedMembers.map((member: MemberSavings) => (
-            <View key={member.id} style={{ marginBottom: SPACING.md }}>
-              <MemberSavingsCard
-                member={member}
-                onPress={() => handleMemberPress(member)}
-                onAddSaving={() => handleAddSaving(member)}
-                readOnly={readOnly}
-              />
-            </View>
-          ))}
-          
-          {/* Bouton "Voir plus" */}
-          {hasMoreMembers && (
-            <TouchableOpacity style={styles.loadMoreButton} onPress={loadMoreMembers}>
-              <LinearGradient
-                colors={["#B5179E", "#F72585"]}
-                style={styles.loadMoreGradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-              >
-                <Text style={styles.loadMoreText}>
-                  Voir plus ({searchedMembers.length - displayedItems} restant{searchedMembers.length - displayedItems > 1 ? 's' : ''})
-                </Text>
-                <Ionicons name="chevron-down" size={20} color="white" />
-              </LinearGradient>
-            </TouchableOpacity>
-          )}
-          
-          <View style={{ height: 100 }} /> 
-        </ScrollView>
-      )}
-    </View>
-  );
-
-      case 'transactions':
-        return (
-          <View style={styles.tabContent}>
-            {/* Section recherche et filtres */}
-            <View style={styles.searchSection}>
-              <View style={styles.searchContainer}>
-                <Ionicons name="search" size={20} color={COLORS.textSecondary} />
-                <TextInput
-                  style={styles.searchInput}
-                  value={search}
-                  onChangeText={setSearch}
-                  placeholder="Rechercher une transaction..."
-                  placeholderTextColor={COLORS.textLight}
-                />
-                {search.length > 0 && (
-                  <TouchableOpacity onPress={() => setSearch("")}>
-                    <Ionicons name="close-circle" size={20} color={COLORS.textSecondary} />
-                  </TouchableOpacity>
-                )}
-              </View>
-
-              {/* Filtres de type */}
-              <View style={styles.filtersContainer}>
-                {[
-                  { key: 'all', label: 'Toutes' },
-                  { key: 'DEPOT', label: 'Dépôts' },
-                  { key: 'RETRAIT_PRET', label: 'Retraits' },
-                  { key: 'INTERET', label: 'Intérêts' },
-                ].map(filter => (
-                  <TouchableOpacity
-                    key={filter.key}
-                    style={[
-                      styles.filterButton,
-                      { backgroundColor: transactionTypeFilter === filter.key ? "#B5179E" : COLORS.surface }
-                    ]}
-                    onPress={() => setTransactionTypeFilter(filter.key as any)}
-                  >
-                    <Text style={[
-                      styles.filterText,
-                      { color: transactionTypeFilter === filter.key ? 'white' : COLORS.text }
-                    ]}>
-                      {filter.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-
-            {/* Liste des transactions */}
-            {filteredTransactions.length === 0 ? (
-              <View style={styles.centerContainer}>
-                <Ionicons name="swap-horizontal-outline" size={64} color={COLORS.textLight} />
-                <Text style={styles.emptyTitle}>Aucune transaction trouvée</Text>
-                <Text style={styles.emptyText}>
-                  {search ? "Aucun résultat pour votre recherche." : "Aucune transaction d'épargne enregistrée."}
-                </Text>
-              </View>
+            {currentStep > step ? (
+              <Ionicons name="checkmark" size={12} color="white" />
             ) : (
-              <View style={styles.transactionsListContainer}>
-                <Text style={styles.sectionTitle}>
-                  Transactions ({filteredTransactions.length})
-                </Text>
-                {filteredTransactions.map((transaction) => (
-                  <View key={transaction.id} style={{ marginBottom: SPACING.md }}>
-                    <TransactionCard transaction={transaction} />
-                  </View>
-                ))}
-              </View>
+              <Text style={styles.stepDotText}>{step}</Text>
             )}
           </View>
-        );
+          {step < 3 && (
+            <View
+              style={[
+                styles.stepLine,
+                currentStep > step ? styles.stepLineActive : styles.stepLineInactive,
+              ]}
+            />
+          )}
+        </React.Fragment>
+      ))}
+    </View>
+  );
 
-      default:
-        return null;
-    }
-  };
+  const renderStep1 = () => (
+    <View style={{ flex: 1 }}>
+      <Text style={styles.stepTitle}>Choisir un membre</Text>
 
+      {/* Barre de recherche */}
+      <View style={styles.modalSearchContainer}>
+        <Ionicons name="search" size={18} color={COLORS.textSecondary} />
+        <TextInput
+          style={styles.modalSearchInput}
+          value={modalMemberSearch}
+          onChangeText={setModalMemberSearch}
+          placeholder="Rechercher par nom ou numéro..."
+          placeholderTextColor={COLORS.textLight}
+          autoFocus
+        />
+        {modalMemberSearch.length > 0 && (
+          <TouchableOpacity onPress={() => setModalMemberSearch("")}>
+            <Ionicons name="close-circle" size={18} color={COLORS.textSecondary} />
+          </TouchableOpacity>
+        )}
+      </View>
+
+      <Text style={styles.modalResultCount}>
+        {modalFilteredMembers.length} membre
+        {modalFilteredMembers.length !== 1 ? "s" : ""}
+      </Text>
+
+      <ScrollView style={styles.modalMemberList} showsVerticalScrollIndicator={false}>
+        {paginatedModalMembers.map((member) => (
+          <TouchableOpacity
+            key={member.id}
+            style={[
+              styles.modalMemberItem,
+              selectedMember?.id === member.id && styles.modalMemberItemSelected,
+            ]}
+            onPress={() => {
+              setSelectedMember(member);
+              setCurrentStep(2);
+            }}
+            activeOpacity={0.7}
+          >
+            <View
+              style={[
+                styles.modalMemberAvatar,
+                {
+                  backgroundColor:
+                    member.total_epargne >= 100000
+                      ? COLORS.success
+                      : member.total_epargne >= 50000
+                      ? COLORS.warning
+                      : "#B5179E",
+                },
+              ]}
+            >
+              <Text style={styles.modalMemberAvatarText}>
+                {getInitials(member.nom_complet)}
+              </Text>
+            </View>
+            <View style={styles.modalMemberItemInfo}>
+              <Text style={styles.modalMemberItemName}>{member.nom_complet}</Text>
+              <Text style={styles.modalMemberItemNumber}>{member.numero_membre}</Text>
+            </View>
+            <View style={styles.modalMemberItemAmount}>
+              <Text style={styles.modalMemberItemAmountText}>
+                {formatCurrency(member.total_epargne)}
+              </Text>
+              <Ionicons name="chevron-forward" size={16} color={COLORS.textSecondary} />
+            </View>
+          </TouchableOpacity>
+        ))}
+
+        {hasMoreModalMembers && (
+          <TouchableOpacity
+            style={styles.modalLoadMore}
+            onPress={() =>
+              setModalMemberPage((p) =>
+                Math.min(p + MODAL_MEMBERS_PER_PAGE, modalFilteredMembers.length)
+              )
+            }
+          >
+            <Text style={styles.modalLoadMoreText}>
+              Voir plus ({modalFilteredMembers.length - modalMemberPage} restant
+              {modalFilteredMembers.length - modalMemberPage !== 1 ? "s" : ""})
+            </Text>
+            <Ionicons name="chevron-down" size={16} color="#B5179E" />
+          </TouchableOpacity>
+        )}
+        <View style={{ height: 20 }} />
+      </ScrollView>
+    </View>
+  );
+
+  const renderStep2 = () => (
+    <ScrollView showsVerticalScrollIndicator={false}>
+      <Text style={styles.stepTitle}>Montant de l'épargne</Text>
+
+      {/* Informations membre */}
+      {selectedMember && (
+        <View style={styles.memberDetailCard}>
+          <View style={styles.memberDetailAvatar}>
+            <Text style={styles.memberDetailAvatarText}>
+              {getInitials(selectedMember.nom_complet)}
+            </Text>
+          </View>
+          <View style={styles.memberDetailInfo}>
+            <Text style={styles.memberDetailName}>{selectedMember.nom_complet}</Text>
+            <Text style={styles.memberDetailNumber}>{selectedMember.numero_membre}</Text>
+            {selectedMember.email ? (
+              <Text style={styles.memberDetailEmail} numberOfLines={1}>
+                {selectedMember.email}
+              </Text>
+            ) : null}
+          </View>
+        </View>
+      )}
+
+      {/* Résumé épargne actuelle */}
+      <View style={styles.currentSavingsCard}>
+        <Text style={styles.currentSavingsTitle}>Situation actuelle</Text>
+        <View style={styles.currentSavingsRow}>
+          <Text style={styles.currentSavingsLabel}>Épargne totale</Text>
+          <Text style={[styles.currentSavingsValue, { color: "#B5179E" }]}>
+            {formatCurrency(selectedMember?.total_epargne)}
+          </Text>
+        </View>
+        <View style={styles.currentSavingsRow}>
+          <Text style={styles.currentSavingsLabel}>Nb. transactions</Text>
+          <Text style={styles.currentSavingsValue}>
+            {selectedMember?.nombre_transactions ?? 0}
+          </Text>
+        </View>
+        {selectedMemberLastTransaction && (
+          <View style={styles.currentSavingsRow}>
+            <Text style={styles.currentSavingsLabel}>Dernière transaction</Text>
+            <Text style={styles.currentSavingsValue}>
+              {formatCurrency(selectedMemberLastTransaction.montant)}{" "}
+              <Text style={styles.currentSavingsDate}>
+                (
+                {new Date(
+                  selectedMemberLastTransaction.date_transaction
+                ).toLocaleDateString("fr-FR")}
+                )
+              </Text>
+            </Text>
+          </View>
+        )}
+      </View>
+
+      {/* Saisie montant */}
+      <View style={styles.formSection}>
+        <Text style={styles.inputLabel}>
+          Montant <Text style={styles.required}>*</Text>
+        </Text>
+        <TextInput
+          style={styles.input}
+          value={savingAmount}
+          onChangeText={setSavingAmount}
+          placeholder="Montant en FCFA"
+          keyboardType="numeric"
+          placeholderTextColor={COLORS.textLight}
+          autoFocus
+        />
+
+        <Text style={styles.inputLabel}>Notes (optionnel)</Text>
+        <TextInput
+          style={[styles.input, styles.textArea]}
+          value={savingNotes}
+          onChangeText={setSavingNotes}
+          placeholder="Notes sur ce dépôt..."
+          multiline
+          numberOfLines={3}
+          placeholderTextColor={COLORS.textLight}
+        />
+      </View>
+
+      {/* Navigation */}
+      <View style={styles.stepNavRow}>
+        <TouchableOpacity
+          style={[styles.stepNavBtn, styles.stepNavBtnSecondary]}
+          onPress={() => setCurrentStep(1)}
+        >
+          <Ionicons name="arrow-back" size={16} color={COLORS.textSecondary} />
+          <Text style={styles.stepNavBtnTextSecondary}>Retour</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            styles.stepNavBtn,
+            styles.stepNavBtnPrimary,
+            { opacity: !savingAmount.trim() || Number(savingAmount) <= 0 ? 0.4 : 1 },
+          ]}
+          onPress={() => setCurrentStep(3)}
+          disabled={!savingAmount.trim() || Number(savingAmount) <= 0}
+        >
+          <Text style={styles.stepNavBtnTextPrimary}>Continuer</Text>
+          <Ionicons name="arrow-forward" size={16} color="white" />
+        </TouchableOpacity>
+      </View>
+      <View style={{ height: 20 }} />
+    </ScrollView>
+  );
+
+  const renderStep3 = () => (
+    <ScrollView showsVerticalScrollIndicator={false}>
+      <Text style={styles.stepTitle}>Récapitulatif</Text>
+
+      <View style={styles.recapCard}>
+        {/* Membre */}
+        <View style={styles.recapSection}>
+          <Text style={styles.recapSectionTitle}>Membre</Text>
+          <View style={styles.recapMemberRow}>
+            <View style={styles.recapAvatar}>
+              <Text style={styles.recapAvatarText}>
+                {selectedMember ? getInitials(selectedMember.nom_complet) : "?"}
+              </Text>
+            </View>
+            <View>
+              <Text style={styles.recapMemberName}>{selectedMember?.nom_complet}</Text>
+              <Text style={styles.recapMemberNumber}>{selectedMember?.numero_membre}</Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.recapDivider} />
+
+        {/* Transaction */}
+        <View style={styles.recapSection}>
+          <Text style={styles.recapSectionTitle}>Transaction</Text>
+          <View style={styles.recapRow}>
+            <Text style={styles.recapLabel}>Type</Text>
+            <View style={styles.recapTypeBadge}>
+              <Text style={styles.recapTypeBadgeText}>Dépôt</Text>
+            </View>
+          </View>
+          <View style={styles.recapRow}>
+            <Text style={styles.recapLabel}>Montant</Text>
+            <Text style={[styles.recapValueLarge, { color: "#B5179E" }]}>
+              {formatCurrency(Number(savingAmount))}
+            </Text>
+          </View>
+          <View style={styles.recapRow}>
+            <Text style={styles.recapLabel}>Session</Text>
+            <Text style={styles.recapValue}>{currentSession?.nom || "—"}</Text>
+          </View>
+          {savingNotes.trim() ? (
+            <View style={[styles.recapRow, { alignItems: "flex-start" }]}>
+              <Text style={styles.recapLabel}>Notes</Text>
+              <Text style={[styles.recapValue, { flex: 1, textAlign: "right" }]}>
+                {savingNotes}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+
+        <View style={styles.recapDivider} />
+
+        {/* Après opération */}
+        <View style={styles.recapSection}>
+          <Text style={styles.recapSectionTitle}>Après cette opération</Text>
+          <View style={styles.recapRow}>
+            <Text style={styles.recapLabel}>Épargne actuelle</Text>
+            <Text style={styles.recapValue}>
+              {formatCurrency(selectedMember?.total_epargne)}
+            </Text>
+          </View>
+          <View style={styles.recapRow}>
+            <Text style={styles.recapLabel}>Nouveau total estimé</Text>
+            <Text style={[styles.recapValueLarge, { color: COLORS.success }]}>
+              {formatCurrency(
+                (selectedMember?.total_epargne ?? 0) + Number(savingAmount)
+              )}
+            </Text>
+          </View>
+        </View>
+      </View>
+
+      {/* Actions */}
+      <View style={styles.stepNavRow}>
+        <TouchableOpacity
+          style={[styles.stepNavBtn, styles.stepNavBtnSecondary]}
+          onPress={() => setCurrentStep(2)}
+        >
+          <Ionicons name="arrow-back" size={16} color={COLORS.textSecondary} />
+          <Text style={styles.stepNavBtnTextSecondary}>Modifier</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            styles.stepNavBtn,
+            styles.stepNavBtnConfirm,
+            { opacity: createSaving.isPending ? 0.6 : 1 },
+          ]}
+          onPress={handleCreateSaving}
+          disabled={createSaving.isPending}
+        >
+          {createSaving.isPending ? (
+            <ActivityIndicator size="small" color="white" />
+          ) : (
+            <>
+              <Ionicons name="checkmark" size={16} color="white" />
+              <Text style={styles.stepNavBtnTextPrimary}>Valider</Text>
+            </>
+          )}
+        </TouchableOpacity>
+      </View>
+      <View style={{ height: 20 }} />
+    </ScrollView>
+  );
+
+  const stepLabels = ["Membre", "Montant", "Validation"];
+
+  // ── Rendu principal ────────────────────────────────────────────────────────
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header avec gradient et bouton retour */}
+      {/* ── Header figé ── */}
       <LinearGradient
         colors={["#B5179E", "#F72585"]}
         style={styles.header}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
       >
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={styles.backButton}
+        >
+          <Ionicons name="arrow-back" size={24} color="white" />
+        </TouchableOpacity>
         <View style={styles.headerContent}>
-          <View style={styles.headerTop}>
-            <TouchableOpacity 
-              style={styles.backButton}
-              onPress={() => {navigation.goBack()}}
-            >
-              <Ionicons name="arrow-back" size={24} color="white" />
-            </TouchableOpacity>
-            <View style={styles.headerTitleContainer}>
-              <Ionicons name="wallet" size={28} color="white" style={styles.headerIcon} />
-              <Text style={styles.headerTitle}>Gestion des Épargnes</Text>
-            </View>
-            <View style={styles.headerSpacer} />
-          </View>
+          <Ionicons name="wallet" size={32} color="white" style={styles.headerIcon} />
+          <Text style={styles.headerTitle}>Gestion des Épargnes</Text>
           <Text style={styles.headerSubtitle}>
-            Session: {currentSession?.nom || "Chargement..."}
+            Session : {currentSession?.nom || "Chargement..."}
           </Text>
         </View>
       </LinearGradient>
 
-      {/* Onglets */}
-      <View style={styles.tabsContainer}>
-        {TABS.map(tab => (
-          <TouchableOpacity
-            key={tab.key}
-            style={[
-              styles.tab,
-              { backgroundColor: activeTab === tab.key ? "#B5179E" : 'transparent' }
-            ]}
-            onPress={() => {
-              setActiveTab(tab.key);
-              setSearch(""); // Reset search when changing tabs
-            }}
-          >
-            <Ionicons 
-              name={tab.icon as any} 
-              size={20} 
-              color={activeTab === tab.key ? 'white' : COLORS.textSecondary} 
-            />
-            <Text style={[
-              styles.tabText,
-              { color: activeTab === tab.key ? 'white' : COLORS.textSecondary }
-            ]}>
-              {tab.title}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {/* Contenu des onglets */}
+      {/* ── Contenu scrollable ── */}
       <FlatList
-        data={[{ type: 'content' }]}
-        keyExtractor={() => 'tab-content'}
+        data={[{ type: "content" }]}
+        keyExtractor={() => "main"}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
         }
-        renderItem={() => renderTabContent()}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ flexGrow: 1 }}
-      />
-
-      {/* Modal d'ajout d'épargne */}
-      <Modal 
-        visible={showAddModal} 
-        animationType="slide" 
-        transparent
-        statusBarTranslucent
-      >
-        <BlurView intensity={20} style={StyleSheet.absoluteFillObject} />
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContainer}>
-            <LinearGradient
-              colors={["#B5179E", "#A855F7"]}
-              style={styles.modalHeader}
-            >
-              <Text style={styles.modalTitle}>Nouveau Dépôt d'Épargne</Text>
-              <TouchableOpacity onPress={closeAddModal}>
-                <Ionicons name="close" size={24} color="white" />
-              </TouchableOpacity>
-            </LinearGradient>
-
-            <ScrollView style={styles.modalBody}>
-              {/* Informations membre */}
-              <View style={styles.memberInfoSection}>
-                <View style={styles.memberModalAvatar}>
-                  <Text style={styles.memberModalAvatarText}>
-                    {selectedMember?.nom_complet.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
-                  </Text>
-                </View>
-                <View style={styles.memberModalInfo}>
-                  <Text style={styles.memberModalName}>{selectedMember?.nom_complet}</Text>
-                  <Text style={styles.memberModalNumber}>{selectedMember?.numero_membre}</Text>
-                  <Text style={styles.memberModalEpargne}>
-                    Épargne actuelle: {formatCurrency(selectedMember?.total_epargne)}
-                  </Text>
-                </View>
-              </View>
-
-              {/* Formulaire */}
-              <View style={styles.formSection}>
-                <Text style={styles.inputLabel}>
-                  Montant du dépôt <Text style={styles.required}>*</Text>
-                </Text>
-                <TextInput
-                  style={styles.input}
-                  value={savingAmount}
-                  onChangeText={setSavingAmount}
-                  placeholder="Montant en FCFA"
-                  keyboardType="numeric"
-                  placeholderTextColor={COLORS.textLight}
+        renderItem={() => (
+          <View>
+            {/* ── Statistiques globales ── */}
+            <View style={styles.statsSection}>
+              <View style={styles.statsGrid}>
+                <StatCard
+                  title="Épargne totale"
+                  value={formatCurrency(serverStats?.epargne_totale || 0)}
+                  icon="wallet"
+                  color="#B5179E"
+                  subtitle={`${serverStats?.total_membres || 0} membres`}
                 />
-
-                <Text style={styles.inputLabel}>Notes (optionnel)</Text>
-                <TextInput
-                  style={[styles.input, styles.textArea]}
-                  value={savingNotes}
-                  onChangeText={setSavingNotes}
-                  placeholder="Notes sur ce dépôt..."
-                  multiline
-                  numberOfLines={3}
-                  placeholderTextColor={COLORS.textLight}
+                <StatCard
+                  title="Trésor en Caisse"
+                  value={formatCurrency(serverStats?.tresor_total || 0)}
+                  icon="cash-outline"
+                  color={
+                    (serverStats?.tresor_total ?? 0) < 0 ? COLORS.error : COLORS.success
+                  }
+                  subtitle="Liquidités réelles"
+                />
+                <StatCard
+                  title="Transactions"
+                  value={serverStats?.transactions_ce_mois?.toString() || "0"}
+                  icon="swap-horizontal"
+                  color={COLORS.warning}
+                  subtitle="Ce mois-ci"
                 />
               </View>
+            </View>
 
-              {/* Actions */}
-              <View style={styles.modalActions}>
-                <TouchableOpacity
-                  style={[styles.modalButton, styles.cancelButton]}
-                  onPress={closeAddModal}
-                >
-                  <Text style={styles.cancelButtonText}>Annuler</Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity
-                  style={[
-                    styles.modalButton, 
-                    styles.confirmButton,
-                    { 
-                      opacity: (!savingAmount.trim() || createSaving.isPending) ? 0.5 : 1 
-                    }
-                  ]}
-                  onPress={handleCreateSaving}
-                  disabled={!savingAmount.trim() || createSaving.isPending}
-                >
-                  {createSaving.isPending ? (
-                    <ActivityIndicator size="small" color="white" />
-                  ) : (
-                    <Text style={styles.confirmButtonText}>Enregistrer</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Modal détail membre */}
-      <Modal 
-        visible={showMemberDetail} 
-        animationType="slide" 
-        transparent
-        statusBarTranslucent
-      >
-        <BlurView intensity={20} style={StyleSheet.absoluteFillObject} />
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContainer}>
-            <LinearGradient
-              colors={["#B5179E", "#A855F7"]}
-              style={styles.modalHeader}
-            >
-              <Text style={styles.modalTitle}>Détail Épargne</Text>
-              <TouchableOpacity onPress={() => setShowMemberDetail(false)}>
-                <Ionicons name="close" size={24} color="white" />
-              </TouchableOpacity>
-            </LinearGradient>
-
-            <ScrollView style={styles.modalBody}>
-              {selectedMemberDetail && (
-                <>
-                  {/* Informations membre */}
-                  <View style={{height:15}}></View>
-                  <View style={styles.memberDetailSection}>
-                    <View style={styles.memberModalAvatar}>
-                      <Text style={styles.memberModalAvatarText}>
-                        {selectedMemberDetail.nom_complet.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
-                      </Text>
-                    </View>
-                    <View style={styles.memberModalInfo}>
-                      <Text style={styles.memberModalName}>{selectedMemberDetail.nom_complet}</Text>
-                      <Text style={styles.memberModalNumber}>{selectedMemberDetail.numero_membre}</Text>
-                    </View>
-                  </View>
-
-                  {/* Résumé épargne */}
-                  <View style={styles.savingsResume}>
-                    <View style={styles.resumeItem}>
-                      <Text style={styles.resumeLabel}>Épargne totale</Text>
-                      <Text style={[styles.resumeValue, { color: "#B5179E" }]}>
-                        {formatCurrency(selectedMemberDetail.total_epargne)}
-                      </Text>
-                    </View>
-                    
-                 
-                    <View style={styles.resumeItem}>
-                      <Text style={styles.resumeLabel}>Transactions</Text>
-                      <Text style={styles.resumeValue}>
-                        {selectedMemberDetail.nombre_transactions}
-                      </Text>
-                    </View>
-                  </View>
-
-                  {/* Action */}
-                  {!readOnly && (
-                    <TouchableOpacity
-                      style={styles.addSavingModalButton}
-                      onPress={() => {
-                        setShowMemberDetail(false);
-                        handleAddSaving(selectedMemberDetail);
-                      }}
-                    >
-                      <Ionicons name="add" size={20} color="white" />
-                      <Text style={styles.addSavingModalButtonText}>Ajouter un dépôt</Text>
+            {/* ── Barre de recherche + bouton ajout ── */}
+            <View style={styles.searchSection}>
+              <View style={styles.searchRow}>
+                <View style={styles.searchContainer}>
+                  <Ionicons name="search" size={20} color={COLORS.textSecondary} />
+                  <TextInput
+                    style={styles.searchInput}
+                    value={search}
+                    onChangeText={setSearch}
+                    placeholder="Rechercher par nom de membre..."
+                    placeholderTextColor={COLORS.textLight}
+                  />
+                  {search.length > 0 && (
+                    <TouchableOpacity onPress={() => setSearch("")}>
+                      <Ionicons name="close-circle" size={20} color={COLORS.textSecondary} />
                     </TouchableOpacity>
                   )}
-                </>
+                </View>
+
+                {!readOnly && (
+                  <TouchableOpacity
+                    style={styles.addFabButton}
+                    onPress={() => openAddModal()}
+                    activeOpacity={0.85}
+                  >
+                    <LinearGradient
+                      colors={["#B5179E", "#F72585"]}
+                      style={styles.addFabGradient}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                    >
+                      <Ionicons name="add" size={18} color="white" />
+                      <Text style={styles.addFabText}>Ajouter épargne</Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {!isLoading && filteredSavings.length > 0 && (
+                <Text style={styles.resultsCount}>
+                  {paginatedSavings.length} / {filteredSavings.length} transaction
+                  {filteredSavings.length !== 1 ? "s" : ""} affichée
+                  {filteredSavings.length !== 1 ? "s" : ""}
+                </Text>
               )}
-            </ScrollView>
+            </View>
+
+            {/* ── Contenu : chargement / erreur / liste transactions / vide ── */}
+            {isLoading ? (
+              <View style={styles.centerContainer}>
+                <ActivityIndicator size="large" color="#B5179E" />
+                <Text style={styles.loadingText}>Chargement des transactions...</Text>
+              </View>
+            ) : savings.length === 0 ? (
+              <View style={styles.emptyContainer}>
+                <Ionicons name="wallet-outline" size={72} color={COLORS.textLight} />
+                <Text style={styles.emptyTitle}>Aucune épargne enregistrée</Text>
+                <Text style={styles.emptyText}>
+                  Commencez par enregistrer le premier dépôt d'épargne d'un membre.
+                </Text>
+                {!readOnly && (
+                  <TouchableOpacity
+                    style={styles.emptyCreateButton}
+                    onPress={() => openAddModal()}
+                    activeOpacity={0.85}
+                  >
+                    <LinearGradient
+                      colors={["#B5179E", "#F72585"]}
+                      style={styles.emptyCreateGradient}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                    >
+                      <Ionicons name="add-circle-outline" size={20} color="white" />
+                      <Text style={styles.emptyCreateText}>Enregistrer une épargne</Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                )}
+              </View>
+            ) : filteredSavings.length === 0 ? (
+              <View style={styles.centerContainer}>
+                <Ionicons name="search-outline" size={64} color={COLORS.textLight} />
+                <Text style={styles.emptyTitle}>Aucun résultat</Text>
+                <Text style={styles.emptyText}>
+                  Aucune transaction ne correspond à « {search} ».
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.listContainer}>
+                {paginatedSavings.map((tx) => {
+                  const isDepot   = tx.type_transaction === "DEPOT";
+                  const isInteret = tx.type_transaction === "INTERET";
+                  const color     = isDepot ? COLORS.success : isInteret ? COLORS.primary : COLORS.error;
+                  const icon      = isDepot ? "arrow-up-circle" : isInteret ? "trending-up" : "arrow-down-circle";
+                  const sign      = isDepot || isInteret ? "+" : "−";
+                  return (
+                    <View
+                      key={tx.id}
+                      style={[styles.txCard, { borderLeftColor: color }]}
+                    >
+                      <View style={[styles.txIconCircle, { backgroundColor: color + "20" }]}>
+                        <Ionicons name={icon as any} size={22} color={color} />
+                      </View>
+                      <View style={styles.txBody}>
+                        <View style={styles.txTopRow}>
+                          <Text style={styles.txType}>{tx.type_transaction_display || tx.type_transaction}</Text>
+                          <Text style={styles.txDate}>
+                            {tx.date_transaction
+                              ? new Date(tx.date_transaction).toLocaleDateString("fr-FR")
+                              : "—"}
+                          </Text>
+                        </View>
+                        <Text style={[styles.txAmount, { color }]}>
+                          {sign} {formatCurrency(Number(tx.montant))}
+                        </Text>
+                        {(tx.membre_info?.nom_complet) && (
+                          <View style={styles.txMemberRow}>
+                            <Ionicons name="person-circle-outline" size={13} color={COLORS.textSecondary} />
+                            <Text style={styles.txMemberText}>
+                              {tx.membre_info.nom_complet}
+                              {tx.membre_info.numero_membre ? `  ·  ${tx.membre_info.numero_membre}` : ""}
+                            </Text>
+                          </View>
+                        )}
+                        {tx.session_nom && (
+                          <Text style={styles.txSession}>{tx.session_nom}</Text>
+                        )}
+                        {tx.notes && (
+                          <Text style={styles.txNotes} numberOfLines={1}>{tx.notes}</Text>
+                        )}
+                      </View>
+                    </View>
+                  );
+                })}
+
+                {hasSavingsMore && (
+                  <TouchableOpacity
+                    style={styles.loadMoreButton}
+                    onPress={() => setDisplayedItems((p) => Math.min(p + ITEMS_PER_PAGE, filteredSavings.length))}
+                  >
+                    <LinearGradient
+                      colors={["#B5179E", "#F72585"]}
+                      style={styles.loadMoreGradient}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                    >
+                      <Text style={styles.loadMoreText}>
+                        Voir plus ({filteredSavings.length - displayedItems} restant
+                        {filteredSavings.length - displayedItems !== 1 ? "s" : ""})
+                      </Text>
+                      <Ionicons name="chevron-down" size={20} color="white" />
+                    </LinearGradient>
+                  </TouchableOpacity>
+                )}
+
+                <View style={{ height: SPACING.xxl }} />
+              </View>
+            )}
           </View>
-        </View>
+        )}
+      />
+
+      {/* ── Modal multi-step ── */}
+      <Modal
+        visible={showAddModal}
+        animationType="slide"
+        transparent
+        statusBarTranslucent
+      >
+        <BlurView intensity={80} style={StyleSheet.absoluteFillObject} />
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContainer}>
+              {/* En-tête modal */}
+              <LinearGradient
+                colors={["#B5179E", "#F72585"]}
+                style={styles.modalHeader}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.modalTitle}>Nouvelle épargne</Text>
+                  <Text style={styles.modalStepLabel}>
+                    Étape {currentStep} : {stepLabels[currentStep - 1]}
+                  </Text>
+                </View>
+                <TouchableOpacity onPress={closeAddModal}>
+                  <Ionicons name="close" size={24} color="white" />
+                </TouchableOpacity>
+              </LinearGradient>
+
+              {/* Indicateur d'étapes */}
+              <View style={styles.stepIndicatorWrapper}>{renderStepIndicator()}</View>
+
+              {/* Corps du modal */}
+              <View style={styles.modalBody}>
+                {currentStep === 1 && renderStep1()}
+                {currentStep === 2 && renderStep2()}
+                {currentStep === 3 && renderStep3()}
+              </View>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );
 }
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   container: {
@@ -1082,21 +1012,6 @@ const styles = StyleSheet.create({
   },
 
   // Header
-  header: {
-    paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.md,
-    paddingBottom: SPACING.lg,
-  },
-  headerContent: {
-    alignItems: "center",
-    marginTop:35,
-  },
-  headerTop: {
-    flexDirection: "row",
-    alignItems: "center",
-    width: "100%",
-    marginBottom: SPACING.sm,
-  },
   backButton: {
     width: 40,
     height: 40,
@@ -1104,87 +1019,40 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.2)",
     alignItems: "center",
     justifyContent: "center",
+    marginBottom: SPACING.md,
   },
-  headerTitleContainer: {
-    flex: 1,
-    flexDirection: "row",
+  header: {
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.xl,
+    paddingBottom: SPACING.lg,
+  },
+  headerContent: {
     alignItems: "center",
-    justifyContent: "center",
-  },
-  headerSpacer: {
-    width: 40,
+    width: "100%",
   },
   headerIcon: {
-    marginRight: SPACING.sm,
+    marginBottom: SPACING.sm,
   },
   headerTitle: {
-    fontSize: FONT_SIZES.xl,
+    fontSize: FONT_SIZES.xxxl,
     fontWeight: "bold",
     color: "white",
+    marginBottom: SPACING.xs,
+    textAlign: "center",
   },
   headerSubtitle: {
     fontSize: FONT_SIZES.md,
-    color: "rgba(255,255,255,0.8)",
+    color: "rgba(255,255,255,0.85)",
     textAlign: "center",
   },
 
-  // Tabs
-  tabsContainer: {
-    flexDirection: "row",
-    backgroundColor: COLORS.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  tab: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: SPACING.md,
-    gap: SPACING.xs,
-  },
-  tabText: {
-    fontSize: FONT_SIZES.sm,
-    fontWeight: "600",
-  },
-
-  // Tab Content
-  tabContent: {
-    flex: 1,
-  },
-
-  // Sections
+  // Stats
   statsSection: {
     paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.lg,
+    marginTop: SPACING.lg,
   },
-  searchSection: {
-    paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.lg,
-  },
-  membersListContainer: {
-    paddingHorizontal: SPACING.lg,
-    paddingBottom: SPACING.xxl,
-  },
-  transactionsListContainer: {
-    paddingHorizontal: SPACING.lg,
-    paddingBottom: SPACING.xxl,
-  },
-  topSaversSection: {
-    paddingHorizontal: SPACING.lg,
-    marginTop: SPACING.xl,
-    paddingBottom: SPACING.xxl,
-  },
-  sectionTitle: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: "bold",
-    color: COLORS.text,
-    marginBottom: SPACING.md,
-  },
-
-  // Stats
   statsGrid: {
-    gap: SPACING.md,
+    gap: SPACING.sm,
   },
   statCard: {
     backgroundColor: COLORS.surface,
@@ -1195,7 +1063,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     shadowColor: COLORS.shadowLight,
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.08,
     shadowRadius: 4,
     elevation: 2,
   },
@@ -1204,9 +1072,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   statIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
     marginRight: SPACING.md,
@@ -1217,57 +1085,81 @@ const styles = StyleSheet.create({
   statTitle: {
     fontSize: FONT_SIZES.sm,
     color: COLORS.textSecondary,
-    marginBottom: SPACING.xs,
+    marginBottom: 2,
   },
   statValue: {
-    fontSize: FONT_SIZES.xl,
+    fontSize: FONT_SIZES.lg,
     fontWeight: "bold",
   },
   statSubtitle: {
-    fontSize: FONT_SIZES.sm,
+    fontSize: FONT_SIZES.xs,
     color: COLORS.textSecondary,
-    marginTop: SPACING.xs,
+    marginTop: 2,
   },
 
-  // Search
+  // Recherche + bouton
+  searchSection: {
+    paddingHorizontal: SPACING.lg,
+    marginTop: SPACING.xl,
+  },
+  searchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.sm,
+  },
   searchContainer: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: COLORS.surface,
-    borderRadius: BORDER_RADIUS.lg,
+    borderRadius: BORDER_RADIUS.md,
     paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
     borderWidth: 1,
     borderColor: COLORS.border,
     gap: SPACING.sm,
-    marginBottom: SPACING.md,
   },
   searchInput: {
     flex: 1,
     fontSize: FONT_SIZES.md,
     color: COLORS.text,
-    paddingVertical: SPACING.md,
   },
-
-  // Filters
-  filtersContainer: {
-    flexDirection: "row",
-    gap: SPACING.sm,
-    flexWrap: "wrap",
-  },
-  filterButton: {
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
+  addFabButton: {
     borderRadius: BORDER_RADIUS.md,
-    borderWidth: 1,
-    borderColor: COLORS.border,
+    overflow: "hidden",
+    shadowColor: "#B5179E",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 5,
   },
-  filterText: {
+  addFabGradient: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 12,
+    gap: 6,
+  },
+  addFabText: {
+    color: "white",
     fontSize: FONT_SIZES.sm,
-    fontWeight: "600",
+    fontWeight: "700",
+  },
+  resultsCount: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textSecondary,
+    marginTop: SPACING.sm,
   },
 
-  // Member Card
-  memberCard: {
+  // Liste
+  listContainer: {
+    paddingHorizontal: SPACING.lg,
+    marginTop: SPACING.lg,
+  },
+
+  // SavingCard
+  savingCard: {
     backgroundColor: COLORS.surface,
     borderRadius: BORDER_RADIUS.lg,
     padding: SPACING.md,
@@ -1276,257 +1168,132 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     shadowColor: COLORS.shadowLight,
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.08,
     shadowRadius: 4,
     elevation: 2,
   },
-  memberHeader: {
+  cardHeader: {
     flexDirection: "row",
     alignItems: "center",
     marginBottom: SPACING.md,
   },
-  memberAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+  cardAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
     marginRight: SPACING.md,
   },
-  memberAvatarText: {
+  cardAvatarText: {
     fontSize: FONT_SIZES.md,
     fontWeight: "bold",
     color: "white",
   },
-  memberInfo: {
+  cardInfo: {
     flex: 1,
   },
-  memberName: {
+  cardName: {
     fontSize: FONT_SIZES.md,
     fontWeight: "bold",
     color: COLORS.text,
-    marginBottom: SPACING.xs,
+    marginBottom: 2,
   },
-  memberNumber: {
+  cardNumber: {
     fontSize: FONT_SIZES.sm,
     color: COLORS.textSecondary,
   },
-  memberEmail: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textSecondary,
-    marginTop: SPACING.xs,
+  cardEmail: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.textLight,
+    marginTop: 1,
   },
-  addSavingButton: {
+  addButton: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: "#B5179E",
     alignItems: "center",
     justifyContent: "center",
   },
-
-  // Savings Amounts
-  savingsAmounts: {
-    marginBottom: SPACING.md,
-  },
-  amountSection: {
+  cardAmounts: {
     marginBottom: SPACING.sm,
+    paddingTop: SPACING.sm,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
   },
-  amountLabel: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textSecondary,
+  cardAmountMain: {
     marginBottom: SPACING.xs,
   },
-  amountValue: {
-    fontSize: FONT_SIZES.lg,
+  cardAmountLabel: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.textSecondary,
+  },
+  cardAmountValue: {
+    fontSize: FONT_SIZES.xl,
     fontWeight: "bold",
   },
-  amountRow: {
+  cardAmountRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
+    gap: SPACING.lg,
   },
-  amountItem: {
+  cardAmountItem: {
     flexDirection: "row",
     alignItems: "center",
-    gap: SPACING.xs,
+    gap: 4,
   },
-  amountItemText: {
+  cardAmountItemText: {
     fontSize: FONT_SIZES.sm,
     color: COLORS.textSecondary,
   },
-
-  // Member Stats
-  memberStats: {
+  cardFooter: {
     flexDirection: "row",
     justifyContent: "space-between",
+    paddingTop: SPACING.sm,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
   },
-  statItem: {
+  cardFooterItem: {
     flexDirection: "row",
     alignItems: "center",
-    gap: SPACING.xs,
+    gap: 4,
   },
-  statItemText: {
-    fontSize: FONT_SIZES.sm,
+  cardFooterText: {
+    fontSize: FONT_SIZES.xs,
     color: COLORS.textSecondary,
   },
 
-  // Transaction Card
-  transactionCard: {
-    backgroundColor: COLORS.surface,
+  // Load more
+  loadMoreButton: {
+    marginTop: SPACING.md,
+    marginBottom: SPACING.xl,
     borderRadius: BORDER_RADIUS.lg,
-    padding: SPACING.md,
-    borderLeftWidth: 4,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    shadowColor: COLORS.shadowLight,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    overflow: "hidden",
   },
-  transactionHeader: {
+  loadMoreGradient: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: SPACING.md,
-  },
-  transactionMember: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
-  },
-  transactionIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
-    marginRight: SPACING.md,
+    paddingVertical: SPACING.md,
+    gap: SPACING.sm,
   },
-  transactionMemberInfo: {
-    flex: 1,
-  },
-  transactionMemberName: {
+  loadMoreText: {
     fontSize: FONT_SIZES.md,
-    fontWeight: "bold",
-    color: COLORS.text,
-    marginBottom: SPACING.xs,
-  },
-  transactionMemberNumber: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textSecondary,
-  },
-  transactionAmount: {
-    alignItems: "flex-end",
-  },
-  transactionAmountValue: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: "bold",
-    marginBottom: SPACING.xs,
-  },
-  transactionType: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textSecondary,
-  },
-  transactionDetails: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: SPACING.sm,
-  },
-  transactionDetailItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SPACING.xs,
-  },
-  transactionDetailText: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textSecondary,
-  },
-  transactionNotes: {
-    backgroundColor: COLORS.backgroundLight,
-    borderRadius: BORDER_RADIUS.md,
-    padding: SPACING.sm,
-  },
-  transactionNotesText: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textSecondary,
-    fontStyle: "italic",
-  },
-
-  // Top Savers
-  topSaverCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: COLORS.surface,
-    borderRadius: BORDER_RADIUS.lg,
-    padding: SPACING.md,
-    marginBottom: SPACING.sm,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  topSaverRank: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "#B5179E",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: SPACING.md,
-  },
-  topSaverRankText: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: "bold",
+    fontWeight: "600",
     color: "white",
   },
-  topSaverInfo: {
-    flex: 1,
-  },
-  topSaverName: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: "bold",
-    color: COLORS.text,
-    marginBottom: SPACING.xs,
-  },
-  topSaverAmount: {
-    fontSize: FONT_SIZES.md,
-    color: "#B5179E",
-    fontWeight: "600",
-  },
 
-  // Center Container
+  // Center / Empty
   centerContainer: {
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: SPACING.xxl,
     paddingHorizontal: SPACING.lg,
-    flex: 1,
   },
-  loadingText: {
-    fontSize: FONT_SIZES.md,
-    color: COLORS.textSecondary,
-    marginTop: SPACING.md,
-  },
-  errorTitle: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: "bold",
-    color: COLORS.error,
-    marginTop: SPACING.md,
-    marginBottom: SPACING.sm,
-  },
-  errorText: {
-    fontSize: FONT_SIZES.md,
-    color: COLORS.textSecondary,
-    textAlign: "center",
-    marginBottom: SPACING.lg,
-  },
-  retryButton: {
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.sm,
-    borderRadius: BORDER_RADIUS.md,
-  },
-  retryButtonText: {
-    color: "white",
-    fontWeight: "600",
+  emptyContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: SPACING.xxl,
+    paddingHorizontal: SPACING.xl,
   },
   emptyTitle: {
     fontSize: FONT_SIZES.lg,
@@ -1534,35 +1301,56 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     marginTop: SPACING.md,
     marginBottom: SPACING.sm,
+    textAlign: "center",
   },
   emptyText: {
     fontSize: FONT_SIZES.md,
     color: COLORS.textSecondary,
     textAlign: "center",
+    marginBottom: SPACING.xl,
+  },
+  emptyCreateButton: {
+    borderRadius: BORDER_RADIUS.md,
+    overflow: "hidden",
+  },
+  emptyCreateGradient: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.xl,
+    gap: SPACING.sm,
+  },
+  emptyCreateText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: "600",
+    color: "white",
+  },
+  loadingText: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.textSecondary,
+    marginTop: SPACING.md,
   },
 
   // Modal
   modalOverlay: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: SPACING.lg,
+    justifyContent: "flex-end",
   },
   modalContainer: {
     backgroundColor: COLORS.background,
-    borderRadius: BORDER_RADIUS.xl,
-    width: "100%",
-    maxHeight: "80%",
+    borderTopLeftRadius: BORDER_RADIUS.xl,
+    borderTopRightRadius: BORDER_RADIUS.xl,
+    height: "88%",
     overflow: "hidden",
     shadowColor: COLORS.shadowDark,
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
-    elevation: 15,
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    elevation: 20,
   },
   modalHeader: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.lg,
@@ -1571,33 +1359,170 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.xl,
     fontWeight: "bold",
     color: "white",
-    flex: 1,
   },
-  modalBody: {
-    paddingHorizontal: SPACING.lg,
-    paddingBottom: SPACING.lg,
-    marginTop:SPACING.lg,
+  modalStepLabel: {
+    fontSize: FONT_SIZES.sm,
+    color: "rgba(255,255,255,0.8)",
+    marginTop: 2,
   },
 
-  // Member Info in Modal
-  memberInfoSection: {
+  // Step indicator
+  stepIndicatorWrapper: {
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    backgroundColor: COLORS.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  stepIndicator: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  stepDot: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  stepDotActive: {
+    backgroundColor: "#B5179E",
+  },
+  stepDotInactive: {
+    backgroundColor: COLORS.border,
+  },
+  stepDotText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: "bold",
+    color: "white",
+  },
+  stepLine: {
+    flex: 1,
+    height: 2,
+    marginHorizontal: SPACING.xs,
+  },
+  stepLineActive: {
+    backgroundColor: "#B5179E",
+  },
+  stepLineInactive: {
+    backgroundColor: COLORS.border,
+  },
+
+  modalBody: {
+    flex: 1,
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.lg,
+    overflow: "hidden",
+  },
+
+  // Step titles
+  stepTitle: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: "bold",
+    color: COLORS.text,
+    marginBottom: SPACING.md,
+  },
+
+  // Step 1 – modal member search
+  modalSearchContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.surface,
+    borderRadius: BORDER_RADIUS.md,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    gap: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+  modalSearchInput: {
+    flex: 1,
+    fontSize: FONT_SIZES.md,
+    color: COLORS.text,
+  },
+  modalResultCount: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textSecondary,
+    marginBottom: SPACING.sm,
+  },
+  modalMemberList: {
+    flex: 1,
+  },
+  modalMemberItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
+    marginBottom: SPACING.xs,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  modalMemberItemSelected: {
+    borderColor: "#B5179E",
+    backgroundColor: "#B5179E10",
+  },
+  modalMemberAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: SPACING.md,
+  },
+  modalMemberAvatarText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: "bold",
+    color: "white",
+  },
+  modalMemberItemInfo: {
+    flex: 1,
+  },
+  modalMemberItemName: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: "600",
+    color: COLORS.text,
+  },
+  modalMemberItemNumber: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textSecondary,
+  },
+  modalMemberItemAmount: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  modalMemberItemAmountText: {
+    fontSize: FONT_SIZES.sm,
+    color: "#B5179E",
+    fontWeight: "600",
+  },
+  modalLoadMore: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: SPACING.md,
+    gap: SPACING.xs,
+  },
+  modalLoadMoreText: {
+    fontSize: FONT_SIZES.sm,
+    color: "#B5179E",
+    fontWeight: "600",
+  },
+
+  // Step 2 – member detail
+  memberDetailCard: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: COLORS.backgroundLight,
     padding: SPACING.md,
     borderRadius: BORDER_RADIUS.lg,
-    marginBottom: SPACING.lg,
+    marginBottom: SPACING.md,
   },
-  memberDetailSection: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: COLORS.backgroundLight,
-    padding: SPACING.md,
-    borderRadius: BORDER_RADIUS.lg,
-    marginBottom: SPACING.lg,
-    marginTop:SPACING.lg,
-  },
-  memberModalAvatar: {
+  memberDetailAvatar: {
     width: 48,
     height: 48,
     borderRadius: 24,
@@ -1606,59 +1531,67 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginRight: SPACING.md,
   },
-  memberModalAvatarText: {
+  memberDetailAvatarText: {
     fontSize: FONT_SIZES.md,
     fontWeight: "bold",
     color: "white",
   },
-  memberModalInfo: {
+  memberDetailInfo: {
     flex: 1,
   },
-  memberModalName: {
+  memberDetailName: {
     fontSize: FONT_SIZES.lg,
     fontWeight: "bold",
     color: COLORS.text,
-    marginBottom: SPACING.xs,
   },
-  memberModalNumber: {
-    fontSize: FONT_SIZES.md,
+  memberDetailNumber: {
+    fontSize: FONT_SIZES.sm,
     color: COLORS.textSecondary,
   },
-  memberModalEpargne: {
-    fontSize: FONT_SIZES.sm,
-    color: "#B5179E",
-    fontWeight: "600",
-    marginTop: SPACING.xs,
+  memberDetailEmail: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.textLight,
+    marginTop: 1,
   },
-
-  // Savings Resume
-  savingsResume: {
+  currentSavingsCard: {
     backgroundColor: COLORS.surface,
-    padding: SPACING.md,
     borderRadius: BORDER_RADIUS.lg,
-    marginBottom: SPACING.lg,
+    padding: SPACING.md,
     borderWidth: 1,
     borderColor: COLORS.border,
+    marginBottom: SPACING.md,
   },
-  resumeItem: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: SPACING.sm,
-  },
-  resumeLabel: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textSecondary,
-  },
-  resumeValue: {
+  currentSavingsTitle: {
     fontSize: FONT_SIZES.md,
     fontWeight: "bold",
     color: COLORS.text,
+    marginBottom: SPACING.sm,
+  },
+  currentSavingsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: SPACING.xs,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  currentSavingsLabel: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textSecondary,
+  },
+  currentSavingsValue: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: "600",
+    color: COLORS.text,
+  },
+  currentSavingsDate: {
+    fontWeight: "400",
+    color: COLORS.textSecondary,
   },
 
   // Form
   formSection: {
-    marginBottom: SPACING.lg,
+    marginBottom: SPACING.sm,
   },
   inputLabel: {
     fontSize: FONT_SIZES.md,
@@ -1685,90 +1618,189 @@ const styles = StyleSheet.create({
     textAlignVertical: "top",
   },
 
-  // Modal Actions
-  modalActions: {
+  // Step navigation
+  stepNavRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
     gap: SPACING.md,
+    marginTop: SPACING.md,
   },
-  modalButton: {
+  stepNavBtn: {
     flex: 1,
-    paddingVertical: SPACING.md,
-    borderRadius: BORDER_RADIUS.md,
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    paddingVertical: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
+    gap: SPACING.xs,
   },
-  cancelButton: {
+  stepNavBtnSecondary: {
     backgroundColor: COLORS.backgroundLight,
     borderWidth: 1,
     borderColor: COLORS.border,
   },
-  confirmButton: {
+  stepNavBtnPrimary: {
     backgroundColor: "#B5179E",
   },
-  cancelButtonText: {
+  stepNavBtnConfirm: {
+    backgroundColor: COLORS.success,
+  },
+  stepNavBtnTextSecondary: {
     fontSize: FONT_SIZES.md,
     fontWeight: "600",
     color: COLORS.textSecondary,
   },
-  confirmButtonText: {
+  stepNavBtnTextPrimary: {
     fontSize: FONT_SIZES.md,
     fontWeight: "600",
     color: "white",
   },
 
-  // Add Saving Modal Button
-  addSavingModalButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#B5179E",
-    paddingVertical: SPACING.md,
-    borderRadius: BORDER_RADIUS.md,
-    gap: SPACING.sm,
-  },
-  addSavingModalButtonText: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: "600",
-    color: "white",
-  },
-
-  // Pagination
-  resultsCounter: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
-    gap: SPACING.sm,
+  // Transaction cards
+  txCard: {
     backgroundColor: COLORS.surface,
-    marginBottom: SPACING.md,
-    borderRadius: BORDER_RADIUS.md,
+    borderRadius: BORDER_RADIUS.lg,
+    borderLeftWidth: 4,
     borderWidth: 1,
     borderColor: COLORS.border,
+    flexDirection: "row",
+    alignItems: "center",
+    padding: SPACING.md,
+    marginBottom: SPACING.md,
+    shadowColor: COLORS.shadowLight,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
   },
-  resultsCounterText: {
+  txIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: SPACING.md,
+  },
+  txBody: { flex: 1 },
+  txTopRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 3,
+  },
+  txType: {
     fontSize: FONT_SIZES.sm,
+    fontWeight: "700",
+    color: COLORS.text,
+  },
+  txDate: {
+    fontSize: 10,
     color: COLORS.textSecondary,
   },
-  resultsCounterBold: {
+  txAmount: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: "800",
+    marginBottom: 3,
+  },
+  txMemberRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginBottom: 2,
+  },
+  txMemberText: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+  },
+  txSession: {
+    fontSize: 11,
+    color: COLORS.textLight,
+    fontStyle: "italic",
+  },
+  txNotes: {
+    fontSize: 11,
+    color: COLORS.textLight,
+    marginTop: 2,
+  },
+
+  // Step 3 – récap
+  recapCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: BORDER_RADIUS.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    overflow: "hidden",
+    marginBottom: SPACING.md,
+  },
+  recapSection: {
+    padding: SPACING.md,
+  },
+  recapSectionTitle: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: "bold",
+    color: COLORS.textSecondary,
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    marginBottom: SPACING.sm,
+  },
+  recapDivider: {
+    height: 1,
+    backgroundColor: COLORS.border,
+  },
+  recapMemberRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.md,
+  },
+  recapAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#B5179E",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  recapAvatarText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: "bold",
+    color: "white",
+  },
+  recapMemberName: {
+    fontSize: FONT_SIZES.md,
     fontWeight: "bold",
     color: COLORS.text,
   },
-  loadMoreButton: {
-    marginTop: SPACING.md,
-    marginBottom: SPACING.xl,
+  recapMemberNumber: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textSecondary,
   },
-  loadMoreGradient: {
+  recapRow: {
     flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: SPACING.md,
-    borderRadius: BORDER_RADIUS.md,
-    gap: SPACING.sm,
+    paddingVertical: SPACING.xs,
   },
-  loadMoreText: {
-    fontSize: FONT_SIZES.md,
+  recapLabel: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textSecondary,
+  },
+  recapValue: {
+    fontSize: FONT_SIZES.sm,
     fontWeight: "600",
-    color: "white",
+    color: COLORS.text,
+  },
+  recapValueLarge: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: "bold",
+  },
+  recapTypeBadge: {
+    backgroundColor: "#B5179E20",
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 2,
+    borderRadius: BORDER_RADIUS.sm,
+  },
+  recapTypeBadgeText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: "600",
+    color: "#B5179E",
   },
 });

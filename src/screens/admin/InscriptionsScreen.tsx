@@ -898,14 +898,15 @@ export default function InscriptionsScreen() {
     setDisplayedItems(ITEMS_PER_PAGE);
   }, [search]);
 
-  const stats = useMemo(() => {
-    return {
-      total: members.length,
-      enRegle: members.filter(m => m.statut === "EN_REGLE").length,
-      inscriptionsCompletes: members.filter(m => m.donnees_financieres?.inscription?.inscription_complete).length,
-      totalInscriptions: members.reduce((sum, m) => sum + (m.donnees_financieres?.inscription?.montant_paye_inscription || 0), 0),
-    };
-  }, [members]);
+  // Formatage monétaire
+  const formatCurrency = (amount: number | undefined | null): string => {
+    if (!amount || isNaN(amount)) return "0 FCFA";
+    return new Intl.NumberFormat('fr-FR', {
+      style: 'currency',
+      currency: 'XAF',
+      minimumFractionDigits: 0,
+    }).format(amount);
+  };
 
   // Handlers
   const handleAddMember = (data: any) => {
@@ -979,53 +980,32 @@ export default function InscriptionsScreen() {
     });
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('fr-FR', {
-      style: 'currency',
-      currency: 'XAF',
-      minimumFractionDigits: 0,
-    }).format(amount);
-  };
+
 
   return (
     <View style={styles.container}>
       
-      {/* Header avec stats */}
+      {/* Header style SolidarityScreen */}
       <LinearGradient
         colors={[COLORS.primary, "#3A86FF"]}
         style={styles.header}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
       >
-        {/* Bouton back */}
-        <View style={styles.headerTop}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={24} color="white" />
-          </TouchableOpacity>
-          <View style={styles.headerTextContainer}>
-            <Text style={styles.headerTitle}>Gestion des Membres</Text>
-            <Text style={styles.headerSubtitle}>Membres et paiements d'inscription</Text>
-          </View>
-        </View>
-        
-        {/* Stats rapides */}
-        <View style={styles.statsContainer}>
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>{stats.total}</Text>
-            <Text style={styles.statLabel}>Membres</Text>
-          </View>
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>{stats.enRegle}</Text>
-            <Text style={styles.statLabel}>En règle</Text>
-          </View>
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>{stats.inscriptionsCompletes}</Text>
-            <Text style={styles.statLabel}>Inscrits</Text>
-          </View>
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>{(stats.totalInscriptions / 1000000).toFixed(1)}M</Text>
-            <Text style={styles.statLabel}>Total FCFA</Text>
-          </View>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+          <Ionicons name="arrow-back" size={24} color="white" />
+        </TouchableOpacity>
+        <View style={styles.headerContent}>
+          <Ionicons name="card" size={32} color="white" style={styles.headerIcon} />
+          <Text style={styles.headerTitle}>Gestion des Inscriptions</Text>
+          <Text style={styles.headerSubtitle}>
+            Session: {session?.nom || "Chargement..."}
+          </Text>
+          {session?.montant_collation > 0 && (
+            <Text style={styles.headerAmount}>
+              Montant d'inscription: {formatCurrency(session.montant_collation)}
+            </Text>
+          )}
         </View>
       </LinearGradient>
 
@@ -1055,7 +1035,8 @@ export default function InscriptionsScreen() {
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
             >
-              <Ionicons name="add" size={24} color="white" />
+              <Ionicons name="add" size={20} color="white" />
+              <Text style={styles.addButtonText}>Ajouter membre</Text>
             </LinearGradient>
           </TouchableOpacity>
         )}
@@ -1298,22 +1279,6 @@ const styles = StyleSheet.create({
     paddingTop: SPACING.xl,
     paddingBottom: SPACING.lg,
   },
-  headerTitle: {
-    fontSize: FONT_SIZES.xxl,
-    fontWeight: "bold",
-    color: "white",
-    marginBottom: SPACING.xs,
-  },
-  headerSubtitle: {
-    fontSize: FONT_SIZES.md,
-    color: "rgba(255,255,255,0.8)",
-    marginBottom: SPACING.lg,
-  },
-  headerTop: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: SPACING.lg,
-  },
   backButton: {
     width: 40,
     height: 40,
@@ -1321,7 +1286,37 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.2)",
     alignItems: "center",
     justifyContent: "center",
-    marginRight: SPACING.md,
+    marginBottom: SPACING.md,
+  },
+  headerContent: {
+    alignItems: "center",
+  },
+  headerIcon: {
+    marginBottom: SPACING.sm,
+  },
+  headerTitle: {
+    fontSize: FONT_SIZES.xxxl,
+    fontWeight: "bold",
+    color: "white",
+    marginBottom: SPACING.xs,
+    textAlign: "center",
+  },
+  headerSubtitle: {
+    fontSize: FONT_SIZES.md,
+    color: "rgba(255,255,255,0.8)",
+    textAlign: "center",
+    marginBottom: SPACING.xs,
+  },
+  headerAmount: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: "600",
+    color: "white",
+    textAlign: "center",
+  },
+  headerTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: SPACING.lg,
   },
   headerTextContainer: {
     flex: 1,
@@ -1371,13 +1366,21 @@ const styles = StyleSheet.create({
   addButton: {
     borderRadius: BORDER_RADIUS.lg,
     overflow: "hidden",
-    marginBottom: 12,
   },
   addButtonGradient: {
-    width: 48,
-    height: 48,
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    gap: SPACING.sm,
+    //ici
+    borderRadius: BORDER_RADIUS.lg,
+  },
+  addButtonText: {
+    color: "white",
+    fontSize: FONT_SIZES.md,
+    fontWeight: "600",
   },
 
   // Results Counter

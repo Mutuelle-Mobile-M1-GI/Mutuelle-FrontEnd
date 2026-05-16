@@ -39,12 +39,14 @@ export interface MemberFinancialData {
   };
   epargne: {
     epargne_base: number;
+    nombre_transactions: number;
     retraits_pour_prets: number;
     interets_recus: number;
     retours_remboursements: number;
     epargne_totale: number;
     epargne_plus_interets: number;
     montant_interets_separe: number;
+    derniere_transaction_date: string | undefined;
   };
   emprunt: {
     a_emprunt_en_cours: boolean;
