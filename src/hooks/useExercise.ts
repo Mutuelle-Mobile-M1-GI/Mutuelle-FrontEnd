@@ -33,7 +33,7 @@ export function useCurrentSession() {
 }
 
 // 🆕 Hook pour tous les exercices
-export function useExercises() {
+/*export function useExercises() {
   return useQuery({
     queryKey: ["exercises"],
     queryFn: async () => {
@@ -42,6 +42,20 @@ export function useExercises() {
       return fetchExercises(token);
     },
     staleTime: 10 * 60 * 1000, // 10 min
+  });
+}*/
+
+export function useExercises() {
+  return useQuery({
+    queryKey: ["exercises"],
+    queryFn: async () => {
+      const token = await getStoredAccessToken();
+      if (!token) throw new Error("Token manquant");
+      return fetchExercises(token);
+    },
+    // ✅ Réduit à 0 : les données sont immédiatement "stale" après le premier fetch,
+    // donc toute invalidation déclenche un vrai refetch.
+    staleTime: 0,
   });
 }
 

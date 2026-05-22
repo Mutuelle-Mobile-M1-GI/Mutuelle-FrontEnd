@@ -594,8 +594,8 @@ const NewSessionModal = ({ visible, onClose, onSubmit, loading }: NewSessionModa
     nom: "",
     date_session: new Date().toISOString().split("T")[0],
     montant_collation: "45000",
-    montant_depense: "",
-    motif_depense: "",
+    montant_autre_depense: "",
+    motif_autre_depense: "",
   });
 
   // Réinitialiser le formulaire à chaque ouverture
@@ -605,13 +605,13 @@ const NewSessionModal = ({ visible, onClose, onSubmit, loading }: NewSessionModa
         nom: "",
         date_session: new Date().toISOString().split("T")[0],
         montant_collation: "45000",
-        montant_depense: "",
-        motif_depense: "",
+        montant_autre_depense: "",
+        motif_autre_depense: "",
       });
     }
   }, [visible]);
 
-  const hasDepense = formData.montant_depense.trim() !== "";
+  const hasDepense = formData.montant_autre_depense.trim() !== "";
 
   return (
     <Modal visible={visible} transparent animationType="fade" statusBarTranslucent>
@@ -680,8 +680,8 @@ const NewSessionModal = ({ visible, onClose, onSubmit, loading }: NewSessionModa
             <TextInput
               style={styles.input}
               placeholder="Ex: 10 000"
-              value={formData.montant_depense}
-              onChangeText={(text) => setFormData({ ...formData, montant_depense: text })}
+              value={formData.montant_autre_depense}
+              onChangeText={(text) => setFormData({ ...formData, montant_autre_depense: text })}
               keyboardType="numeric"
             />
 
@@ -691,13 +691,13 @@ const NewSessionModal = ({ visible, onClose, onSubmit, loading }: NewSessionModa
             <TextInput
               style={[styles.input, styles.inputMultiline, !hasDepense && styles.inputDisabled]}
               placeholder="Ex: Achat fournitures, location salle . . ."
-              value={formData.motif_depense}
-              onChangeText={(text) => setFormData({ ...formData, motif_depense: text })}
+              value={formData.motif_autre_depense}
+              onChangeText={(text) => setFormData({ ...formData, motif_autre_depense: text })}
               multiline
               numberOfLines={3}
               editable={hasDepense}
             />
-            {hasDepense && formData.motif_depense.trim() === "" && (
+            {hasDepense && formData.motif_autre_depense.trim() === "" && (
               <Text style={styles.warningText}>
                 ⚠ Veuillez renseigner un motif pour cette dépense.
               </Text>
@@ -714,11 +714,11 @@ const NewSessionModal = ({ visible, onClose, onSubmit, loading }: NewSessionModa
             <TouchableOpacity
               style={[
                 styles.submitButton,
-                (loading || (hasDepense && formData.motif_depense.trim() === "")) &&
+                (loading || (hasDepense && formData.motif_autre_depense.trim() === "")) &&
                   styles.submitButtonDisabled,
               ]}
               onPress={() => onSubmit(formData)}
-              disabled={loading || (hasDepense && formData.motif_depense.trim() === "")}
+              disabled={loading || (hasDepense && formData.motif_autre_depense.trim() === "")}
             >
               {loading ? (
                 <ActivityIndicator size="small" color="white" />
@@ -1014,7 +1014,7 @@ const navigation = useNavigation<any>();
     }
 
     try {
-      const montantDepense = parseFloat(sessionData.montant_depense) || 0;
+      const montantDepense = parseFloat(sessionData.montant_autre_depense) || 0;
       const hasDepense     = montantDepense > 0;
  
       const apiData: any = {
@@ -1027,8 +1027,8 @@ const navigation = useNavigation<any>();
  
       // N'envoyer les champs dépense que si un montant est saisi
       if (hasDepense) {
-        apiData.montant_depense = montantDepense;
-        apiData.motif_depense   = sessionData.motif_depense.trim();
+        apiData.montant_autre_depense = montantDepense;
+        apiData.motif_autre_depense   = sessionData.motif_autre_depense.trim();
       }
  
       await createSessionMutation.mutateAsync(apiData);

@@ -8,23 +8,24 @@ export const fetchSessions = async (accessToken: string, params?: Record<string,
     API_BASE_URL + API_ENDPOINTS.sessions,
     {
       params,
-      headers: { 
+      headers: {
         Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json'
-      }
+        "Content-Type": "application/json",
+      },
     }
   );
-  return Array.isArray(data) ? data : (data.results || []);
+  return Array.isArray(data) ? data : (data as any).results || [];
 };
 
 // 🆕 Service pour créer une nouvelle session
+// ⚠️ Les champs dépense s'appellent montant_autre_depense / motif_autre_depense côté API
 export const createNewSession = async (
   sessionData: {
     nom: string;
     date_session: string;
     montant_collation: number;
-    montant_depense?: number;
-    motif_depense?: string;
+    montant_autre_depense?: number;
+    motif_autre_depense?: string;
     description?: string;
     exercice: string;
   },
@@ -58,10 +59,10 @@ export const updateSession = async (
     `${API_BASE_URL}${API_ENDPOINTS.sessions}${sessionId}/update_params/`,
     sessionData,
     {
-      headers: { 
+      headers: {
         Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json'
-      }
+        "Content-Type": "application/json",
+      },
     }
   );
   return data;
@@ -75,16 +76,16 @@ export const deleteSession = async (
   const { data } = await axios.delete(
     `${API_BASE_URL}${API_ENDPOINTS.sessions}${sessionId}/`,
     {
-      headers: { 
+      headers: {
         Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json'
-      }
+        "Content-Type": "application/json",
+      },
     }
   );
   return data;
 };
 
-// 🏁 Service pour clore une session (la passer à "Terminé")
+// 🏁 Service pour clore une session
 export const closeSession = async (
   sessionId: string,
   accessToken: string
@@ -93,10 +94,10 @@ export const closeSession = async (
     `${API_BASE_URL}${API_ENDPOINTS.closeSession(sessionId)}`,
     {},
     {
-      headers: { 
+      headers: {
         Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json'
-      }
+        "Content-Type": "application/json",
+      },
     }
   );
   return data;

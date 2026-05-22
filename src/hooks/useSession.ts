@@ -12,8 +12,8 @@ export function useCreateNewSession() {
       nom: string;
       date_session: string;
       montant_collation: number;
-      montant_depense?: number;
-      motif_depense?: string;
+      montant_autre_depense?: number;
+      motif_autre_depense?: string;
       description?: string;
       exercice: string;
     }) => {
@@ -22,11 +22,9 @@ export function useCreateNewSession() {
       return createNewSession(sessionData, token);
     },
     onSuccess: async () => {
-      // Invalider et refetch le cache pour recharger les données
       await queryClient.invalidateQueries({ queryKey: ["current-session"] });
       await queryClient.invalidateQueries({ queryKey: ["sessions"] });
       await queryClient.invalidateQueries({ queryKey: ["admin-dashboard"] });
-      // ✅ IMPORTANT : Refetch aussi les renflouements si ils dépendent de la session
       await queryClient.refetchQueries({ queryKey: ["renflouements"] });
       await queryClient.refetchQueries({ queryKey: ["renflouement-stats"] });
     },
@@ -49,11 +47,7 @@ export function useCurrentSession() {
         );
         return data;
       } catch (error: any) {
-        // Si le serveur retourne 404 (aucune session en cours), retourner null
-        if (error?.response?.status === 404) {
-          return null;
-        }
-        // Pour les autres erreurs, les relancer
+        if (error?.response?.status === 404) return null;
         throw error;
       }
     },
@@ -62,8 +56,9 @@ export function useCurrentSession() {
 
 // 📋 Hook pour lister les sessions d'un exercice (admin)
 export function useSessions(params?: { exercice?: string | number }) {
+  const exerciceId = params?.exercice ? String(params.exercice) : undefined;
   return useQuery({
-    queryKey: ["sessions", params?.exercice],
+    queryKey: ["sessions", exerciceId],
     queryFn: async () => {
       const token = await getStoredAccessToken();
       if (!token) throw new Error("Token manquant");
@@ -71,12 +66,14 @@ export function useSessions(params?: { exercice?: string | number }) {
         API_BASE_URL + API_ENDPOINTS.sessions,
         {
           headers: { Authorization: `Bearer ${token}` },
-          params: params?.exercice ? { exercice: params.exercice } : undefined,
+          // Filtre OBLIGATOIRE par exercice — sans ça, toutes les sessions de tous les exercices sont retournées
+          params: { exercice: exerciceId },
         }
       );
       return data;
     },
-    enabled: !!params?.exercice,
+    // Ne lancer la requête que si on a un exerciceId valide (non vide, non "undefined")
+    enabled: !!exerciceId && exerciceId !== "undefined",
   });
 }
 

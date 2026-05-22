@@ -1,5 +1,4 @@
 import React, { useState, useRef, useMemo } from "react";
-import { useRoute, useNavigation } from "@react-navigation/native";
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   FlatList, Animated, Dimensions, StatusBar, Modal, TextInput,
@@ -11,15 +10,15 @@ import { useSolidarityPayments } from "../../hooks/useSolidarity";
 import { useRenflouements } from "../../hooks/useRenflouement";
 import { useSavings } from "../../hooks/useSaving";
 import { useAssistances } from "../../hooks/useAssistance";
-import { useInscriptionPayments } from "../../hooks/useInscription";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useExercises } from "../../hooks/useExercise";
 import { useSessions } from "../../hooks/useSession";
 import { useMembers } from "../../hooks/useMember";
+import { useSessionDepenses } from "../../hooks/useSessionDepenses";
 import { Exercise } from "../../types/exercise.types";
 import { Session } from "../../types/session.types";
-import { useAuthContext } from "../../context/AuthContext";
+
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 const EXERCISES_PER_PAGE = 6;
 const OPS_PER_PAGE = 10;
@@ -38,25 +37,15 @@ type TimelineItem = {
   memberNumero?: string;
 };
 
-// Paramètres transmis depuis AdminDashboardScreen
-// Les IDs sont des UUID (strings), pas des numbers
-type RouteParams = {
-  sessionId?: string | null;
-  exerciceId?: string | null;
-  sessionName?: string;
-  exerciceName?: string;
-  // filterPreset : liste de types pré-activés (depuis les boutons soldes du Dashboard)
-  // ex. ["paiement-inscription"] | ["solidarite","renflouement","assistance"] | ["epargne","remboursement","emprunt"]
-  filterPreset?: string[];
-};
-
-// ─── Design system ────────────────────────────────────────────────────────────
+// ─── Design system aligné sur l'app existante ────────────────────────────────
+// Couleurs reprisent des cartes visibles dans les screenshots :
+// Membres=bleu, Solidarité=vert, Épargne=rose/violet, Emprunts=orange, etc.
 
 const THEME = {
   colors: {
     primary: { 50: "#EFF6FF", 500: COLORS.primary, 600: "#2563EB" },
     success: { 50: "#ECFDF5", 500: "#10B981", 600: "#059669" },
-    warning: { 50: "#FFF7ED", 500: "#F97316", 600: "#EA580C" },
+    warning: { 50: "#FFF7ED", 500: "#F97316", 600: "#EA580C" },  // orange comme "Emprunts"
     error:   { 50: "#FEF2F2", 500: "#EF4444", 600: "#DC2626" },
     neutral: { 100: "#F5F5F5", 200: "#E5E5E5", 300: "#D4D4D4",
                400: "#A3A3A3", 500: "#737373", 600: "#525252",
@@ -64,16 +53,17 @@ const THEME = {
     admin:   { 50: "#F0FDF4", 500: "#22C55E", 600: "#16A34A" },
   },
   gradients: {
+    // Gradients pleins (comme dans les cartes de l'app)
     primary:   ["#3B82F6", "#2563EB"]   as [string, string],
     admin:     ["#22C55E", "#16A34A"]   as [string, string],
-    teal:      ["#14B8A6", "#0D9488"]   as [string, string],
-    pink:      ["#EC4899", "#BE185D"]   as [string, string],
-    orange:    ["#F97316", "#EA580C"]   as [string, string],
-    purple:    ["#A855F7", "#7C3AED"]   as [string, string],
-    green:     ["#10B981", "#059669"]   as [string, string],
-    red:       ["#EF4444", "#DC2626"]   as [string, string],
-    cyan:      ["#06B6D4", "#0891B2"]   as [string, string],
-    dark:      ["#334155", "#1E293B"]   as [string, string],
+    teal:      ["#14B8A6", "#0D9488"]   as [string, string],  // Solidarité (vert teal)
+    pink:      ["#EC4899", "#BE185D"]   as [string, string],  // Épargne
+    orange:    ["#F97316", "#EA580C"]   as [string, string],  // Emprunts
+    purple:    ["#A855F7", "#7C3AED"]   as [string, string],  // Assistances
+    green:     ["#10B981", "#059669"]   as [string, string],  // Remboursements
+    red:       ["#EF4444", "#DC2626"]   as [string, string],  // Renflouements
+    cyan:      ["#06B6D4", "#0891B2"]   as [string, string],  // Inscription
+    dark:      ["#334155", "#1E293B"]   as [string, string],  // Header
   },
 };
 
@@ -89,9 +79,11 @@ const OPERATION_CONFIG = {
 
 // ─── Utilitaires ─────────────────────────────────────────────────────────────
 
+// Format : 100 000 000 FCFA (espace comme séparateur, pas de virgule)
 const formatMoney = (val: number | string | undefined): string => {
   if (typeof val === "string") val = parseFloat(val);
   if (typeof val !== "number" || isNaN(val)) return "0 FCFA";
+  // Utilise les espaces insécables comme séparateurs de milliers
   return val.toLocaleString("fr-FR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + " FCFA";
 };
 
@@ -214,9 +206,12 @@ const ExerciceCard = ({ exercice, onPress }: { exercice: Exercise; onPress: () =
           colors={isActive ? THEME.gradients.admin : ["#94A3B8", "#64748B"]}
           style={s.exerciceCardGradient}
         >
+          {/* Icône */}
           <View style={s.exerciceIconCircle}>
             <Ionicons name="calendar" size={28} color="white" />
           </View>
+
+          {/* Texte */}
           <View style={s.exerciceTextBlock}>
             <Text style={s.exerciceNom}>{exercice.nom}</Text>
             {exercice.date_debut && (
@@ -233,6 +228,8 @@ const ExerciceCard = ({ exercice, onPress }: { exercice: Exercise; onPress: () =
               </Text>
             </View>
           </View>
+
+          {/* Flèche */}
           <View style={s.exerciceArrow}>
             <Ionicons name="chevron-forward" size={22} color="rgba(255,255,255,0.8)" />
           </View>
@@ -282,52 +279,84 @@ const SessionCard = ({ session, onPress }: { session: Session; onPress: () => vo
   );
 };
 
-// ─── Synthèse session ─────────────────────────────────────────────────────────
+// ─── Synthèse session — Tableau Option A ────────────────────────────────────
 
-const SessionSummaryGrid = ({ totals }: { totals: Record<string, number> }) => (
-  <View style={s.summaryCard}>
-    {/* En-tête colonnes */}
-    <View style={s.summaryTableHeader}>
-      <Text style={s.summaryHeaderCell}>Catégorie</Text>
-      <Text style={[s.summaryHeaderCell, { textAlign: "right" }]}>Montant</Text>
-    </View>
+const SessionSummaryGrid = ({
+  totals,
+  collation,
+  autreDepense,
+  motifDepense,
+}: {
+  totals: Record<string, number>;
+  collation?: number;
+  autreDepense?: number;
+  motifDepense?: string;
+}) => {
+  const hasDepense = (autreDepense ?? 0) > 0;
+  return (
+    <View style={s.summaryCard}>
+      <View style={s.summaryTableHeader}>
+        <Text style={s.summaryHeaderCell}>Categorie</Text>
+        <Text style={[s.summaryHeaderCell, { textAlign: "right" }]}>Montant</Text>
+      </View>
 
-    {/* Lignes */}
-    {Object.entries(OPERATION_CONFIG).map(([type, cfg], index) => {
-      const total  = totals[type] ?? 0;
-      const isZero = total === 0;
-      const dotColor = cfg.gradient[0];
-      return (
-        <View
-          key={type}
-          style={[s.summaryTableRow, index === 0 && { borderTopWidth: 0 }]}
-        >
-          <View style={s.summaryRowLeft}>
-            <View style={[s.summaryDot, { backgroundColor: dotColor }]} />
-            <Text style={s.summaryRowLabel}>{cfg.label}</Text>
+      {Object.entries(OPERATION_CONFIG).map(([type, cfg], index) => {
+        const total    = totals[type] ?? 0;
+        const isZero   = total === 0;
+        const dotColor = cfg.gradient[0];
+        return (
+          <View key={type} style={[s.summaryTableRow, index === 0 && { borderTopWidth: 0 }]}>
+            <View style={s.summaryRowLeft}>
+              <View style={[s.summaryDot, { backgroundColor: dotColor }]} />
+              <Text style={s.summaryRowLabel}>{cfg.label}</Text>
+            </View>
+            <Text style={[s.summaryRowAmount, isZero ? s.summaryRowAmountZero : { color: dotColor }]}>
+              {formatMoney(total)}
+            </Text>
           </View>
-          <Text style={[s.summaryRowAmount, isZero ? s.summaryRowAmountZero : { color: dotColor }]}>
-            {formatMoney(total)}
-          </Text>
+        );
+      })}
+
+      {/* Separateur depenses de session */}
+      <View style={s.summaryDepSep}>
+        <View style={s.summaryDepSepLine} />
+        <Text style={s.summaryDepSepText}>Depenses de session</Text>
+        <View style={s.summaryDepSepLine} />
+      </View>
+
+      {/* Collation */}
+      <View style={s.summaryTableRow}>
+        <View style={s.summaryRowLeft}>
+          <View style={[s.summaryDot, { backgroundColor: "#F59E0B" }]} />
+          <Text style={s.summaryRowLabel}>Collation (agape)</Text>
         </View>
-      );
-    })}
-  </View>
-);
+        <Text style={[s.summaryRowAmount, (collation ?? 0) === 0 ? s.summaryRowAmountZero : { color: "#D97706" }]}>
+          {formatMoney(collation ?? 0)}
+        </Text>
+      </View>
+
+      {/* Depense supplementaire */}
+      <View style={s.summaryTableRow}>
+        <View style={s.summaryRowLeft}>
+          <View style={[s.summaryDot, { backgroundColor: "#EF4444" }]} />
+          <View style={{ flex: 1 }}>
+            <Text style={s.summaryRowLabel}>Depense supplementaire</Text>
+            {hasDepense && !!motifDepense && (
+              <Text style={s.summaryDepMotif} numberOfLines={1}>{motifDepense}</Text>
+            )}
+          </View>
+        </View>
+        <Text style={[s.summaryRowAmount, !hasDepense ? s.summaryRowAmountZero : { color: "#DC2626" }]}>
+          {formatMoney(autreDepense ?? 0)}
+        </Text>
+      </View>
+    </View>
+  );
+};
 
 // ─── Filtre chips ─────────────────────────────────────────────────────────────
 
-// FilterChips gère maintenant plusieurs filtres actifs simultanément (string[]).
-// "all" = tableau vide → tout afficher.
-// Cliquer sur un type l'ajoute/retire de la sélection.
-// Cliquer sur "Tout" remet la sélection à vide.
-const FilterChips = ({
-  activeFilters,
-  onChange,
-}: {
-  activeFilters: string[];
-  onChange: (filters: string[]) => void;
-}) => {
+const FilterChips = ({ selected, onChange }: { selected: string; onChange: (k: string) => void }) => {
   const filters = [
     { key: "all",                  label: "Tout",           icon: "list"             },
     { key: "emprunt",              label: "Emprunts",       icon: "trending-up"      },
@@ -338,27 +367,16 @@ const FilterChips = ({
     { key: "assistance",           label: "Assistances",    icon: "heart"            },
     { key: "paiement-inscription", label: "Inscriptions",   icon: "school"           },
   ];
-
-  const toggle = (key: string) => {
-    if (key === "all") { onChange([]); return; }
-    if (activeFilters.includes(key)) {
-      const next = activeFilters.filter((k) => k !== key);
-      onChange(next);
-    } else {
-      onChange([...activeFilters, key]);
-    }
-  };
-
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.filterScroll}>
       <View style={s.filterRow}>
         {filters.map((f) => {
-          const active = f.key === "all" ? activeFilters.length === 0 : activeFilters.includes(f.key);
+          const active = selected === f.key;
           return (
             <TouchableOpacity
               key={f.key}
               style={[s.filterChip, active && s.filterChipActive]}
-              onPress={() => toggle(f.key)}
+              onPress={() => onChange(f.key)}
             >
               <Ionicons name={f.icon as any} size={13} color={active ? "white" : THEME.colors.neutral[600]} />
               <Text style={[s.filterChipText, active && { color: "white" }]}>{f.label}</Text>
@@ -373,16 +391,14 @@ const FilterChips = ({
 // ─── Barre de recherche par membre ───────────────────────────────────────────
 
 const MemberSearchBar = ({
-  searchText, onSearchChange, activeFilters, filteredCount, totalCount,
+  searchText, onSearchChange, selectedFilter, filteredCount, totalCount,
 }: {
   searchText: string; onSearchChange: (t: string) => void;
-  activeFilters: string[]; filteredCount: number; totalCount: number;
+  selectedFilter: string; filteredCount: number; totalCount: number;
 }) => {
-  const filterLabel = activeFilters.length === 0
+  const filterLabel = selectedFilter === "all"
     ? "toutes les opérations"
-    : activeFilters.length === 1
-      ? (OPERATION_CONFIG[activeFilters[0] as keyof typeof OPERATION_CONFIG]?.label?.toLowerCase() ?? "opérations")
-      : `${activeFilters.length} types sélectionnés`;
+    : OPERATION_CONFIG[selectedFilter as keyof typeof OPERATION_CONFIG]?.label?.toLowerCase() ?? "opérations";
 
   return (
     <View style={s.searchWrapper}>
@@ -401,7 +417,7 @@ const MemberSearchBar = ({
           </TouchableOpacity>
         )}
       </View>
-      {(searchText || activeFilters.length > 0) && (
+      {(searchText || selectedFilter !== "all") && (
         <Text style={s.searchCount}>
           {filteredCount} résultat{filteredCount !== 1 ? "s" : ""} sur {totalCount}
         </Text>
@@ -425,11 +441,16 @@ const OperationCard = ({ item, onPress }: { item: TimelineItem; onPress: () => v
         onPressOut={() => Animated.spring(scale, { toValue: 1,    useNativeDriver: true }).start()}
         activeOpacity={1}
       >
+        {/* Bande colorée gauche */}
         <LinearGradient colors={config.gradient} style={s.opStripe} />
+
         <View style={s.opBody}>
+          {/* Icône ronde */}
           <LinearGradient colors={config.gradient} style={s.opIconCircle}>
             <Ionicons name={config.icon as any} size={20} color="white" />
           </LinearGradient>
+
+          {/* Contenu */}
           <View style={s.opContent}>
             <View style={s.opTopRow}>
               <Text style={s.opTypeLabel}>{config.label}</Text>
@@ -450,6 +471,7 @@ const OperationCard = ({ item, onPress }: { item: TimelineItem; onPress: () => v
               </View>
             )}
           </View>
+
           <Ionicons name="chevron-forward" size={16} color={THEME.colors.neutral[300]} />
         </View>
       </TouchableOpacity>
@@ -474,6 +496,7 @@ const OperationDetailModal = ({ item, onClose }: { item: TimelineItem | null; on
       <View style={s.modalBackdrop}>
         <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={onClose} />
         <View style={s.modalSheet}>
+          {/* Header coloré */}
           <LinearGradient colors={config.gradient} style={s.modalHeader}>
             <View style={s.modalHandle} />
             <View style={s.modalHeaderRow}>
@@ -488,11 +511,14 @@ const OperationDetailModal = ({ item, onClose }: { item: TimelineItem | null; on
                 <Ionicons name="close" size={24} color="rgba(255,255,255,0.8)" />
               </TouchableOpacity>
             </View>
+            {/* Montant dans le header */}
             <View style={s.modalAmountBox}>
               <Text style={s.modalAmountLabel}>Montant</Text>
               <Text style={s.modalAmountValue}>{formatMoney(item.amount)}</Text>
             </View>
           </LinearGradient>
+
+          {/* Corps */}
           <ScrollView style={s.modalBody} contentContainerStyle={{ paddingBottom: 40 }}>
             {item.memberName && (
               <DetailRow
@@ -601,18 +627,11 @@ const PaginationBar = ({ current, total, onPrev, onNext }: {
 );
 
 // ─── Vue sessions ─────────────────────────────────────────────────────────────
-// Reçoit un sessionId optionnel pour auto-sélectionner la bonne session.
-// On utilise un useEffect qui se re-déclenche à chaque fois que sessions change
-// (chargement async) pour ne pas rater la sélection.
 
-const SessionsView = ({
-  exercice,
-  onSelectSession,
-}: {
-  exercice: Exercise;
-  onSelectSession: (s: Session) => void;
+const SessionsView = ({ exercice, onSelectSession }: {
+  exercice: Exercise; onSelectSession: (s: Session) => void;
 }) => {
-  const { data: sessionsRaw, isLoading, error, refetch } = useSessions(exercice.id);
+  const { data: sessionsRaw, isLoading, error, refetch } = useSessions({ exercice: exercice.id });
   const sessions: Session[] = arr(sessionsRaw).sort(
     (a: Session, b: Session) =>
       new Date(b.date_session || "").getTime() - new Date(a.date_session || "").getTime()
@@ -633,11 +652,7 @@ const SessionsView = ({
       {sessions.length === 0
         ? <EmptyState title="Aucune session" subtitle="Aucune session créée pour cet exercice" />
         : sessions.map((session) => (
-            <SessionCard
-              key={String(session.id)}
-              session={session}
-              onPress={() => onSelectSession(session)}
-            />
+            <SessionCard key={String(session.id)} session={session} onPress={() => onSelectSession(session)} />
           ))
       }
     </ScrollView>
@@ -646,27 +661,26 @@ const SessionsView = ({
 
 // ─── Vue opérations ───────────────────────────────────────────────────────────
 
-const OperationsView = ({
-  session,
-  initialFilters,
-}: {
-  session: Session;
-  initialFilters?: string[];
-}) => {  const { data: loansRaw }               = useLoans({ session: session.id });
-  const { data: repaymentsRaw }          = useRepayments({ session: session.id });
-  const { data: solidarityRaw }          = useSolidarityPayments({ session: session.id });
-  const { data: renflouementRaw }        = useRenflouements({ session: session.id });
-  const { data: savingsRaw }             = useSavings({ session: session.id });
-  const { data: assistancesRaw }         = useAssistances({ session: session.id });
+const OperationsView = ({ session, initialFilters }: { session: Session; initialFilters?: string[] }) => {
+  const { data: loansRaw }        = useLoans({ session: session.id });
+  const { data: repaymentsRaw }   = useRepayments({ session: session.id });
+  const { data: solidarityRaw }   = useSolidarityPayments({ session: session.id });
+  const { data: renflouementRaw } = useRenflouements({ session: session.id });
+  const { data: savingsRaw }      = useSavings({ session: session.id });
+  const { data: assistancesRaw }  = useAssistances({ session: session.id });
+  const { data: depensesRaw }     = useSessionDepenses(session.id);
+  const collation    = parseFloat(depensesRaw?.depenses?.[0]?.montant_collation     ?? "0") || 0;
+  const autreDepense = parseFloat(depensesRaw?.depenses?.[0]?.montant_autre_depense ?? "0") || 0;
+  const motifDepense = depensesRaw?.depenses?.[0]?.motif_autre_depense ?? "";
+  // Inscriptions : reconstruites depuis les membres (pas d'endpoint dédié)
   const { data: membersRaw }      = useMembers();
 
   const [selectedItem,   setSelectedItem]   = useState<TimelineItem | null>(null);
   const [searchText,     setSearchText]     = useState("");
-  // activeFilters : [] = tout afficher, sinon liste des types actifs
-  // Initialisé depuis le preset de route si fourni
-  const [activeFilters, setActiveFilters]   = useState<string[]>(initialFilters ?? []);
+  const [selectedFilter, setSelectedFilter] = useState("all");
   const [page,           setPage]           = useState(1);
 
+  // ── Construire timeline ──
   const timeline = useMemo<TimelineItem[]>(() => {
     const items: TimelineItem[] = [];
 
@@ -720,10 +734,7 @@ const OperationsView = ({
       .filter((m: any) => String(m.session_inscription) === String(session.id))
       .forEach((m: any) => {
         const montant =
-          parseFloat(m.donnees_financieres?.inscription?.montant_paye) ||
-          parseFloat(m.donnees_financieres?.inscription?.montant) ||
-          parseFloat(m.donnees_financieres?.resume_financier?.total_inscription) ||
-          0;
+          parseFloat(m.donnees_financieres?.inscription?.montant_paye_inscription) || 0;
         const nom    = m.utilisateur?.nom_complet || m.utilisateur?.username || "Membre";
         const numero = m.numero_membre || "";
         items.push({
@@ -737,21 +748,15 @@ const OperationsView = ({
         });
       });
 
-      // Juste avant return items.sort(...)
-      console.log("MEMBRES RAW:", arr(membersRaw).length);
-      console.log("SESSION ID:", session.id);
-      console.log("MEMBRES FILTRÉS:", arr(membersRaw).filter((m: any) => 
-        String(m.session_inscription) === String(session.id)
-      ).length);
-      console.log("SAMPLE session_inscription:", arr(membersRaw)[0]?.session_inscription);
-
     return items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [loansRaw, repaymentsRaw, solidarityRaw, renflouementRaw, savingsRaw, assistancesRaw, membersRaw, session.id]);
 
+  // ── Filtrage : d'abord par type, ensuite par nom de membre ──
   const filteredTimeline = useMemo(() => {
     let f = timeline;
-    // Filtre par types ([] = tout afficher)
-    if (activeFilters.length > 0) f = f.filter((i) => activeFilters.includes(i.type));
+    // 1. Filtre par type d'opération
+    if (selectedFilter !== "all") f = f.filter((i) => i.type === selectedFilter);
+    // 2. Recherche par nom ou numéro de membre
     if (searchText.trim()) {
       const q = searchText.toLowerCase().trim();
       f = f.filter((i) =>
@@ -760,13 +765,14 @@ const OperationsView = ({
       );
     }
     return f;
-  }, [timeline, activeFilters, searchText]);
+  }, [timeline, selectedFilter, searchText]);
 
-  useMemo(() => setPage(1), [searchText, activeFilters]);
+  useMemo(() => setPage(1), [searchText, selectedFilter]);
 
   const totalPages    = Math.max(1, Math.ceil(filteredTimeline.length / OPS_PER_PAGE));
   const pagedTimeline = filteredTimeline.slice((page - 1) * OPS_PER_PAGE, page * OPS_PER_PAGE);
 
+  // Totaux par type (sur TOUTE la session, pas filtrés — pour la synthèse)
   const totals = useMemo(() => {
     const t: Record<string, number> = {};
     timeline.forEach((i) => { t[i.type] = (t[i.type] || 0) + i.amount; });
@@ -779,28 +785,37 @@ const OperationsView = ({
         contentContainerStyle={{ paddingBottom: 120, paddingTop: SPACING.md }}
         showsVerticalScrollIndicator={false}
       >
+        {/* ── Synthèse : 7 boîtes toujours affichées ── */}
         <View style={{ paddingHorizontal: SPACING.lg, marginBottom: SPACING.md }}>
           <View style={s.sectionHeader}>
             <Ionicons name="stats-chart" size={18} color={THEME.colors.admin[500]} />
             <Text style={s.sectionTitle}>Bilan de la session</Text>
           </View>
-          <SessionSummaryGrid totals={totals} />
+          <SessionSummaryGrid
+            totals={totals}
+            collation={collation}
+            autreDepense={autreDepense}
+            motifDepense={motifDepense}
+          />
         </View>
 
+        {/* ── Filtres type ── */}
         <View style={{ paddingHorizontal: SPACING.lg, marginBottom: SPACING.sm }}>
-          <FilterChips activeFilters={activeFilters} onChange={setActiveFilters} />
+          <FilterChips selected={selectedFilter} onChange={setSelectedFilter} />
         </View>
 
+        {/* ── Recherche par membre ── */}
         <View style={{ paddingHorizontal: SPACING.lg }}>
           <MemberSearchBar
             searchText={searchText}
             onSearchChange={setSearchText}
-            activeFilters={activeFilters}
+            selectedFilter={selectedFilter}
             filteredCount={filteredTimeline.length}
             totalCount={timeline.length}
           />
         </View>
 
+        {/* ── Liste opérations ── */}
         <View style={{ paddingHorizontal: SPACING.lg }}>
           {filteredTimeline.length === 0 ? (
             <EmptyState
@@ -837,107 +852,27 @@ const OperationsView = ({
   );
 };
 
-// ─── Composant principal ────────────────────────────────────────────────
+// ─── Composant principal ──────────────────────────────────────────────────────
 
 export default function AdminHistoryScreen() {
   const insets = useSafeAreaInsets();
-  const route  = useRoute<any>();
-  const { user } = useAuthContext();
-  const readOnly = !user?.can_write; // true pour Trésorier et Président
-
-  // ── Chargement des exercices ──
   const { data: exercicesRaw, isLoading, error, refetch } = useExercises();
   const exercices: Exercise[] = arr(exercicesRaw).sort(
     (a: Exercise, b: Exercise) =>
       new Date(b.date_debut || "").getTime() - new Date(a.date_debut || "").getTime()
   );
 
-  // ── Navigation manuelle (quand l'utilisateur navigue lui-même dans l'écran) ──
-  const [manualExercice, setManualExercice] = useState<Exercise | null>(null);
-  const [manualSession,  setManualSession]  = useState<Session  | null>(null);
-  const [exPage, setExPage] = useState(1);
-
-  // ── Paramètres de route (quand on vient du Dashboard) ──
-  // On lit les params directement depuis route.params à chaque rendu.
-  // IMPORTANT : on ne les met PAS dans un useState pour éviter les problèmes
-  // de synchronisation. On lit juste ce qui est là maintenant.
-  const routeParams   = route.params as RouteParams | undefined;
-  // Les IDs sont des UUID (strings) — on les garde tels quels
-  const paramSessionId    = routeParams?.sessionId   || null;   // string UUID ou null
-  const paramExerciceId   = routeParams?.exerciceId  || null;   // string UUID ou null
-  const paramSessionName  = routeParams?.sessionName  ?? null;
-  const paramExerciceName = routeParams?.exerciceName ?? null;
-  // filterPreset : pré-sélection de filtres depuis les boutons soldes du Dashboard
-  const paramFilterPreset = routeParams?.filterPreset ?? null;
-
-  // ── Décision d'affichage ──
-  // hasRouteParams : vrai si on vient d'une navigation depuis le Dashboard (session ou filtre seul)
-  const hasRouteParams = paramSessionId != null && paramSessionName != null;
-  // hasFilterPreset : vrai si on vient des boutons soldes (pas de session, juste des filtres)
-  const hasFilterPreset = paramFilterPreset != null && paramFilterPreset.length > 0 && !hasRouteParams;
-  React.useEffect(() => {
-    if (hasFilterPreset || hasRouteParams) {
-      setManualSession(null);
-      setManualExercice(null);
-    }
-  }, [hasFilterPreset, hasRouteParams]);
-  
-  // Session et exercice actifs : soit depuis les params, soit depuis la navigation manuelle
-  const activeSession: Session | null = hasRouteParams
-    ? ({ id: paramSessionId, nom: paramSessionName } as unknown as Session)
-    : manualSession;
-
-  // Pour l'exercice : si on a les params, on cherche l'objet complet dans la liste
-  // (pour avoir toutes les infos), sinon on utilise l'objet manuel
-  const activeExercice: Exercise | null = hasRouteParams
-    ? (exercices.find((ex) => String(ex.id) === paramExerciceId)
-        ?? ({ id: paramExerciceId ?? "", nom: paramExerciceName ?? "Exercice" } as unknown as Exercise))
-    : manualExercice;
-
-  const showDashboard = !!activeExercice && !activeSession;
+  const [selectedExercice, setSelectedExercice] = useState<Exercise | null>(null);
+  const [selectedSession,  setSelectedSession]  = useState<Session  | null>(null);
+  const [exPage,           setExPage]           = useState(1);
 
   const totalExPages   = Math.max(1, Math.ceil(exercices.length / EXERCISES_PER_PAGE));
   const pagedExercices = exercices.slice((exPage - 1) * EXERCISES_PER_PAGE, exPage * EXERCISES_PER_PAGE);
 
-  // Loader uniquement si on est en navigation manuelle sans rien de sélectionné
-  if (!hasRouteParams && !hasFilterPreset && !activeExercice && !activeSession && isLoading)
-    return <LoadingView message="Chargement des exercices…" />;
-  if (!hasRouteParams && !hasFilterPreset && !activeExercice && !activeSession && error)
-    return <ErrorView message="Impossible de charger les exercices" onRetry={refetch} />;
+  const showDashboard = !!selectedExercice && !selectedSession;
 
-  // ── Retour arrière ──
-  // Si on est en mode "params" (venu du Dashboard), le bouton retour
-  // doit effacer les params de la route pour revenir à l'état neutre.
-  // On le fait en appellant navigation.setParams({}) puis en remettant
-  // l'état manuel à null également.
-  const navigation = useNavigation<any>();
-
-  const clearRouteParams = () => {
-    navigation.setParams({
-      sessionId: undefined,
-      exerciceId: undefined,
-      sessionName: undefined,
-      exerciceName: undefined,
-      filterPreset: undefined,
-    });
-  };
-
-  const handleBack = () => {
-    if (hasRouteParams || hasFilterPreset) {
-      // Vider tous les params → retour à la liste des exercices
-      clearRouteParams();
-    } else if (activeSession) {
-      setManualSession(null);
-    } else if (activeExercice) {
-      setManualExercice(null);
-    }
-  };
-
-  const handleReset = () => {
-    clearRouteParams();
-    setManualSession(null);
-    setManualExercice(null);
-  };
+  if (isLoading && !selectedExercice) return <LoadingView message="Chargement des exercices…" />;
+  if (error    && !selectedExercice)  return <ErrorView  message="Impossible de charger les exercices" onRetry={refetch} />;
 
   return (
     <View style={[s.container, { paddingTop: insets.top }]}>
@@ -946,29 +881,22 @@ export default function AdminHistoryScreen() {
       {/* ── Header ── */}
       <LinearGradient colors={THEME.gradients.dark} style={s.header}>
         <View style={s.headerRow}>
-          {(activeExercice || activeSession || hasFilterPreset) && (
-            <TouchableOpacity style={s.backBtn} onPress={handleBack}>
+          {(selectedExercice || selectedSession) && (
+            <TouchableOpacity
+              style={s.backBtn}
+              onPress={() => { if (selectedSession) setSelectedSession(null); else setSelectedExercice(null); }}
+            >
               <Ionicons name="arrow-back" size={22} color="white" />
             </TouchableOpacity>
           )}
           <View style={{ flex: 1 }}>
             <Text style={s.headerTitle} numberOfLines={1}>
-              {hasFilterPreset
-                ? "Historique"
-                : activeSession
-                  ? activeSession.nom
-                  : activeExercice
-                    ? activeExercice.nom
-                    : "Historique"}
+              {selectedSession ? selectedSession.nom : selectedExercice ? selectedExercice.nom : "Historique"}
             </Text>
             <Text style={s.headerSub}>
-              {hasFilterPreset
-                ? "Toutes les opérations"
-                : activeSession
-                  ? `Exercice  ·  ${activeExercice?.nom ?? ""}`
-                  : activeExercice
-                    ? "Sélectionnez une session"
-                    : "Tous les exercices"}
+              {selectedSession
+                ? `Exercice  ·  ${selectedExercice?.nom}`
+                : selectedExercice ? "Sélectionnez une session" : "Tous les exercices"}
             </Text>
           </View>
           <View style={s.adminPill}>
@@ -978,23 +906,16 @@ export default function AdminHistoryScreen() {
         </View>
 
         <Breadcrumb
-          exercice={activeExercice}
-          session={activeSession}
-          onReset={handleReset}
-          onBackToExercice={() => {
-            if (hasRouteParams) {
-              clearRouteParams();
-            } else {
-              setManualSession(null);
-            }
-          }}
+          exercice={selectedExercice} session={selectedSession}
+          onReset={() => { setSelectedSession(null); setSelectedExercice(null); }}
+          onBackToExercice={() => setSelectedSession(null)}
         />
 
-        {showDashboard && <ExerciseDashboard exercice={activeExercice!} />}
+        {showDashboard && <ExerciseDashboard exercice={selectedExercice!} />}
       </LinearGradient>
 
-      {/* ── Vue 1 : liste des exercices ── */}
-      {!hasFilterPreset && !activeExercice && !activeSession && (
+      {/* ── Vue 1 : exercices ── */}
+      {!selectedExercice && (
         <ScrollView
           contentContainerStyle={{ paddingHorizontal: SPACING.lg, paddingBottom: 120, paddingTop: SPACING.lg }}
           showsVerticalScrollIndicator={false}
@@ -1009,7 +930,7 @@ export default function AdminHistoryScreen() {
                 {pagedExercices.map((ex) => (
                   <ExerciceCard
                     key={String(ex.id)} exercice={ex}
-                    onPress={() => { setManualExercice(ex); setExPage(1); }}
+                    onPress={() => { setSelectedExercice(ex); setExPage(1); }}
                   />
                 ))}
                 {totalExPages > 1 && (
@@ -1024,29 +945,12 @@ export default function AdminHistoryScreen() {
         </ScrollView>
       )}
 
-      {/* ── Vue 2 : sessions de l'exercice ── */}
-      {!hasFilterPreset && activeExercice && !activeSession && (
-        <SessionsView
-          exercice={activeExercice}
-          onSelectSession={(sess) => setManualSession(sess)}
-        />
+      {selectedExercice && !selectedSession && (
+        <SessionsView exercice={selectedExercice} onSelectSession={setSelectedSession} />
       )}
 
-      {/* ── Vue 3a : transactions d'une session spécifique (depuis Dashboard/SessionsView) ──
-           key= force le remontage complet quand la session change. */}
-      {activeExercice && activeSession && (
-        <OperationsView key={`ops-${activeSession.id}`} session={activeSession} />
-      )}
-
-      {/* ── Vue 3b : toutes les transactions avec filtres pré-sélectionnés (depuis boutons soldes) ──
-           On crée une session factice id="all" pour déclencher useLoans({session: undefined})
-           en passant undefined plutôt que null pour que les hooks ne filtrent pas par session. */}
-      {hasFilterPreset && (
-        <OperationsView
-          key={`ops-preset-${(paramFilterPreset ?? []).join("-")}`}
-          session={{ id: undefined as any, nom: "" } as any}
-          initialFilters={paramFilterPreset ?? []}
-        />
+      {selectedExercice && selectedSession && (
+        <OperationsView session={selectedSession} />
       )}
     </View>
   );
@@ -1057,6 +961,7 @@ export default function AdminHistoryScreen() {
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F1F5F9" },
 
+  // Header
   header:    { paddingHorizontal: SPACING.lg, paddingTop: SPACING.sm, paddingBottom: SPACING.lg },
   headerRow: { flexDirection: "row", alignItems: "center", marginBottom: SPACING.xs },
   backBtn:   { width: 38, height: 38, borderRadius: 19, backgroundColor: "rgba(255,255,255,0.15)", alignItems: "center", justifyContent: "center", marginRight: SPACING.sm },
@@ -1065,6 +970,7 @@ const s = StyleSheet.create({
   adminPill:  { flexDirection: "row", alignItems: "center", backgroundColor: "rgba(255,255,255,0.15)", paddingHorizontal: SPACING.sm, paddingVertical: 5, borderRadius: 20, gap: 4 },
   adminPillText: { fontSize: 11, color: "white", fontWeight: "700" },
 
+  // Breadcrumb
   breadcrumb: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 4, marginBottom: SPACING.sm },
   crumb:      { fontSize: 12 },
   crumbLink:  { color: "rgba(255,255,255,0.6)", fontWeight: "500" },
@@ -1082,9 +988,11 @@ const s = StyleSheet.create({
   dashRowValue:    { fontSize: FONT_SIZES.sm, fontWeight: "700", textAlign: "right" },
   dashRowValueZero:{ color: "rgba(255,255,255,0.4)", fontWeight: "400" },
 
+  // Section header
   sectionHeader: { flexDirection: "row", alignItems: "center", gap: SPACING.sm, marginBottom: SPACING.md },
   sectionTitle:  { fontSize: FONT_SIZES.md, fontWeight: "700", color: THEME.colors.neutral[700] },
 
+  // Exercice card — gradient plein comme les cartes de l'app
   exerciceCard: { marginBottom: SPACING.md, borderRadius: 20, overflow: "hidden", elevation: 4, shadowColor: "#000", shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.15, shadowRadius: 6 },
   exerciceCardGradient: { flexDirection: "row", alignItems: "center", padding: SPACING.md + 4 },
   exerciceIconCircle: { width: 56, height: 56, borderRadius: 28, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center", marginRight: SPACING.md },
@@ -1095,6 +1003,7 @@ const s = StyleSheet.create({
   exerciceStatusText: { fontSize: 11, color: "white", fontWeight: "700" },
   exerciceArrow: { paddingLeft: SPACING.sm },
 
+  // Session card — même style
   sessionCard: { marginBottom: SPACING.md, borderRadius: 18, overflow: "hidden", elevation: 3, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.12, shadowRadius: 5 },
   sessionCardGradient: { flexDirection: "row", alignItems: "center", padding: SPACING.md },
   sessionIconCircle: { width: 48, height: 48, borderRadius: 24, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center", marginRight: SPACING.md },
@@ -1115,17 +1024,20 @@ const s = StyleSheet.create({
   summaryRowAmount:     { fontSize: FONT_SIZES.sm, fontWeight: "700", textAlign: "right" },
   summaryRowAmountZero: { color: THEME.colors.neutral[400], fontWeight: "400" },
 
+  // Filtres
   filterScroll: { marginBottom: SPACING.sm },
   filterRow:    { flexDirection: "row", paddingHorizontal: 2 },
   filterChip:   { flexDirection: "row", alignItems: "center", backgroundColor: "white", borderRadius: 20, paddingHorizontal: SPACING.md, paddingVertical: 7, marginHorizontal: 3, gap: 4, elevation: 1, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 2 },
   filterChipActive: { backgroundColor: COLORS.primary },
   filterChipText: { fontSize: 12, fontWeight: "600", color: THEME.colors.neutral[600] },
 
+  // Recherche
   searchWrapper: { marginBottom: SPACING.md },
   searchBox:     { flexDirection: "row", alignItems: "center", backgroundColor: "white", borderRadius: 14, paddingHorizontal: SPACING.md, paddingVertical: 10, gap: SPACING.sm, elevation: 1, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 3 },
   searchInput:   { flex: 1, fontSize: FONT_SIZES.sm, color: THEME.colors.neutral[800] },
   searchCount:   { fontSize: 11, color: THEME.colors.neutral[500], textAlign: "center", marginTop: 5 },
 
+  // Opération card — fond blanc avec bande colorée gauche
   opCard:   { backgroundColor: "white", borderRadius: 16, overflow: "hidden", elevation: 2, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.08, shadowRadius: 4 },
   opStripe: { position: "absolute", left: 0, top: 0, bottom: 0, width: 5 },
   opBody:   { flexDirection: "row", alignItems: "center", padding: SPACING.md, paddingLeft: SPACING.md + 5 },
@@ -1140,11 +1052,13 @@ const s = StyleSheet.create({
   opStatusBadge:{ alignSelf: "flex-start", paddingHorizontal: 7, paddingVertical: 2, borderRadius: 8 },
   opStatusText: { fontSize: 10, fontWeight: "700" },
 
+  // Pagination
   pagination:   { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: SPACING.lg, marginVertical: SPACING.lg },
   pageBtn:      { width: 42, height: 42, borderRadius: 21, backgroundColor: "white", alignItems: "center", justifyContent: "center", elevation: 2, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.08, shadowRadius: 3 },
   pageLabelBox: { backgroundColor: "white", paddingHorizontal: SPACING.lg, paddingVertical: SPACING.sm, borderRadius: 20, elevation: 1 },
   pageLabel:    { fontSize: FONT_SIZES.sm, fontWeight: "700", color: THEME.colors.neutral[700] },
 
+  // Modal
   modalBackdrop:   { flex: 1, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "flex-end" },
   modalSheet:      { maxHeight: SCREEN_HEIGHT * 0.85, borderTopLeftRadius: 28, borderTopRightRadius: 28, overflow: "hidden", backgroundColor: "white" },
   modalHeader:     { padding: SPACING.lg, paddingTop: SPACING.md },
@@ -1159,4 +1073,10 @@ const s = StyleSheet.create({
   detailRow:       { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: SPACING.sm + 2, borderBottomWidth: 1, borderBottomColor: "#F1F5F9" },
   detailLabel:     { fontSize: FONT_SIZES.sm, color: THEME.colors.neutral[500], fontWeight: "500", flex: 1 },
   detailValue:     { fontSize: FONT_SIZES.sm, color: THEME.colors.neutral[800], fontWeight: "700", textAlign: "right", flex: 1.5, marginLeft: SPACING.md },
+
+  // Separateur depenses dans le bilan session
+  summaryDepSep:     { flexDirection: "row", alignItems: "center", paddingHorizontal: SPACING.md, paddingVertical: 8, gap: SPACING.sm },
+  summaryDepSepLine: { flex: 1, height: 0.5, backgroundColor: THEME.colors.neutral[200] },
+  summaryDepSepText: { fontSize: 10, fontWeight: "700", color: THEME.colors.neutral[400], textTransform: "uppercase", letterSpacing: 0.5 },
+  summaryDepMotif:   { fontSize: 10, color: THEME.colors.neutral[400], marginTop: 2, fontStyle: "italic" },
 });
