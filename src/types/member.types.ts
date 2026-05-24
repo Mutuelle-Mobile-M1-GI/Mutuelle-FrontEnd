@@ -13,6 +13,7 @@ export interface Member {
   session_inscription: string;
   session_inscription_nom: string;
   is_en_regle: boolean;
+  is_actif: boolean;
   donnees_financieres: MemberFinancialData;
   date_creation: string;
   date_modification: string;

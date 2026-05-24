@@ -219,8 +219,8 @@ export default function RenflouementScreen() {
     if (Array.isArray(renflouementsData)) {
       return renflouementsData;
     }
-    if (renflouementsData && Array.isArray(renflouementsData.results)) {
-      return renflouementsData.results;
+    if (renflouementsData && Array.isArray((renflouementsData as any).results)) {
+      return (renflouementsData as any).results;
     }
     return [];
   }, [renflouementsData]);
@@ -282,7 +282,7 @@ const handleAddPayment = () => {
     return;
   }
 
-    const montantRestant = currentRenflouement.montant_restant || 0;
+    const montantRestant = (currentRenflouement as any).montant_restant || 0;
 
     // Vérifier si le montant dépasse le montant attendu
     if (montantNum > montantRestant) {

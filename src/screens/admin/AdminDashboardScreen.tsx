@@ -1113,6 +1113,42 @@ const navigation = useNavigation<any>();
     <>
       <StatusBar barStyle="dark-content" backgroundColor={COLORS.background} />
 
+      {/* ══ HEADER FIGÉ ══ */}
+      <View style={styles.header}>
+        <View style={styles.headerLeft}>
+          <Text style={styles.greeting}>Bonjour </Text>
+          <Text style={styles.userName}>{userName}</Text>
+          {/* ✅ Affiche le vrai rôle */}
+          <Text style={styles.userRole}>{roleLabel}</Text>
+        </View>
+        <View style={styles.headerRight}>
+          {/* <TouchableOpacity
+            style={styles.headerButton}
+            onPress={() => navigation.navigate("Notifications")}
+          >
+            <Ionicons name="notifications-outline" size={24} color={COLORS.text} />
+            {(stats?.alertesCount || 0) > 0 && (
+              <View style={styles.notificationBadge}>
+                <Text style={styles.notificationBadgeText}>
+                  {(stats?.alertesCount || 0) > 9 ? "9+" : stats?.alertesCount}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity> */}
+          <TouchableOpacity
+            style={styles.headerButton}
+            onPress={() => navigation.navigate("Profile")}
+          >
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>
+                {userName.substring(0, 2).toUpperCase()}
+              </Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* ══ CONTENU SCROLLABLE ══ */}
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.scrollContent}
@@ -1120,52 +1156,17 @@ const navigation = useNavigation<any>();
         showsVerticalScrollIndicator={false}
       >
 
-        {/* ══ HEADER ══ */}
-        <View style={styles.header}>
-          <View style={styles.headerLeft}>
-            <Text style={styles.greeting}>Bonjour </Text>
-            <Text style={styles.userName}>{userName}</Text>
-            {/* ✅ Affiche le vrai rôle */}
-            <Text style={styles.userRole}>{roleLabel}</Text>
-          </View>
-          <View style={styles.headerRight}>
-            <TouchableOpacity
-              style={styles.headerButton}
-              onPress={() => navigation.navigate("Notifications")}
-            >
-              <Ionicons name="notifications-outline" size={24} color={COLORS.text} />
-              {(stats?.alertesCount || 0) > 0 && (
-                <View style={styles.notificationBadge}>
-                  <Text style={styles.notificationBadgeText}>
-                    {(stats?.alertesCount || 0) > 9 ? "9+" : stats?.alertesCount}
-                  </Text>
-                </View>
-              )}
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.headerButton}
-              onPress={() => navigation.navigate("Profile")}
-            >
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>
-                  {userName.substring(0, 2).toUpperCase()}
-                </Text>
-              </View>
-            </TouchableOpacity>
-          </View>
-        </View>
-
         {/* ══ SOLDE DES COMPTES ══ */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Solde des comptes</Text>
 
           <TouchableOpacity
             style={styles.soldeCard}
-            onPress={() =>
-              navigation.navigate("Historique" as never, {
-                filterPreset: ["paiement-inscription"],
-              } as never)
-            }
+            // onPress={() =>
+            //   navigation.navigate("Historique" as never, {
+            //     filterPreset: ["paiement-inscription"],
+            //   } as never)
+            // }
             activeOpacity={0.8}
           >
             <View style={styles.soldeLeft}>
@@ -1179,16 +1180,16 @@ const navigation = useNavigation<any>();
                 <Text style={styles.soldeLabel}>Fond Inscription</Text>
               </View>
             </View>
-            <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
+            {/* <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} /> */}
           </TouchableOpacity>
 
           <TouchableOpacity
             style={styles.soldeCard}
-            onPress={() =>
-              navigation.navigate("Historique" as never, {
-                filterPreset: ["solidarite", "renflouement", "assistance"],
-              } as never)
-            }
+            // onPress={() =>
+            //   navigation.navigate("Historique" as never, {
+            //     filterPreset: ["solidarite", "renflouement", "assistance"],
+            //   } as never)
+            // }
             activeOpacity={0.8}
           >
             <View style={styles.soldeLeft}>
@@ -1202,16 +1203,16 @@ const navigation = useNavigation<any>();
                 <Text style={styles.soldeLabel}>Fond Social</Text>
               </View>
             </View>
-            <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
+            {/* <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} /> */}
           </TouchableOpacity>
 
           <TouchableOpacity
             style={styles.soldeCard}
-            onPress={() =>
-              navigation.navigate("Historique" as never, {
-                filterPreset: ["epargne", "remboursement", "emprunt"],
-              } as never)
-            }
+            // onPress={() =>
+            //   navigation.navigate("Historique" as never, {
+            //     filterPreset: ["epargne", "remboursement", "emprunt"],
+            //   } as never)
+            // }
             activeOpacity={0.8}
           >
             <View style={styles.soldeLeft}>
@@ -1225,7 +1226,7 @@ const navigation = useNavigation<any>();
                 <Text style={styles.soldeLabel}>Fond Épargne</Text>
               </View>
             </View>
-            <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
+            {/* <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} /> */}
           </TouchableOpacity>
         </View>
 
@@ -1504,7 +1505,7 @@ const styles = StyleSheet.create({
   retryButton: { backgroundColor: COLORS.primary, paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md, borderRadius: BORDER_RADIUS.md },
   retryButtonText: { color: "white", fontWeight: "600", fontSize: FONT_SIZES.md },
 
-  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: SPACING.lg, paddingVertical: SPACING.xl, backgroundColor: COLORS.background },
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md, marginTop: SPACING.lg, backgroundColor: COLORS.background },
   headerLeft: { flex: 1 },
   greeting: { fontSize: FONT_SIZES.md, color: COLORS.textSecondary, marginBottom: SPACING.xs },
   userName: { fontSize: FONT_SIZES.xxl, fontWeight: "bold", color: COLORS.text, marginBottom: SPACING.xs },

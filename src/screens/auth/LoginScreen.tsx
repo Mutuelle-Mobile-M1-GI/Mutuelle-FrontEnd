@@ -49,6 +49,49 @@ export default function LoginScreen() {
     ]).start();
   }, []);
 
+  // 🔧 Fonction pour extraire les messages d'erreur de l'API
+  const extractErrorMessage = (error: any): string => {
+    // Si c'est une erreur d'Axios/HTTP
+    if (error?.response?.data) {
+      const data = error.response.data;
+      
+      // Format: { "non_field_errors": ["Message..."] }
+      if (data.non_field_errors && Array.isArray(data.non_field_errors)) {
+        return data.non_field_errors[0];
+      }
+      
+      // Format: { "password": ["Message..."] } ou { "email": ["Message..."] }
+      if (data.password && Array.isArray(data.password)) {
+        return data.password[0];
+      }
+      if (data.email && Array.isArray(data.email)) {
+        return data.email[0];
+      }
+      
+      // Format: { "detail": "Message..." }
+      if (data.detail) {
+        return data.detail;
+      }
+      
+      // Format: { "error": "Message..." }
+      if (data.error) {
+        return data.error;
+      }
+      
+      // Si c'est un string
+      if (typeof data === 'string') {
+        return data;
+      }
+    }
+    
+    // Fallback sur le message
+    if (error?.message) {
+      return error.message;
+    }
+    
+    return "Erreur de connexion. Vérifiez vos identifiants.";
+  };
+
   const handleLogin = async () => {
     setFormError(null);
     
@@ -58,7 +101,7 @@ export default function LoginScreen() {
     }
     
     if (!email.includes("@")) {
-      setFormError("Adresse email invalide");
+      setFormError("Adresse email invalide"); 
       return;
     }
     
@@ -74,12 +117,12 @@ export default function LoginScreen() {
       console.log("Login terminé, navigation automatique via AppNavigator");
       // ✅ Pas besoin de navigate manuellement, AppNavigator gère ça !
     } catch (e: any) {
-      console.log("Erreur login:", e);
-      setFormError(
-        e?.message?.includes("401") || e?.message?.includes("Invalid") 
-          ? "Email ou mot de passe incorrect" 
-          : "Erreur de connexion. Vérifiez votre connexion internet."
-      );
+      console.log("Erreur login complète:", e);
+      console.log("Erreur data:", e?.response?.data);
+      
+      // 🔧 Extraire et afficher le message d'erreur de l'API
+      const errorMessage = extractErrorMessage(e);
+      setFormError(errorMessage);
     }
   };
 

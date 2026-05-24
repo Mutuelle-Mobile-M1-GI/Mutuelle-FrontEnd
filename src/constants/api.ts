@@ -1,8 +1,9 @@
 // Point d'entrée centralisé pour toutes les URLs d'API
 
+import { useEmpruntTiers } from "../hooks/useEmpruntTiers";
 import { createLoan } from "../services/loan.service";
 
-export const API_BASE_URL = "http://192.168.1.100:8000/api";
+export const API_BASE_URL = "http://10.28.225.223:8000/api";
 
 export const API_ENDPOINTS = {
   // Auth
@@ -72,6 +73,7 @@ export const API_ENDPOINTS = {
   loanRepaymentPercentageMax: "?pourcentage_rembourse_max=80",
   loanAlmostRepaid: "?presque_rembourse=true", // >80% remboursé
   loanBarelyRepaid: "?peu_rembourse=true",     // <20% remboursé
+  empruntTiers:"/core/emprunt-tiers/",
 
   // Dates
   loanThisMonth: "?this_month=true",

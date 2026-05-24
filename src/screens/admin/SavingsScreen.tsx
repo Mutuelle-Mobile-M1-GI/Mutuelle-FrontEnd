@@ -235,25 +235,38 @@ export default function SavingsScreen() {
   // ── Liste finale des épargnes par membre (serveur + local) ─────────────────
   const finalMembersList = useMemo((): MemberSavings[] => {
     const serverList = (serverStats?.tous_les_membres as any[]) || [];
-    return serverList.map((sMember): MemberSavings => {
-      const localInfo = members.find((m) => m.id === sMember.id);
-      return {
-        id: sMember.id,
-        numero_membre: sMember.numero,
-        nom_complet: sMember.nom,
-        email: localInfo?.utilisateur?.email || "",
-        statut: sMember.statut || "ACTIF",
-        total_epargne: sMember.montant,
-        total_depots: sMember.montant,
-        total_retraits:
-          localInfo?.donnees_financieres?.emprunt?.montant_restant_a_rembourser || 0,
-        nombre_transactions:
-          localInfo?.donnees_financieres?.epargne?.nombre_transactions || 0,
-        derniere_transaction:
-          localInfo?.donnees_financieres?.epargne?.derniere_transaction_date,
-      };
-    });
+    return serverList
+      .map((sMember): MemberSavings => {
+        const localInfo = members.find((m) => m.id === sMember.id);
+        return {
+          id: sMember.id,
+          numero_membre: sMember.numero,
+          nom_complet: sMember.nom,
+          email: localInfo?.utilisateur?.email || "",
+          statut: sMember.statut || "ACTIF",
+          total_epargne: sMember.montant,
+          total_depots: sMember.montant,
+          total_retraits:
+            localInfo?.donnees_financieres?.emprunt?.montant_restant_a_rembourser || 0,
+          nombre_transactions:
+            localInfo?.donnees_financieres?.epargne?.nombre_transactions || 0,
+          derniere_transaction:
+            localInfo?.donnees_financieres?.epargne?.derniere_transaction_date,
+        };
+      })
+      .filter((member) => {
+        // Ne garder que les membres actifs et qui ont termine leur inscription(is_actif !== false)
+        const localInfo = members.find((m) => m.id === member.id);
+        return (
+            (localInfo?.is_actif !== false) &&
+            (localInfo?.donnees_financieres?.inscription?.inscription_complete === true)
+        );    
+      });
   }, [serverStats, members]);
+
+  const membresAvecEpargne = useMemo(() => {
+    return finalMembersList.filter((m) => (m.total_epargne ?? 0) > 0).length;
+  }, [finalMembersList]);
 
   // ── Recherche / pagination principale ─────────────────────────────────────
   const searchedMembers = useMemo((): MemberSavings[] => {
@@ -362,7 +375,10 @@ export default function SavingsScreen() {
   };
 
   const handleCreateSaving = () => {
-    if (!selectedMember || !currentSession?.id) return;
+    if (!selectedMember || !currentSession?.id){
+      Alert.alert("Erreur","Aucunne session en cours !");
+      return
+    }
 
     createSaving.mutate(
       {
@@ -717,7 +733,7 @@ export default function SavingsScreen() {
             <ActivityIndicator size="small" color="white" />
           ) : (
             <>
-              <Ionicons name="checkmark" size={16} color="white" />
+              {/* <Ionicons name="checkmark" size={16} color="white" /> */}
               <Text style={styles.stepNavBtnTextPrimary}>Valider</Text>
             </>
           )}
@@ -772,8 +788,8 @@ export default function SavingsScreen() {
                   value={formatCurrency(serverStats?.epargne_totale || 0)}
                   icon="wallet"
                   color="#B5179E"
-                  subtitle={`${serverStats?.total_membres || 0} membres`}
-                />
+                  subtitle={`${membresAvecEpargne} membre${membresAvecEpargne !== 1 ? 's' : ''} épargnant${membresAvecEpargne !== 1 ? 's' : ''}`
+                            }/>
                 <StatCard
                   title="Trésor en Caisse"
                   value={formatCurrency(serverStats?.tresor_total || 0)}
@@ -832,11 +848,21 @@ export default function SavingsScreen() {
               </View>
 
               {!isLoading && filteredSavings.length > 0 && (
-                <Text style={styles.resultsCount}>
-                  {paginatedSavings.length} / {filteredSavings.length} transaction
-                  {filteredSavings.length !== 1 ? "s" : ""} affichée
-                  {filteredSavings.length !== 1 ? "s" : ""}
-                </Text>
+                // <Text style={styles.resultsCount}>
+                //   {paginatedSavings.length} / {filteredSavings.length} transaction
+                //   {filteredSavings.length !== 1 ? "s" : ""} affichée
+                //   {filteredSavings.length !== 1 ? "s" : ""}
+                // </Text>
+
+                <View style={styles.counter}>
+                  <Ionicons name="list" size={16} color={"#B5179E"} />
+                  <Text style={styles.counterText}>
+                    <Text style={styles.counterBold}>{paginatedSavings.length}</Text>
+                    {" "}sur{" "}
+                    <Text style={styles.counterBold}>{filteredSavings.length}</Text>
+                    {" "} Transaction{filteredSavings.length > 1 ? "s" : ""}
+                  </Text>
+                </View>
               )}
             </View>
 
@@ -1138,7 +1164,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: SPACING.md,
-    paddingVertical: 12,
+    paddingVertical: SPACING.md,
     gap: 6,
   },
   addFabText: {
@@ -1803,4 +1829,10 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#B5179E",
   },
+
+
+  counter:        { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "rgba(239, 150, 225, 0.07)", borderRadius: 10, paddingHorizontal: SPACING.md, paddingVertical: 8, marginTop: SPACING.md },
+  counterText:    { fontSize: FONT_SIZES.sm, color: COLORS.textSecondary },
+  counterBold:    { fontWeight: "700", color: "#B5179E" },
+
 });

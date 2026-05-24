@@ -526,7 +526,7 @@ export default function SolidarityScreen() {
           <Ionicons name="arrow-back" size={24} color="white" />
         </TouchableOpacity>
         <View style={styles.headerContent}>
-          <Ionicons name="wallet" size={32} color="white" style={styles.headerIcon} />
+          <Ionicons name="heart" size={32} color="white" style={styles.headerIcon} />
           <Text style={styles.headerTitle}>Gestion des Solidarités</Text>
           <Text style={styles.headerSubtitle}>
             Session: {currentSession?.nom || "Chargement..."}
@@ -551,16 +551,22 @@ export default function SolidarityScreen() {
 
             {/* Section fonds social */}
             <View style={styles.fundSection}>
-              <View style={styles.fundCard}>
-                <Ionicons name="heart" size={24} color="#059669" />
+              {/* <View style={styles.fundCard}>
+                <Ionicons name="" size={24} color="#059669" />
                 <View style={styles.fundInfo}>
-                  <Text style={styles.fundLabel}>Fonds Social Disponible</Text>
+                  <Text style={styles.fundLabel}></Text>
                   <Text style={styles.fundAmount}>
-                    {loadingFund ? "Chargement..." : formatCurrency(socialFund?.montant_total)}
+                    
                   </Text>
                 </View>
 
-              </View>
+              </View> */}
+              <StatCard
+                  title="Fonds Social Disponible"
+                  value={loadingFund ? "Chargement..." : formatCurrency(socialFund?.montant_total)}
+                  icon="heart"
+                  color={COLORS.success}
+                />
               <StatCard
                   title="Solidarités complètes"
                   value={stats.members_complete.toString()}
