@@ -3,7 +3,7 @@
 import { useEmpruntTiers } from "../hooks/useEmpruntTiers";
 import { createLoan } from "../services/loan.service";
 
-export const API_BASE_URL = "http://10.28.225.223:8000/api";
+export const API_BASE_URL = "http://192.168.0.201:8000/api";
 
 export const API_ENDPOINTS = {
   // Auth
@@ -28,7 +28,7 @@ export const API_ENDPOINTS = {
   configurations: "/core/configurations/",
 
   configUpdate: "/config/update", // 🆕
-  
+
   // Exercices/Sessions
   exerciseCreate: "/exercise/create", // 🆕
   exerciseCurrent: "/core/exercices/current",
@@ -73,7 +73,7 @@ export const API_ENDPOINTS = {
   loanRepaymentPercentageMax: "?pourcentage_rembourse_max=80",
   loanAlmostRepaid: "?presque_rembourse=true", // >80% remboursé
   loanBarelyRepaid: "?peu_rembourse=true",     // <20% remboursé
-  empruntTiers:"/core/emprunt-tiers/",
+  empruntTiers: "/core/emprunt-tiers/",
 
   // Dates
   loanThisMonth: "?this_month=true",
@@ -87,7 +87,7 @@ export const API_ENDPOINTS = {
 
   // Assistances
   assistances: "/transactions/assistances/",
-  assistanceTypes: "/core/types-assistance/", 
+  assistanceTypes: "/core/types-assistance/",
 
   // Admin
   adminDashboard: "/administration/dashboard/dashboard_complet/",

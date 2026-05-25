@@ -58,7 +58,7 @@ interface SolidarityStats {
 
 // 🎯 Formatage monétaire sécurisé
 const formatCurrency = (amount: number | undefined | null): string => {
-  if (!amount|| isNaN(amount)) return "0 FCFA";
+  if (!amount || isNaN(amount)) return "0 FCFA";
   return new Intl.NumberFormat('fr-FR', {
     style: 'currency',
     currency: 'XAF',
@@ -126,7 +126,7 @@ const MemberCard = ({ member, montantAttendu, onPress, readOnly }: MemberCardPro
     <TouchableOpacity
       style={[
         styles.memberCard,
-        { 
+        {
           borderLeftColor: getStatusColor(),
           opacity: member.is_complete ? 0.7 : 1
         }
@@ -163,14 +163,14 @@ const MemberCard = ({ member, montantAttendu, onPress, readOnly }: MemberCardPro
           </Text>
         </View>
         <View style={styles.progressBarContainer}>
-          <View 
+          <View
             style={[
-              styles.progressBar, 
-              { 
+              styles.progressBar,
+              {
                 width: `${Math.min(member.pourcentage_complete, 100)}%`,
                 backgroundColor: getStatusColor()
               }
-            ]} 
+            ]}
           />
         </View>
         <View style={styles.progressAmounts}>
@@ -189,7 +189,7 @@ const MemberCard = ({ member, montantAttendu, onPress, readOnly }: MemberCardPro
           {getStatusText()}
         </Text>
         {!member.is_complete && (
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.newPaymentButton}
             onPress={onPress}
           >
@@ -248,26 +248,26 @@ export default function SolidarityScreen() {
   // Accumule TOUS les paiements (toutes sessions) par membre
   const memberTotalPaymentsMap = useMemo(() => {
     const map: Record<string, number> = {};
-    
+
     solidarityPayments.forEach(payment => {
       const key = String(payment.membre);
-      map[key] = (map[key] || 0) + Number(payment.montant || 0);
+      map[key] = Number(payment.montant_paye_exercice_en_cours || 0);
     });
-    
+
     return map;
   }, [solidarityPayments]);
 
   // Extrait le montant attendu pour l'exercice par membre
   const memberExpectedAmountMap = useMemo(() => {
     const map: Record<string, number> = {};
-    
+
     solidarityPayments.forEach(payment => {
       const key = String(payment.membre);
       if (!map[key]) {
         map[key] = Number(payment.montant_solidarite_du || 0);
       }
     });
-    
+
     return map;
   }, [solidarityPayments]);
 
@@ -285,36 +285,36 @@ export default function SolidarityScreen() {
     return members
       .filter(member => member.donnees_financieres?.inscription?.inscription_complete === true) // 
       .map(member => {
-      // Total payé pour TOUTES les sessions
-      const montantPayeTotal = memberTotalPaymentsMap[member.id] || 0;
-      // Montant attendu pour l'exercice complet
-      const montantAttenduExercice = memberExpectedAmountMap[member.id] || currentConfig?.montant_solidarite || 0;
-      
-      const montantPayeRounded = Math.round(montantPayeTotal);
-      const montantAttenduRounded = Math.round(montantAttenduExercice);
+        // Total payé pour TOUTES les sessions
+        const montantPayeTotal = memberTotalPaymentsMap[member.id] || 0;
+        // Montant attendu pour l'exercice complet
+        const montantAttenduExercice = memberExpectedAmountMap[member.id] || currentConfig?.montant_solidarite || 0;
 
-      const pourcentageComplete = montantAttenduRounded > 0
-        ? Math.max(0, Math.min(Math.round((montantPayeRounded / montantAttenduRounded) * 100), 100))
-        : 0;
+        const montantPayeRounded = Math.round(montantPayeTotal);
+        const montantAttenduRounded = Math.round(montantAttenduExercice);
 
-      // Vérifier si le membre a payé son intégralité pour l'exercice
-      const isComplete = montantAttenduRounded > 0 && montantPayeRounded >= montantAttenduRounded;
-      const montantRestant = montantAttenduRounded > 0 ? Math.max(0, montantAttenduRounded - montantPayeRounded) : 0;
+        const pourcentageComplete = montantAttenduRounded > 0
+          ? Math.max(0, Math.min(Math.round((montantPayeRounded / montantAttenduRounded) * 100), 100))
+          : 0;
 
-      return {
-        id: member.id,
-        numero_membre: member.numero_membre,
-        nom_complet: member.utilisateur?.nom_complet || "Nom non disponible",
-        email: member.utilisateur?.email || "",
-        telephone: member.utilisateur?.telephone,
-        statut: member.statut,
-        montant_paye: montantPayeRounded,
-        pourcentage_complete: pourcentageComplete,
-        is_complete: isComplete,
-        montant_restant: montantRestant,
-        montant_attendu_exercice: montantAttenduRounded,
-      };
-    });
+        // Vérifier si le membre a payé son intégralité pour l'exercice
+        const isComplete = montantAttenduRounded > 0 && montantPayeRounded >= montantAttenduRounded;
+        const montantRestant = montantAttenduRounded > 0 ? Math.max(0, montantAttenduRounded - montantPayeRounded) : 0;
+
+        return {
+          id: member.id,
+          numero_membre: member.numero_membre,
+          nom_complet: member.utilisateur?.nom_complet || "Nom non disponible",
+          email: member.utilisateur?.email || "",
+          telephone: member.utilisateur?.telephone,
+          statut: member.statut,
+          montant_paye: montantPayeRounded,
+          pourcentage_complete: pourcentageComplete,
+          is_complete: isComplete,
+          montant_restant: montantRestant,
+          montant_attendu_exercice: montantAttenduRounded,
+        };
+      });
   }, [members, memberTotalPaymentsMap, memberExpectedAmountMap, currentConfig?.montant_solidarite]);
 
   // Filtrage
@@ -409,7 +409,7 @@ export default function SolidarityScreen() {
 
   const handleMemberPress = (member: MemberWithProgress) => {
     if (member.is_complete) return;
-    
+
     setSelectedMember(member);
     setPaymentAmount(member.montant_restant > 0 ? member.montant_restant.toString() : "");
     setPaymentNotes("");
@@ -417,93 +417,93 @@ export default function SolidarityScreen() {
   };
 
   const handleCreatePayment = () => {
-  if (!selectedMember) {
-    Alert.alert("Erreur", "Aucun membre sélectionné.");
-    return;
-  }
+    if (!selectedMember) {
+      Alert.alert("Erreur", "Aucun membre sélectionné.");
+      return;
+    }
 
-  if (!paymentAmount.trim() || isNaN(Number(paymentAmount)) || Number(paymentAmount) <= 0) {
-    Alert.alert("Erreur", "Veuillez saisir un montant valide (positif).");
-    return;
-  }
+    if (!paymentAmount.trim() || isNaN(Number(paymentAmount)) || Number(paymentAmount) <= 0) {
+      Alert.alert("Erreur", "Veuillez saisir un montant valide (positif).");
+      return;
+    }
 
-  if (!currentSession?.id) {
-    Alert.alert("Erreur", "Aucune session courante disponible.");
-    return;
-  }
+    if (!currentSession?.id) {
+      Alert.alert("Erreur", "Aucune session courante disponible.");
+      return;
+    }
 
-  const montantSaisi = Number(paymentAmount);
-  const montantAttendu = Math.round(currentConfig?.montant_solidarite || 0);
-  const dejaPaye = selectedMember.montant_paye;
-  const restantAvant = selectedMember.montant_restant;
-  const restantApres = Math.max(0, restantAvant - montantSaisi);
-  const nouveauTotalPaye = dejaPaye + montantSaisi;
+    const montantSaisi = Number(paymentAmount);
+    const montantAttendu = Math.round(currentConfig?.montant_solidarite || 0);
+    const dejaPaye = selectedMember.montant_paye;
+    const restantAvant = selectedMember.montant_restant;
+    const restantApres = Math.max(0, restantAvant - montantSaisi);
+    const nouveauTotalPaye = dejaPaye + montantSaisi;
 
-  // Préparation du message récapitulatif
-  const message = [
-    `Membre : ${selectedMember.nom_complet}`,
-    `Numéro : ${selectedMember.numero_membre || "—"}`,
-    ``,
-    `Montant attendu : ${formatCurrency(montantAttendu)}`,
-    `Déjà payé     : ${formatCurrency(dejaPaye)}`,
-    `Restant avant : ${formatCurrency(restantAvant)}`,
-    `───────────────`,
-    `Paiement actuel : ${formatCurrency(montantSaisi)}`,
-    `Nouveau restant : ${formatCurrency(restantApres)}`,
-    restantApres === 0 ? `\n→ Contribution complète atteinte !` : "",
-  ]
-    .filter(Boolean)
-    .join("\n");
+    // Préparation du message récapitulatif
+    const message = [
+      `Membre : ${selectedMember.nom_complet}`,
+      `Numéro : ${selectedMember.numero_membre || "—"}`,
+      ``,
+      `Montant attendu : ${formatCurrency(montantAttendu)}`,
+      `Déjà payé     : ${formatCurrency(dejaPaye)}`,
+      `Restant avant : ${formatCurrency(restantAvant)}`,
+      `───────────────`,
+      `Paiement actuel : ${formatCurrency(montantSaisi)}`,
+      `Nouveau restant : ${formatCurrency(restantApres)}`,
+      restantApres === 0 ? `\n→ Contribution complète atteinte !` : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
 
-  Alert.alert(
-    "Confirmer le paiement de solidarité",
-    message,
-    [
-      {
-        text: "Annuler",
-        style: "cancel",
-      },
-      {
-        text: "Confirmer & Enregistrer",
-        style: "default",
-        onPress: () => {
-          // On passe directement à la création (sans double vérification sur > 2x restant)
-          createSolidarityPayment.mutate(
-            {
-              membre: selectedMember.id,
-              session: currentSession.id,
-              montant: montantSaisi,
-              notes: paymentNotes.trim() || undefined,
-            },
-            {
-              onSuccess: () => {
-                setShowPaymentModal(false);
-                setSelectedMember(null);
-                setPaymentAmount("");
-                setPaymentNotes("");
-                Alert.alert(
-                  "Succès",
-                  `Paiement de ${formatCurrency(montantSaisi)} enregistré pour ${selectedMember.nom_complet} !`
-                );
-              },
-              onError: (error: any) => {
-                console.error("Erreur création paiement:", error);
-                const errMsg =
-                  error?.response?.data?.details ||
-                  error?.response?.data?.error ||
-                  error?.message ||
-                  "Impossible d'enregistrer le paiement.";
-                Alert.alert("Erreur", errMsg);
-              },
-            }
-          );
+    Alert.alert(
+      "Confirmer le paiement de solidarité",
+      message,
+      [
+        {
+          text: "Annuler",
+          style: "cancel",
         },
-      },
-    ],
-    { cancelable: true }
-  );
-};
-  
+        {
+          text: "Confirmer & Enregistrer",
+          style: "default",
+          onPress: () => {
+            // On passe directement à la création (sans double vérification sur > 2x restant)
+            createSolidarityPayment.mutate(
+              {
+                membre: selectedMember.id,
+                session: currentSession.id,
+                montant: montantSaisi,
+                notes: paymentNotes.trim() || undefined,
+              },
+              {
+                onSuccess: () => {
+                  setShowPaymentModal(false);
+                  setSelectedMember(null);
+                  setPaymentAmount("");
+                  setPaymentNotes("");
+                  Alert.alert(
+                    "Succès",
+                    `Paiement de ${formatCurrency(montantSaisi)} enregistré pour ${selectedMember.nom_complet} !`
+                  );
+                },
+                onError: (error: any) => {
+                  console.error("Erreur création paiement:", error);
+                  const errMsg =
+                    error?.response?.data?.details ||
+                    error?.response?.data?.error ||
+                    error?.message ||
+                    "Impossible d'enregistrer le paiement.";
+                  Alert.alert("Erreur", errMsg);
+                },
+              }
+            );
+          },
+        },
+      ],
+      { cancelable: true }
+    );
+  };
+
   const closeModal = () => {
     setShowPaymentModal(false);
     setSelectedMember(null);
@@ -564,17 +564,17 @@ export default function SolidarityScreen() {
 
               </View> */}
               <StatCard
-                  title="Fonds Social Disponible"
-                  value={loadingFund ? "Chargement..." : formatCurrency(socialFund?.montant_total)}
-                  icon="heart"
-                  color={COLORS.success}
-                />
+                title="Fonds Social Disponible"
+                value={loadingFund ? "Chargement..." : formatCurrency(socialFund?.montant_total)}
+                icon="heart"
+                color={COLORS.success}
+              />
               <StatCard
-                  title="Solidarités complètes"
-                  value={stats.members_complete.toString()}
-                  icon="checkmark-circle"
-                  color={COLORS.success}
-                />
+                title="Solidarités complètes"
+                value={stats.members_complete.toString()}
+                icon="checkmark-circle"
+                color={COLORS.success}
+              />
             </View>
             {/* Section recherche et filtres */}
             <View style={styles.searchSection}>
@@ -691,9 +691,9 @@ export default function SolidarityScreen() {
       />
 
       {/* Modal de paiement */}
-      <Modal 
-        visible={showPaymentModal} 
-        animationType="slide" 
+      <Modal
+        visible={showPaymentModal}
+        animationType="slide"
         transparent
         statusBarTranslucent
       >
@@ -781,13 +781,13 @@ export default function SolidarityScreen() {
                 >
                   <Text style={styles.cancelButtonText}>Annuler</Text>
                 </TouchableOpacity>
-                
+
                 <TouchableOpacity
                   style={[
-                    styles.modalButton, 
+                    styles.modalButton,
                     styles.confirmButton,
-                    { 
-                      opacity: (!paymentAmount.trim() || createSolidarityPayment.isPending) ? 0.5 : 1 
+                    {
+                      opacity: (!paymentAmount.trim() || createSolidarityPayment.isPending) ? 0.5 : 1
                     }
                   ]}
                   onPress={handleCreatePayment}
@@ -925,7 +925,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 2,
-    marginTop:10,
+    marginTop: 10,
   },
   statHeader: {
     flexDirection: "row",
@@ -1222,7 +1222,7 @@ const styles = StyleSheet.create({
     padding: SPACING.md,
     borderRadius: BORDER_RADIUS.lg,
     marginBottom: SPACING.lg,
-    marginTop:SPACING.lg,
+    marginTop: SPACING.lg,
   },
 
   memberModalAvatar: {
@@ -1318,7 +1318,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     gap: SPACING.md,
-    marginBottom:SPACING.lg,
+    marginBottom: SPACING.lg,
   },
   modalButton: {
     flex: 1,
