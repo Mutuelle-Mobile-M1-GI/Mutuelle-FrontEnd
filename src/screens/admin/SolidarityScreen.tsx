@@ -282,7 +282,9 @@ export default function SolidarityScreen() {
 
   // Membres avec progression (toutes sessions incluses)
   const membersWithProgress: MemberWithProgress[] = useMemo(() => {
-    return members.map(member => {
+    return members
+      .filter(member => member.donnees_financieres?.inscription?.inscription_complete === true) // 
+      .map(member => {
       // Total payé pour TOUTES les sessions
       const montantPayeTotal = memberTotalPaymentsMap[member.id] || 0;
       // Montant attendu pour l'exercice complet

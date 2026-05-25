@@ -205,6 +205,7 @@ export default function AssistanceScreen() {
   const readOnly = !user?.can_write; // true pour Trésorier et Président
   const [search, setSearch] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
+  const [modalStep, setModalStep] = useState<1 | 2 | 3 | 4>(1);
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const [selectedType, setSelectedType] = useState<AssistanceType | null>(null);
   const [justification, setJustification] = useState("");
@@ -231,8 +232,8 @@ export default function AssistanceScreen() {
     if (Array.isArray(assistancesData)) {
       return assistancesData;
     }
-    if (assistancesData && Array.isArray(assistancesData.results)) {
-      return assistancesData.results;
+    if (assistancesData && Array.isArray((assistancesData as any).results)) {
+      return (assistancesData as any).results;
     }
     return [];
   }, [assistancesData]);
@@ -241,8 +242,8 @@ export default function AssistanceScreen() {
     if (Array.isArray(membersData)) {
       return membersData;
     }
-    if (membersData && Array.isArray(membersData.results)) {
-      return membersData.results;
+    if (membersData && Array.isArray((membersData as any).results)) {
+      return (membersData as any).results;
     }
     return [];
   }, [membersData]);
@@ -251,8 +252,8 @@ export default function AssistanceScreen() {
     if (Array.isArray(typesData)) {
       return typesData;
     }
-    if (typesData && Array.isArray(typesData.results)) {
-      return typesData.results;
+    if (typesData && Array.isArray((typesData as any).results)) {
+      return (typesData as any).results;
     }
     return [];
   }, [typesData]);
@@ -316,9 +317,13 @@ export default function AssistanceScreen() {
 
   // Filtres pour les sélecteurs du modal
   const filteredMembers = useMemo(() => {
-    if (!searchMember.trim()) return members;
-    
-    return members.filter((member) => {
+    let list = members.filter((m) => {
+      const estEnRegle = m.statut === "EN_REGLE";
+      const inscriptionComplete = m.donnees_financieres?.inscription?.inscription_complete === true;
+      return estEnRegle && inscriptionComplete;
+    });
+  
+    return list.filter((member) => {
       const searchStr = [
         member.utilisateur?.nom_complet,
         member.numero_membre,
@@ -372,6 +377,7 @@ export default function AssistanceScreen() {
   // Actions
   const handleOpenAdd = () => {
     setShowAddModal(true);
+    setModalStep(1);
     setSelectedMember(null);
     setSelectedType(null);
     setJustification("");
@@ -417,79 +423,49 @@ export default function AssistanceScreen() {
       return;
     }
 
-    const nomMembre = selectedMember.utilisateur?.nom_complet || selectedMember.nom_complet || "—";
+    const nomMembre = selectedMember.utilisateur?.nom_complet || "—";
 
-    const recapMessage = [
-      `RÉCAPITULATIF DE LA DEMANDE`,
-      `────────────────`,
-      `Membre          : ${nomMembre}`,
-      `N° membre       : ${selectedMember.numero_membre || "—"}`,
-      `Type d'aide     : ${selectedType.nom}`,
-      `Montant         : ${formatCurrency(montantFinal)}`,
-      ``,
-      `Justification   : ${justification.trim().substring(0, 140)}${justification.length > 140 ? "..." : ""}`,
-      notes.trim() ? `Notes           : ${notes.trim().substring(0, 100)}${notes.length > 100 ? "..." : ""}` : "",
-      ``,
-      `Fonds actuels   : ${formatCurrency(dispoFonds)}`,
-      `Fonds après aide: ${formatCurrency(fondsApres)}`,
-      fondsApres === 0 ? `\n→ Fonds épuisés après cette aide` : "",
-    ].filter(Boolean).join("\n");
+    // Créer directement l'assistance sans alerte de confirmation
+    createAssistance.mutate(
+      {
+        membre: selectedMember.id,
+        type_assistance: selectedType.id,
+        montant: montantFinal,
+        justification: justification.trim(),
+        notes: notes.trim() || undefined,
+      },
+      {
+        onSuccess: () => {
+          setShowAddModal(false);
+          setModalStep(1);
+          setSelectedMember(null);
+          setSelectedType(null);
+          setJustification("");
+          setNotes("");
+          setAmount("");
+          refetch();
 
-    Alert.alert(
-      "Confirmer la création ?",
-      recapMessage,
-      [
-        {
-          text: "Annuler",
-          style: "cancel",
+          Alert.alert(
+            "Succès",
+            `Assistance de ${formatCurrency(montantFinal)} enregistrée pour ${nomMembre} !`
+          );
         },
-        {
-          text: "Valider et créer",
-          style: "default",
-          onPress: () => {
-            createAssistance.mutate(
-              {
-                membre: selectedMember.id,
-                type_assistance: selectedType.id,
-                montant: montantFinal,
-                justification: justification.trim(),
-                notes: notes.trim() || undefined,
-              },
-              {
-                onSuccess: () => {
-                  setShowAddModal(false);
-                  setSelectedMember(null);
-                  setSelectedType(null);
-                  setJustification("");
-                  setNotes("");
-                  setAmount("");
-                  refetch();
-
-                  Alert.alert(
-                    "Succès",
-                    `Assistance de ${formatCurrency(montantFinal)} enregistrée pour ${nomMembre} !`
-                  );
-                },
-                onError: (err: any) => {
-                  console.error("Erreur création assistance:", err);
-                  const msg =
-                    err?.response?.data?.error ||
-                    err?.response?.data?.details ||
-                    err?.message ||
-                    "Impossible d'enregistrer l'assistance";
-                  Alert.alert("Erreur", msg);
-                },
-              }
-            );
-          },
+        onError: (err: any) => {
+          console.error("Erreur création assistance:", err);
+          const msg =
+            err?.response?.data?.error ||
+            err?.response?.data?.details ||
+            err?.message ||
+            "Impossible d'enregistrer l'assistance";
+          Alert.alert("Erreur", msg);
         },
-      ],
-      { cancelable: true }
+      }
     );
   };
 
   const closeModal = () => {
     setShowAddModal(false);
+    setModalStep(1);
     setSelectedMember(null);
     setSelectedType(null);
     setJustification("");
@@ -509,25 +485,6 @@ export default function AssistanceScreen() {
   // 🔧 Render du contenu principal
   const renderMainContent = () => (
     <View>
-      {/* Header avec gradient */}
-      <LinearGradient
-        colors={["#7209B7", "#9D4EDD"]}
-        style={styles.header}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-      >
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={24} color="white" />
-        </TouchableOpacity>
-        <View style={styles.headerContent}>
-          <Ionicons name="heart" size={32} color="white" style={styles.headerIcon} />
-          <Text style={styles.headerTitle}>Gestion des Assistances</Text>
-          <Text style={styles.headerSubtitle}>
-            Mariages, décès, promotions et événements spéciaux
-          </Text>
-        </View>
-      </LinearGradient>
-
       {/* Section statistiques */}
       <View style={styles.statsSection}>
         <Text style={styles.sectionTitle}>Vue d'ensemble</Text>
@@ -675,6 +632,26 @@ export default function AssistanceScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* ── Header figé ── */}
+      <LinearGradient
+        colors={["#7209B7", "#9D4EDD"]}
+        style={styles.header}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      >
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+          <Ionicons name="arrow-back" size={24} color="white" />
+        </TouchableOpacity>
+        <View style={styles.headerContent}>
+          <Ionicons name="heart" size={32} color="white" style={styles.headerIcon} />
+          <Text style={styles.headerTitle}>Gestion des Assistances</Text>
+          <Text style={styles.headerSubtitle}>
+            Mariages, décès, promotions et événements spéciaux
+          </Text>
+        </View>
+      </LinearGradient>
+
+      {/* ── Contenu scrollable ── */}
       <FlatList
         data={[{ type: 'content' }]}
         keyExtractor={() => 'main-content'}
@@ -682,319 +659,374 @@ export default function AssistanceScreen() {
         showsVerticalScrollIndicator={false}
       />
 
-      {/* Modal d'ajout */}
-      <Modal 
-        visible={showAddModal} 
-        animationType="slide" 
-        transparent={false}
+      {/* ═══ MODAL MULTI-STEP ═══ */}
+      <Modal
+        visible={showAddModal}
+        animationType="slide"
+        transparent
+        statusBarTranslucent
         onRequestClose={closeModal}
       >
-        <SafeAreaView style={styles.newModalContainer}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={styles.keyboardAvoidingView}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 60}
-          >
-            {/* Header Modal */}
-            <View style={styles.newModalHeader}>
-              <TouchableOpacity onPress={closeModal} style={styles.modalCloseButton}>
-                <Ionicons name="close" size={28} color={COLORS.text} />
-              </TouchableOpacity>
-              <View style={styles.modalHeaderContent}>
-                <Text style={styles.newModalTitle}>Nouvelle Assistance</Text>
-                <Text style={styles.modalHeaderSubtitle}>
-                  Créer une demande d'aide pour un membre
-                </Text>
-              </View>
-            </View>
+        <BlurView intensity={80} style={StyleSheet.absoluteFillObject} />
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
+          <View style={ms.overlay}>
+            <View style={ms.sheet}>
 
-            <ScrollView 
-              style={styles.newModalBody}
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              contentContainerStyle={styles.newModalBodyContent}
-            >
-              {/* Sélection du membre */}
-              <View style={styles.selectorContainer}>
-                <Text style={styles.selectorLabel}>
-                  Membre à assister <Text style={styles.required}>*</Text>
-                </Text>
-                <View style={styles.searchInputContainer}>
-                  <Ionicons name="search" size={18} color={COLORS.textSecondary} />
-                  <TextInput
-                    style={styles.searchInput}
-                    value={searchMember}
-                    onChangeText={setSearchMember}
-                    placeholder="Rechercher un membre..."
-                    placeholderTextColor={COLORS.textLight}
-                  />
-                  {searchMember.length > 0 && (
-                    <TouchableOpacity onPress={() => setSearchMember("")}>
-                      <Ionicons name="close-circle" size={18} color={COLORS.textSecondary} />
-                    </TouchableOpacity>
-                  )}
+              {/* ── Header avec indicateur d'étapes ── */}
+              <LinearGradient colors={["#7209B7", "#9D4EDD"]} style={ms.header}>
+                <View style={ms.stepBar}>
+                  {([1, 2, 3, 4] as const).map((s) => {
+                    const currentStep = modalStep;
+                    const done   = currentStep > s;
+                    const active = currentStep === s;
+                    return (
+                      <View key={s} style={ms.stepBarItem}>
+                        <View style={[ms.stepDot, (done || active) && ms.stepDotActive]}>
+                          {done
+                            ? <Ionicons name="checkmark" size={11} color="#7209B7" />
+                            : <Text style={[ms.stepNum, active && { color: "#7209B7" }]}>{s}</Text>}
+                        </View>
+                        {s < 4 && <View style={[ms.stepLine, done && ms.stepLineActive]} />}
+                      </View>
+                    );
+                  })}
                 </View>
+                <View style={ms.headerRow}>
+                  <TouchableOpacity onPress={closeModal} style={ms.closeBtn}>
+                    <Ionicons name="close" size={22} color="white" />
+                  </TouchableOpacity>
+                  <Text style={ms.headerTitle}>
+                    {modalStep === 1 ? "Choisir un membre"
+                    : modalStep === 2 ? "Type d'assistance"
+                    : modalStep === 3 ? "Détails"
+                    : "Confirmer"}
+                  </Text>
+                  <View style={{ width: 36 }} />
+                </View>
+              </LinearGradient>
 
-                {/* Compteur de résultats membres */}
-                {filteredMembers.length > 0 && (
-                  <View style={styles.modalResultsCounter}>
-                    <Text style={styles.modalResultsText}>
-                      {paginatedMembers.length} sur {filteredMembers.length} membre{filteredMembers.length > 1 ? 's' : ''}
-                    </Text>
+              {/* ══ STEP 1 : Choisir le membre ══ */}
+              {modalStep === 1 && (
+                <>
+                  <View style={ms.searchBox}>
+                    <Ionicons name="search" size={18} color={COLORS.textSecondary} />
+                    <TextInput
+                      style={ms.searchInput}
+                      value={searchMember}
+                      onChangeText={setSearchMember}
+                      placeholder="Rechercher par nom, numéro, email…"
+                      placeholderTextColor={COLORS.textLight}
+                      autoFocus
+                    />
+                    {searchMember.length > 0 && (
+                      <TouchableOpacity onPress={() => setSearchMember("")}>
+                        <Ionicons name="close-circle" size={18} color={COLORS.textSecondary} />
+                      </TouchableOpacity>
+                    )}
                   </View>
-                )}
-
-                {loadingMembers ? (
-                  <View style={styles.selectorLoading}>
-                    <ActivityIndicator size="small" color={COLORS.primary} />
-                    <Text style={styles.loadingText}>Chargement...</Text>
-                  </View>
-                ) : (
-                  <ScrollView style={styles.scrollableSelector} nestedScrollEnabled>
-                    <View style={styles.simpleSelectorContainer}>
-                      {paginatedMembers.map((member) => (
-                        <TouchableOpacity
-                          key={member.id}
-                          style={[
-                            styles.selectorItem,
-                            { backgroundColor: selectedMember?.id === member.id ? `${COLORS.primary}20` : COLORS.surface }
-                          ]}
-                          onPress={() => setSelectedMember(member)}
-                        >
-                          <View style={styles.selectorItemContent}>
-                            <View style={styles.selectorItemHeader}>
-                              <Text style={styles.selectorItemName}>
-                                {member.utilisateur?.nom_complet || "Nom non disponible"}
+                  <Text style={ms.resultCount}>
+                    {filteredMembers.length} membre{filteredMembers.length !== 1 ? "s" : ""}
+                  </Text>
+                  <ScrollView style={{ flex: 1 }} contentContainerStyle={ms.listPad} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+                    {loadingMembers ? (
+                      <View style={ms.center}>
+                        <ActivityIndicator size="large" color="#7209B7" />
+                      </View>
+                    ) : filteredMembers.length === 0 ? (
+                      <View style={ms.center}>
+                        <Ionicons name="people-outline" size={48} color={COLORS.textLight} />
+                        <Text style={ms.emptyText}>Aucun membre trouvé</Text>
+                      </View>
+                    ) : (
+                      <>
+                        {paginatedMembers.map((member) => (
+                          <TouchableOpacity
+                            key={member.id}
+                            style={ms.memberCard}
+                            onPress={() => { setSelectedMember(member); setModalStep(2); }}
+                            activeOpacity={0.8}
+                          >
+                            <View style={ms.memberAvatar}>
+                              <Text style={ms.memberInitials}>
+                                {(member.utilisateur?.nom_complet ?? "??").split(" ").map((n: string) => n[0]).join("").substring(0, 2).toUpperCase()}
                               </Text>
-                              <View style={[
-                                styles.memberStatusBadge,
-                                { backgroundColor: member.statut === "EN_REGLE" ? COLORS.success : COLORS.warning }
-                              ]}>
-                                <Text style={styles.memberStatusText}>{member.statut}</Text>
-                              </View>
                             </View>
-                            <Text style={styles.selectorItemSubtitle}>
-                              {member.numero_membre} • {member.utilisateur?.email || "Email N/A"}
+                            <View style={{ flex: 1 }}>
+                              <Text style={ms.memberName}>{member.utilisateur?.nom_complet}</Text>
+                              <Text style={ms.memberNumero}>{member.numero_membre}</Text>
+                              <Text style={ms.memberEmail} numberOfLines={1}>{member.utilisateur?.email}</Text>
+                            </View>
+                            <View style={[ms.statusBadge, { backgroundColor: (member.statut === "EN_REGLE" ? COLORS.success : COLORS.warning) + "20" }]}>
+                              <Text style={[ms.statusText, { color: member.statut === "EN_REGLE" ? COLORS.success : COLORS.warning }]}>
+                                {member.statut === "EN_REGLE" ? "En règle" : member.statut}
+                              </Text>
+                            </View>
+                          </TouchableOpacity>
+                        ))}
+                        {hasMoreMembers && (
+                          <TouchableOpacity style={ms.loadMore} onPress={loadMoreMembers}>
+                            <Text style={ms.loadMoreText}>
+                              Voir plus ({filteredMembers.length - displayedMembers} restant{filteredMembers.length - displayedMembers > 1 ? "s" : ""})
                             </Text>
-                          </View>
-                          {selectedMember?.id === member.id && (
-                            <Ionicons name="checkmark-circle" size={20} color={COLORS.primary} />
-                          )}
-                        </TouchableOpacity>
-                      ))}
-
-                      {/* Bouton voir plus membres */}
-                      {hasMoreMembers && (
-                        <TouchableOpacity style={styles.modalLoadMoreButton} onPress={loadMoreMembers}>
-                          <Text style={styles.modalLoadMoreText}>
-                            Voir plus ({filteredMembers.length - displayedMembers} restant{filteredMembers.length - displayedMembers > 1 ? 's' : ''})
-                          </Text>
-                          <Ionicons name="chevron-down" size={16} color={COLORS.primary} />
-                        </TouchableOpacity>
-                      )}
-
-                      {filteredMembers.length === 0 && (
-                        <View style={styles.emptySelector}>
-                          <Text style={styles.emptySelectorText}>
-                            {searchMember ? "Aucun membre trouvé" : "Aucun membre disponible"}
-                          </Text>
-                        </View>
-                      )}
-                    </View>
+                            <Ionicons name="chevron-down" size={16} color="#7209B7" />
+                          </TouchableOpacity>
+                        )}
+                      </>
+                    )}
+                    <View style={{ height: 20 }} />
                   </ScrollView>
-                )}
-              </View>
+                </>
+              )}
 
-              {/* Sélection du type */}
-              <View style={styles.selectorContainer}>
-                <Text style={styles.selectorLabel}>
-                  Type d'assistance <Text style={styles.required}>*</Text>
-                </Text>
-                <View style={styles.searchInputContainer}>
-                  <Ionicons name="search" size={18} color={COLORS.textSecondary} />
+              {/* ══ STEP 2 : Choisir le type d'assistance ══ */}
+              {modalStep === 2 && (
+                <>
+                  {/* Mini-bannière membre */}
+                  <LinearGradient colors={["#7209B715", "#9D4EDD08"]} style={ms.banner}>
+                    <View style={[ms.memberAvatar, { width: 38, height: 38, borderRadius: 19 }]}>
+                      <Text style={[ms.memberInitials, { fontSize: FONT_SIZES.sm }]}>
+                        {(selectedMember?.utilisateur?.nom_complet ?? "??").split(" ").map((n: string) => n[0]).join("").substring(0, 2).toUpperCase()}
+                      </Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={ms.bannerName}>{selectedMember?.utilisateur?.nom_complet}</Text>
+                      <Text style={ms.bannerSub}>{selectedMember?.numero_membre}</Text>
+                    </View>
+                    <TouchableOpacity onPress={() => { setSelectedMember(null); setModalStep(1); }} style={ms.changeBtn}>
+                      <Text style={ms.changeBtnText}>Changer</Text>
+                    </TouchableOpacity>
+                  </LinearGradient>
+
+                  <View style={ms.searchBox}>
+                    <Ionicons name="search" size={18} color={COLORS.textSecondary} />
+                    <TextInput
+                      style={ms.searchInput}
+                      value={searchType}
+                      onChangeText={setSearchType}
+                      placeholder="Rechercher un type d'assistance…"
+                      placeholderTextColor={COLORS.textLight}
+                      autoFocus
+                    />
+                    {searchType.length > 0 && (
+                      <TouchableOpacity onPress={() => setSearchType("")}>
+                        <Ionicons name="close-circle" size={18} color={COLORS.textSecondary} />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                  <Text style={ms.resultCount}>
+                    {filteredTypes.length} type{filteredTypes.length !== 1 ? "s" : ""}
+                  </Text>
+                  <ScrollView style={{ flex: 1 }} contentContainerStyle={ms.listPad} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+                    {loadingTypes ? (
+                      <View style={ms.center}>
+                        <ActivityIndicator size="large" color="#7209B7" />
+                      </View>
+                    ) : filteredTypes.length === 0 ? (
+                      <View style={ms.center}>
+                        <Ionicons name="help-circle-outline" size={48} color={COLORS.textLight} />
+                        <Text style={ms.emptyText}>Aucun type trouvé</Text>
+                      </View>
+                    ) : (
+                      <>
+                        {paginatedTypes.map((type) => (
+                          <TouchableOpacity
+                            key={type.id}
+                            style={ms.typeCard}
+                            onPress={() => { handleTypeSelect(type); setModalStep(3); }}
+                            activeOpacity={0.8}
+                          >
+                            <LinearGradient colors={["#7209B720", "#9D4EDD10"]} style={ms.typeIconCircle}>
+                              <Ionicons name="heart" size={20} color="#7209B7" />
+                            </LinearGradient>
+                            <View style={{ flex: 1 }}>
+                              <Text style={ms.typeName}>{type.nom}</Text>
+                              {type.description ? (
+                                <Text style={ms.typeDesc} numberOfLines={2}>{type.description}</Text>
+                              ) : null}
+                            </View>
+                            <View style={ms.typeAmountBadge}>
+                              <Text style={ms.typeAmountText}>{formatCurrency(type.montant)}</Text>
+                            </View>
+                          </TouchableOpacity>
+                        ))}
+                        {hasMoreTypes && (
+                          <TouchableOpacity style={ms.loadMore} onPress={loadMoreTypes}>
+                            <Text style={ms.loadMoreText}>
+                              Voir plus ({filteredTypes.length - displayedTypes} restant{filteredTypes.length - displayedTypes > 1 ? "s" : ""})
+                            </Text>
+                            <Ionicons name="chevron-down" size={16} color="#7209B7" />
+                          </TouchableOpacity>
+                        )}
+                      </>
+                    )}
+                    <View style={{ height: 20 }} />
+                  </ScrollView>
+                </>
+              )}
+
+              {/* ══ STEP 3 : Montant + Justification ══ */}
+              {modalStep === 3 && (
+                <ScrollView style={{ flex: 1 }} contentContainerStyle={ms.stepPad} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+                  {/* Bannières membre + type */}
+                  <LinearGradient colors={["#7209B715", "#9D4EDD08"]} style={ms.banner}>
+                    <View style={[ms.memberAvatar, { width: 38, height: 38, borderRadius: 19 }]}>
+                      <Text style={[ms.memberInitials, { fontSize: FONT_SIZES.sm }]}>
+                        {(selectedMember?.utilisateur?.nom_complet ?? "??").split(" ").map((n: string) => n[0]).join("").substring(0, 2).toUpperCase()}
+                      </Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={ms.bannerName}>{selectedMember?.utilisateur?.nom_complet}</Text>
+                      <Text style={ms.bannerSub}>{selectedType?.nom} · {formatCurrency(selectedType?.montant)}</Text>
+                    </View>
+                    <TouchableOpacity onPress={() => { setSelectedType(null); setModalStep(2); }} style={ms.changeBtn}>
+                      <Text style={ms.changeBtnText}>Changer</Text>
+                    </TouchableOpacity>
+                  </LinearGradient>
+
+                  {/* Montant */}
+                  <Text style={ms.label}>Montant <Text style={{ color: COLORS.error }}>*</Text></Text>
+                  <View style={ms.amountBox}>
+                    <TextInput
+                      style={ms.amountInput}
+                      value={amount}
+                      onChangeText={setAmount}
+                      placeholder={String(selectedType?.montant)}
+                      keyboardType="numeric"
+                      placeholderTextColor={COLORS.textLight}
+                      autoFocus
+                      editable={false}
+                    />
+                    <Text style={ms.amountUnit}>FCFA</Text>
+                  </View>
+
+                  {/* Info fonds */}
+                  <LinearGradient colors={["#7209B715", "#9D4EDD08"]} style={ms.fundBox}>
+                    <View style={ms.fundRow2}>
+                      <Text style={ms.fundLabel2}>Montant demandé</Text>
+                      <Text style={[ms.fundVal2, { color: "#7209B7" }]}>{formatCurrency(montantAssistance)}</Text>
+                    </View>
+                    <View style={ms.fundRow2}>
+                      <Text style={ms.fundLabel2}>Fonds disponibles</Text>
+                      <Text style={[ms.fundVal2, { color: dispoFonds >= montantAssistance ? COLORS.success : COLORS.error }]}>{formatCurrency(dispoFonds)}</Text>
+                    </View>
+                    <View style={[ms.fundRow2, { borderTopWidth: 1, borderTopColor: "#7209B720", paddingTop: 6, marginTop: 4 }]}>
+                      <Text style={[ms.fundLabel2, { fontWeight: "700" }]}>Reste après paiement</Text>
+                      <Text style={[ms.fundVal2, { fontWeight: "800", color: resteFonds >= 0 ? COLORS.success : COLORS.error }]}>{formatCurrency(resteFonds)}</Text>
+                    </View>
+                    {manque > 0 && (
+                      <View style={ms.warnRow}>
+                        <Ionicons name="alert-circle" size={14} color={COLORS.error} />
+                        <Text style={ms.warnText}>Il manque {formatCurrency(manque)}</Text>
+                      </View>
+                    )}
+                  </LinearGradient>
+
+                  {/* Justification */}
+                  <Text style={[ms.label, { marginTop: SPACING.md }]}>
+                    Justification <Text style={{ color: COLORS.error }}>*</Text>
+                  </Text>
                   <TextInput
-                    style={styles.searchInput}
-                    value={searchType}
-                    onChangeText={setSearchType}
-                    placeholder="Rechercher un type..."
+                    style={ms.textArea}
+                    value={justification}
+                    onChangeText={setJustification}
+                    placeholder="Expliquez la raison de cette assistance…"
+                    multiline
+                    numberOfLines={4}
                     placeholderTextColor={COLORS.textLight}
                   />
-                  {searchType.length > 0 && (
-                    <TouchableOpacity onPress={() => setSearchType("")}>
-                      <Ionicons name="close-circle" size={18} color={COLORS.textSecondary} />
+
+                  {/* Notes */}
+                  <Text style={[ms.label, { marginTop: SPACING.md }]}>Notes (optionnel)</Text>
+                  <TextInput
+                    style={[ms.textArea, { height: 70 }]}
+                    value={notes}
+                    onChangeText={setNotes}
+                    placeholder="Notes administratives internes…"
+                    multiline
+                    numberOfLines={2}
+                    placeholderTextColor={COLORS.textLight}
+                  />
+
+                  <View style={ms.navRow}>
+                    <TouchableOpacity style={ms.backBtn} onPress={() => { setSelectedType(null); setModalStep(2); }}>
+                      <Ionicons name="arrow-back" size={18} color={COLORS.textSecondary} />
+                      <Text style={ms.backBtnText}>Retour</Text>
                     </TouchableOpacity>
-                  )}
-                </View>
-
-                {/* Compteur de résultats types */}
-                {filteredTypes.length > 0 && (
-                  <View style={styles.modalResultsCounter}>
-                    <Text style={styles.modalResultsText}>
-                      {paginatedTypes.length} sur {filteredTypes.length} type{filteredTypes.length > 1 ? 's' : ''}
-                    </Text>
+                    <TouchableOpacity
+                      style={[ms.nextBtn, (!justification.trim() || montantAssistance <= 0) && { opacity: 0.4 }]}
+                      onPress={() => setModalStep(4)}
+                      disabled={!justification.trim() || montantAssistance <= 0}
+                    >
+                      <LinearGradient colors={["#7209B7", "#9D4EDD"]} style={ms.nextBtnGrad}>
+                        <Text style={ms.nextBtnText}>Continuer</Text>
+                        <Ionicons name="arrow-forward" size={18} color="white" />
+                      </LinearGradient>
+                    </TouchableOpacity>
                   </View>
-                )}
+                  <View style={{ height: 20 }} />
+                </ScrollView>
+              )}
 
-                {loadingTypes ? (
-                  <View style={styles.selectorLoading}>
-                    <ActivityIndicator size="small" color={COLORS.primary} />
-                    <Text style={styles.loadingText}>Chargement...</Text>
-                  </View>
-                ) : (
-                  <ScrollView style={styles.scrollableSelector} nestedScrollEnabled>
-                    <View style={styles.simpleSelectorContainer}>
-                      {paginatedTypes.map((type) => (
-                        <TouchableOpacity
-                          key={type.id}
-                          style={[
-                            styles.selectorItem,
-                            { backgroundColor: selectedType?.id === type.id ? `${COLORS.primary}20` : COLORS.surface }
-                          ]}
-                          onPress={() => handleTypeSelect(type)}
-                        >
-                          <View style={styles.selectorItemContent}>
-                            <View style={styles.selectorItemHeader}>
-                              <Text style={styles.selectorItemName}>{type.nom}</Text>
-                              <Text style={[styles.typeAmount, { color: COLORS.primary }]}>
-                                {formatCurrency(type.montant)} 
-                              </Text>
-                            </View>
-                            {type.description && (
-                              <Text style={styles.selectorItemSubtitle} numberOfLines={2}>
-                                {type.description}
-                              </Text>
-                            )}
-                          </View>
-                          {selectedType?.id === type.id && (
-                            <Ionicons name="checkmark-circle" size={20} color={COLORS.primary} />
-                          )}
-                        </TouchableOpacity>
-                      ))}
-
-                      {/* Bouton voir plus types */}
-                      {hasMoreTypes && (
-                        <TouchableOpacity style={styles.modalLoadMoreButton} onPress={loadMoreTypes}>
-                          <Text style={styles.modalLoadMoreText}>
-                            Voir plus ({filteredTypes.length - displayedTypes} restant{filteredTypes.length - displayedTypes > 1 ? 's' : ''})
-                          </Text>
-                          <Ionicons name="chevron-down" size={16} color={COLORS.primary} />
-                        </TouchableOpacity>
-                      )}
-
-                      {filteredTypes.length === 0 && (
-                        <View style={styles.emptySelector}>
-                          <Text style={styles.emptySelectorText}>
-                            {searchType ? "Aucun type trouvé" : "Aucun type disponible"}
-                          </Text>
-                        </View>
-                      )}
-                    </View>
-                  </ScrollView>
-                )}
-              </View>
-
-              {/* Montant personnalisé */}
-              <View style={styles.inputSection}>
-                <Text style={styles.inputLabel}>Montant personnalisé</Text>
-                <TextInput
-                  style={styles.input}
-                  value={amount}
-                  onChangeText={setAmount}
-                  placeholder="Montant par défaut du type sélectionné"
-                  keyboardType="numeric"
-                  placeholderTextColor={COLORS.textLight}
-                />
-                <View style={styles.fundStatus}>
-                  <View style={styles.fundRow}>
-                    <Text style={styles.fundLabel}>Montant demandé:</Text>
-                    <Text style={styles.fundValue}>{formatCurrency(montantAssistance)}</Text>
+              {/* ══ STEP 4 : Résumé + Validation ══ */}
+              {modalStep === 4 && (
+                <ScrollView style={{ flex: 1 }} contentContainerStyle={ms.stepPad} showsVerticalScrollIndicator={false}>
+                  <Text style={ms.resumeTitle}>Récapitulatif</Text>
+                  <View style={ms.resumeCard}>
+                    <RRow icon="person"          label="Membre"          value={selectedMember?.utilisateur?.nom_complet ?? "—"} />
+                    <RRow icon="card"            label="Numéro"          value={selectedMember?.numero_membre} />
+                    <RRow icon="heart"           label="Type"            value={selectedType?.nom} />
+                    <View style={ms.divider} />
+                    <RRow icon="cash"            label="Montant"         value={formatCurrency(montantAssistance)} valueColor="#7209B7" bold />
+                    <RRow icon="wallet"          label="Fonds avant"     value={formatCurrency(dispoFonds)} />
+                    <RRow icon="trending-down"   label="Fonds après"     value={formatCurrency(resteFonds)} valueColor={resteFonds >= 0 ? COLORS.success : COLORS.error} />
+                    <View style={ms.divider} />
+                    <RRow icon="chatbubble-ellipses" label="Justification" value={justification.trim()} />
+                    {notes.trim() && <RRow icon="document-text" label="Notes" value={notes.trim()} />}
                   </View>
 
-                  <View style={styles.fundRow}>
-                    <Text style={styles.fundLabel}>Fonds disponibles:</Text>
-                    <Text style={[styles.fundValue, { color: dispoFonds >= montantAssistance ? COLORS.success : COLORS.error }]}>{formatCurrency(dispoFonds)}</Text>
-                  </View>
-
-                  <View style={styles.fundRow}>
-                    <Text style={styles.fundLabel}>Reste après paiement:</Text>
-                    <Text style={[styles.fundValue, { color: resteFonds >= 0 ? COLORS.success : COLORS.error }]}>{formatCurrency(resteFonds)}</Text>
-                  </View>
-
-                  {(!fondsOk && manque > 0) && (
-                    <View style={styles.fundWarning}>
+                  {manque > 0 && (
+                    <View style={ms.warnBox}>
                       <Ionicons name="alert-circle" size={16} color={COLORS.error} />
-                      <Text style={[styles.fundWarningText, { color: COLORS.error }]}>Il manque {formatCurrency(manque)}</Text>
+                      <Text style={ms.warnText}>⚠️ Fonds insuffisants — il manque {formatCurrency(manque)}</Text>
                     </View>
                   )}
-                </View> 
-              </View>
 
-              {/* Justification */}
-              <View style={styles.inputSection}>
-                <Text style={styles.inputLabel}>
-                  Justification <Text style={styles.required}>*</Text>
-                </Text>
-                <TextInput
-                  style={[styles.input, styles.textArea]}
-                  value={justification}
-                  onChangeText={setJustification}
-                  placeholder="Expliquez la raison de cette assistance..."
-                  multiline
-                  numberOfLines={3}
-                  placeholderTextColor={COLORS.textLight}
-                />
-              </View>
+                  <View style={ms.navRow}>
+                    <TouchableOpacity style={ms.backBtn} onPress={() => setModalStep(3)}>
+                      <Ionicons name="arrow-back" size={18} color={COLORS.textSecondary} />
+                      <Text style={ms.backBtnText}>Modifier</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[ms.nextBtn, (createAssistance.isPending || !fondsOk) && { opacity: 0.5 }]}
+                      onPress={handleCreateAssistance}
+                      disabled={createAssistance.isPending || !fondsOk}
+                    >
+                      <LinearGradient colors={[COLORS.success, "#059669"]} style={ms.nextBtnGrad}>
+                        {createAssistance.isPending
+                          ? <ActivityIndicator size="small" color="white" />
+                          : <>
+                              <Ionicons name="checkmark-circle" size={18} color="white" />
+                              <Text style={ms.nextBtnText}>Valider</Text>
+                            </>}
+                      </LinearGradient>
+                    </TouchableOpacity>
+                  </View>
+                  <View style={{ height: 20 }} />
+                </ScrollView>
+              )}
 
-              {/* Notes admin */}
-              <View style={styles.inputSection}>
-                <Text style={styles.inputLabel}>Notes administratives</Text>
-                <TextInput
-                  style={[styles.input, styles.textArea]}
-                  value={notes}
-                  onChangeText={setNotes}
-                  placeholder="Notes internes (optionnel)..."
-                  multiline
-                  numberOfLines={2}
-                  placeholderTextColor={COLORS.textLight}
-                />
-              </View>
-
-              {/* Espacement pour que les boutons soient visibles */}
-              <View style={styles.formBottomSpacing} />
-            </ScrollView>
-
-            {/* Actions - FIXE EN BAS */}
-            <View style={styles.modalActionsFixed}>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.cancelButton]}
-                onPress={closeModal}
-              >
-                <Text style={styles.cancelButtonText}>Annuler</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[
-                  styles.modalButton, 
-                  styles.confirmButton,
-                  { opacity: (!selectedMember || !selectedType || !justification.trim() || !fondsOk) ? 0.5 : 1 }
-                ]}
-                onPress={handleCreateAssistance}
-                disabled={!selectedMember || !selectedType || !justification.trim() || !fondsOk || createAssistance.isPending}
-              >
-                {createAssistance.isPending ? (
-                  <ActivityIndicator size="small" color="white" />
-                ) : (
-                  <Text style={styles.confirmButtonText}>Créer l'assistance</Text>
-                )}
-              </TouchableOpacity>
             </View>
-          </KeyboardAvoidingView>
-        </SafeAreaView>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );
 }
 
+// ─── Styles multi-step modal ─────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -1004,29 +1036,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.xl,
     paddingBottom: SPACING.lg,
-    position: "relative",
   },
   backButton: {
-    position: "absolute",
-    top: SPACING.xl,
-    left: SPACING.lg,
     width: 40,
     height: 40,
     borderRadius: 20,
     backgroundColor: "rgba(255,255,255,0.2)",
     alignItems: "center",
     justifyContent: "center",
-    zIndex: 10,
+    marginBottom: SPACING.md,
   },
   headerContent: {
     alignItems: "center",
-    paddingTop: SPACING.md,
+    width: "100%",
   },
   headerIcon: {
     marginBottom: SPACING.sm,
   },
   headerTitle: {
-    fontSize: FONT_SIZES.xxl,
+    fontSize: FONT_SIZES.xxxl,
     fontWeight: "bold",
     color: "white",
     marginBottom: SPACING.xs,
@@ -1034,7 +1062,7 @@ const styles = StyleSheet.create({
   },
   headerSubtitle: {
     fontSize: FONT_SIZES.md,
-    color: "rgba(255,255,255,0.9)",
+    color: "rgba(255,255,255,0.85)",
     textAlign: "center",
   },
 
@@ -1305,23 +1333,28 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md,
     gap: SPACING.sm,
   },
-  loadMoreText: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: "600",
-    color: "white",
-  },
-
-  // Center States
-  centerContainer: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: SPACING.xxl,
+  emptyActionText: {
+  color: "white",
+  fontSize: FONT_SIZES.md,
+  fontWeight: "600",
+},
+  emptyActionButton: {
+    backgroundColor: "#7209B7",
     paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
   },
-  loadingText: {
+    loadingText: {
     fontSize: FONT_SIZES.md,
     color: COLORS.textSecondary,
     marginTop: SPACING.md,
+  },
+  emptyTitle: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: "bold",
+    color: COLORS.text,
+    marginTop: SPACING.md,
+    marginBottom: SPACING.sm,
   },
   errorTitle: {
     fontSize: FONT_SIZES.lg,
@@ -1336,345 +1369,89 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: SPACING.lg,
   },
-  retryButton: {
-    backgroundColor: COLORS.primary,
+  centerContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: SPACING.xxl,
     paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
-    borderRadius: BORDER_RADIUS.md,
   },
   retryButtonText: {
     color: "white",
     fontSize: FONT_SIZES.md,
     fontWeight: "600",
   },
-  emptyTitle: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: "bold",
-    color: COLORS.text,
-    marginTop: SPACING.md,
-    marginBottom: SPACING.sm,
-  },
-  emptyText: {
-    fontSize: FONT_SIZES.md,
-    color: COLORS.textSecondary,
-    textAlign: "center",
-    marginBottom: SPACING.lg,
-  },
-  emptyActionButton: {
-    backgroundColor: "#7209B7",
+
+  retryButton: {
+    backgroundColor: COLORS.primary,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
     borderRadius: BORDER_RADIUS.md,
   },
-  emptyActionText: {
-    color: "white",
-    fontSize: FONT_SIZES.md,
-    fontWeight: "600",
-  },
 
-  // Modal Styles
-  modalOverlay: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: SPACING.lg,
-  },
-  modalContainer: {
-    backgroundColor: COLORS.background,
-    borderRadius: BORDER_RADIUS.xl,
-    width: width - SPACING.lg * 2,
-    maxHeight: "85%",
-    overflow: "hidden",
-    shadowColor: "#7209B7",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
-    elevation: 15,
-  },
-  modalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.lg,
-  },
-  modalTitle: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: "bold",
-    color: "white",
-  },
-  modalBody: {
-    padding: SPACING.lg,
-  },
-
-  // Selector Styles
-  selectorContainer: {
-    marginBottom: SPACING.lg,
-  },
-  selectorLabel: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: "600",
-    color: COLORS.text,
-    marginBottom: SPACING.sm,
-  },
-  required: {
-    color: COLORS.error,
-  },
-  searchInputContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: COLORS.surface,
-    borderRadius: BORDER_RADIUS.md,
-    paddingHorizontal: SPACING.sm,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    gap: SPACING.xs,
-    marginBottom: SPACING.sm,
-  },
-  selectorLoading: {
-    padding: SPACING.lg,
-    alignItems: "center",
-  },
-  scrollableSelector: {
-    maxHeight: 250,
-  },
-  simpleSelectorContainer: {
-    gap: SPACING.sm,
-  },
-  selectorItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: SPACING.md,
-    borderRadius: BORDER_RADIUS.md,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  selectorItemContent: {
-    flex: 1,
-  },
-  selectorItemHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: SPACING.xs,
-  },
-  selectorItemName: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: "600",
-    color: COLORS.text,
-    flex: 1,
-  },
-  selectorItemSubtitle: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textSecondary,
-  },
-  memberStatusBadge: {
-    paddingHorizontal: SPACING.xs,
-    paddingVertical: 2,
-    borderRadius: BORDER_RADIUS.sm,
-  },
-  memberStatusText: {
-    fontSize: FONT_SIZES.xs,
-    color: "white",
-    fontWeight: "600",
-  },
-  typeAmount: {
-    fontSize: FONT_SIZES.sm,
-    fontWeight: "bold",
-  },
-  emptySelector: {
-    padding: SPACING.lg,
-    alignItems: "center",
-  },
-  emptySelectorText: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textSecondary,
-    textAlign: "center",
-  },
-
-  // Modal Results Counter
-  modalResultsCounter: {
-    paddingVertical: SPACING.xs,
-    paddingHorizontal: SPACING.sm,
-    backgroundColor: COLORS.primary + "10",
-    borderRadius: BORDER_RADIUS.sm,
-    marginBottom: SPACING.sm,
-  },
-  modalResultsText: {
-    fontSize: FONT_SIZES.xs,
-    color: COLORS.textSecondary,
-    textAlign: "center",
-  },
-
-  // Modal Load More Button
-  modalLoadMoreButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: SPACING.sm,
-    backgroundColor: COLORS.surface,
-    borderRadius: BORDER_RADIUS.md,
-    borderWidth: 1,
-    borderColor: COLORS.primary,
-    gap: SPACING.xs,
-    marginTop: SPACING.sm,
-  },
-  modalLoadMoreText: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.primary,
-    fontWeight: "600",
-  },
-
-  // Input Section
-  inputSection: {
-    marginBottom: SPACING.lg,
-  },
-  inputLabel: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: "600",
-    color: COLORS.text,
-    marginBottom: SPACING.sm,
-  },
-  input: {
-    backgroundColor: COLORS.surface,
-    borderRadius: BORDER_RADIUS.md,
-    padding: SPACING.md,
-    fontSize: FONT_SIZES.md,
-    color: COLORS.text,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  textArea: {
-    height: 80,
-    textAlignVertical: "top",
-  },
-
-  // Fund Status
-  fundStatus: {
-    backgroundColor: COLORS.surface,
-    padding: SPACING.md,
-    borderRadius: BORDER_RADIUS.md,
-    marginTop: SPACING.sm,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  fundRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: SPACING.xs,
-  },
-  fundLabel: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textSecondary,
-  },
-  fundValue: {
-    fontSize: FONT_SIZES.sm,
-    fontWeight: "bold",
-    color: COLORS.text,
-  },
-  fundWarning: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SPACING.xs,
-    marginTop: SPACING.sm,
-    padding: SPACING.sm,
-    backgroundColor: COLORS.error + "10",
-    borderRadius: BORDER_RADIUS.sm,
-  },
-  fundWarningText: {
-    fontSize: FONT_SIZES.sm,
-    fontWeight: "600",
-  },
-
-  // Modal Actions
-  modalActions: {
-    flexDirection: "row",
-    gap: SPACING.md,
-    marginTop: SPACING.md,
-  },
-  modalButton: {
-    flex: 1,
-    paddingVertical: SPACING.md,
-    borderRadius: BORDER_RADIUS.md,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  cancelButton: {
-    backgroundColor: COLORS.surface,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  cancelButtonText: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: "600",
-    color: COLORS.textSecondary,
-  },
-  confirmButton: {
-    backgroundColor: "#7209B7",
-  },
-  confirmButtonText: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: "600",
-    color: "white",
-  },
-
-  // ✅ NOUVEAUX STYLES POUR LE MODAL AMÉLIORÉ
-  newModalContainer: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  keyboardAvoidingView: {
-    flex: 1,
-  },
-  newModalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-    backgroundColor: COLORS.surface,
-  },
-  modalCloseButton: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: SPACING.md,
-  },
-  modalHeaderContent: {
-    flex: 1,
-  },
-  newModalTitle: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: '700',
-    color: COLORS.text,
-    marginBottom: SPACING.xs,
-  },
-  modalHeaderSubtitle: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textSecondary,
-  },
-  newModalBody: {
-    flex: 1,
-  },
-  newModalBodyContent: {
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
-    paddingBottom: SPACING.lg,
-  },
-  formBottomSpacing: {
-    height: 20,
-  },
-  modalActionsFixed: {
-    flexDirection: 'row',
-    gap: SPACING.md,
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
-    paddingBottom: SPACING.lg,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
-    backgroundColor: COLORS.surface,
-  },
+  overlay:        { flex: 1, justifyContent: "flex-end" },
+  sheet:          { backgroundColor: COLORS.background, borderTopLeftRadius: 28, borderTopRightRadius: 28, height: "90%", overflow: "hidden" },
+  stepBar:        { flexDirection: "row", alignItems: "center", justifyContent: "center", marginBottom: SPACING.md },
+  stepBarItem:    { flexDirection: "row", alignItems: "center" },
+  stepDot:        { width: 26, height: 26, borderRadius: 13, backgroundColor: "rgba(255,255,255,0.3)", alignItems: "center", justifyContent: "center" },
+  stepDotActive:  { backgroundColor: "white" },
+  stepNum:        { fontSize: 11, fontWeight: "700", color: "rgba(255,255,255,0.8)" },
+  stepLine:       { width: 28, height: 2, backgroundColor: "rgba(255,255,255,0.3)", marginHorizontal: 3 },
+  stepLineActive: { backgroundColor: "white" },
+  headerRow:      { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  closeBtn:       { width: 36, height: 36, borderRadius: 18, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center" },
+  searchBox:      { flexDirection: "row", alignItems: "center", backgroundColor: COLORS.surface, margin: SPACING.lg, marginBottom: SPACING.sm, borderRadius: 14, paddingHorizontal: SPACING.md, gap: SPACING.sm, borderWidth: 1, borderColor: COLORS.border },
+  resultCount:    { fontSize: FONT_SIZES.sm, color: COLORS.textSecondary, paddingHorizontal: SPACING.lg, marginBottom: SPACING.sm },
+  listPad:        { paddingHorizontal: SPACING.lg, paddingBottom: 40 },
+  stepPad:        { paddingHorizontal: SPACING.lg, paddingBottom: 40, paddingTop: SPACING.sm },
+  center:         { alignItems: "center", paddingVertical: 40 },
+  emptyText:      { fontSize: FONT_SIZES.md, color: COLORS.textLight, marginTop: SPACING.md },
+  memberCard:     { backgroundColor: "white", borderRadius: 14, padding: SPACING.md, flexDirection: "row", alignItems: "center", marginBottom: SPACING.sm, gap: SPACING.sm, borderWidth: 1, borderColor: "#E9D8FD", elevation: 1 },
+  memberAvatar:   { width: 46, height: 46, borderRadius: 23, backgroundColor: "#7209B7", alignItems: "center", justifyContent: "center" },
+  memberInitials: { color: "white", fontWeight: "800", fontSize: FONT_SIZES.md },
+  memberNumero:   { fontSize: FONT_SIZES.sm, color: "#7209B7", fontWeight: "600" },
+  memberEmail:    { fontSize: FONT_SIZES.xs, color: COLORS.textSecondary },
+  typeCard:       { backgroundColor: "white", borderRadius: 14, padding: SPACING.md, flexDirection: "row", alignItems: "center", marginBottom: SPACING.sm, gap: SPACING.sm, borderWidth: 1, borderColor: "#E9D8FD", elevation: 1 },
+  typeIconCircle: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
+  typeName:       { fontSize: FONT_SIZES.md, fontWeight: "700", color: COLORS.text },
+  typeDesc:       { fontSize: FONT_SIZES.xs, color: COLORS.textSecondary, marginTop: 2 },
+  typeAmountBadge:{ backgroundColor: "#7209B715", paddingHorizontal: SPACING.sm, paddingVertical: 4, borderRadius: 10 },
+  typeAmountText: { fontSize: FONT_SIZES.sm, fontWeight: "800", color: "#7209B7" },
+  loadMore:       { flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: SPACING.md, gap: 6 },
+  loadMoreText:   { fontSize: FONT_SIZES.sm, color: "#7209B7", fontWeight: "600" },
+  banner:         { flexDirection: "row", alignItems: "center", borderRadius: 14, padding: SPACING.md, marginHorizontal: SPACING.lg, marginTop: SPACING.md, marginBottom: SPACING.sm, gap: SPACING.sm },
+  bannerName:     { fontSize: FONT_SIZES.md, fontWeight: "700", color: COLORS.text },
+  bannerSub:      { fontSize: FONT_SIZES.sm, color: "#7209B7" },
+  changeBtn:      { backgroundColor: "white", paddingHorizontal: SPACING.sm, paddingVertical: 4, borderRadius: 8, borderWidth: 1, borderColor: "#7209B740" },
+  changeBtnText:  { fontSize: 12, color: "#7209B7", fontWeight: "600" },
+  label:          { fontSize: FONT_SIZES.sm, fontWeight: "600", color: COLORS.text, marginBottom: SPACING.sm },
+  amountBox:      { flexDirection: "row", alignItems: "center", backgroundColor: "white", borderRadius: 16, borderWidth: 2, borderColor: "#7209B740", paddingHorizontal: SPACING.md, marginBottom: SPACING.md },
+  amountInput:    { flex: 1, fontSize: 28, fontWeight: "800", color: COLORS.text, paddingVertical: SPACING.md },
+  amountUnit:     { fontSize: FONT_SIZES.md, color: COLORS.textSecondary, fontWeight: "600" },
+  fundBox:        { borderRadius: 14, padding: SPACING.md, marginBottom: SPACING.md },
+  fundRow2:       { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 },
+  fundLabel2:     { fontSize: FONT_SIZES.sm, color: COLORS.textSecondary },
+  fundVal2:       { fontSize: FONT_SIZES.sm, fontWeight: "700" },
+  warnRow:        { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 6 },
+  warnBox:        { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: COLORS.error + "10", borderRadius: 10, padding: SPACING.sm, marginBottom: SPACING.md },
+  warnText:       { fontSize: FONT_SIZES.sm, color: COLORS.error, flex: 1 },
+  textArea:       { backgroundColor: "white", borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.md, fontSize: FONT_SIZES.md, color: COLORS.text, height: 100, textAlignVertical: "top" },
+  navRow:         { flexDirection: "row", gap: SPACING.md, marginTop: SPACING.lg },
+  backBtn:        { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: COLORS.surface, borderRadius: 14, paddingVertical: SPACING.md, borderWidth: 1, borderColor: COLORS.border },
+  backBtnText:    { fontSize: FONT_SIZES.md, fontWeight: "600", color: COLORS.textSecondary },
+  nextBtn:        { flex: 2, borderRadius: 14, overflow: "hidden" },
+  nextBtnGrad:    { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: SPACING.sm, paddingVertical: SPACING.md },
+  nextBtnText:    { fontSize: FONT_SIZES.md, fontWeight: "700", color: "white" },
+  resumeTitle:    { fontSize: FONT_SIZES.lg, fontWeight: "800", color: COLORS.text, marginTop: SPACING.sm, marginBottom: SPACING.md },
+  resumeCard:     { backgroundColor: "white", borderRadius: 18, padding: SPACING.lg, borderWidth: 1, borderColor: "#E9D8FD", marginBottom: SPACING.lg },
+  divider:        { height: 1, backgroundColor: "#F0F0F0", marginVertical: SPACING.sm },
 });
+
+const ms =styles;
+
+const RRow = ({ icon, label, value, valueColor, bold }: { icon: string; label: string; value?: string; valueColor?: string; bold?: boolean }) => (
+  <View style={{ flexDirection: "row", alignItems: "flex-start", paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: "#F5F5F5" }}>
+    <Ionicons name={icon as any} size={16} color={COLORS.textSecondary} style={{ marginRight: 8, marginTop: 1 }} />
+    <Text style={{ flex: 1, fontSize: FONT_SIZES.sm, color: COLORS.textSecondary }}>{label}</Text>
+    <Text style={{ fontSize: FONT_SIZES.sm, color: valueColor || COLORS.text, fontWeight: bold ? "800" : "600", textAlign: "right", maxWidth: "55%" }}>{value}</Text>
+  </View>
+);

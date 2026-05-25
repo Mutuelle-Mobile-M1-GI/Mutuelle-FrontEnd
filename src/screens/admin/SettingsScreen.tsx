@@ -921,7 +921,7 @@ const openTierModal = (index: number) => {
     <AssistanceManagerModal
     visible={assistanceManagerVisible}
     onClose={() => setAssistanceManagerVisible(false)}
-    assistanceTypes={typesQuery.data || []} // Une seule fois, proprement
+    assistanceTypes={Array.isArray(typesQuery.data) ? typesQuery.data : []} 
     loading={typesQuery.isLoading}
     onAdd={handleOpenAdd}
     onEdit={handleOpenEdit}
