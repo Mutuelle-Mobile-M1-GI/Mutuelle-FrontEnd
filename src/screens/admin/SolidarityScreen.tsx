@@ -251,7 +251,7 @@ export default function SolidarityScreen() {
 
     solidarityPayments.forEach(payment => {
       const key = String(payment.membre);
-      map[key] = Number(payment.montant_paye_exercice_en_cours || 0);
+      map[key] = Number(payment.montant_paye_total || 0);
     });
 
     return map;
@@ -274,9 +274,9 @@ export default function SolidarityScreen() {
   // Montant attendu pour l'exercice (à afficher dans le header)
   const montantAttendu = useMemo(() => {
     const firstPayment = solidarityPayments[0];
-    if (firstPayment) {
-      return Number(firstPayment.montant_solidarite_du || 0);
-    }
+    //if (firstPayment) {
+    //  return Number(firstPayment.montant_solidarite_du || 0);
+    //}
     return currentConfig?.montant_solidarite || 0;
   }, [solidarityPayments, currentConfig?.montant_solidarite]);
 
@@ -288,7 +288,7 @@ export default function SolidarityScreen() {
         // Total payé pour TOUTES les sessions
         const montantPayeTotal = memberTotalPaymentsMap[member.id] || 0;
         // Montant attendu pour l'exercice complet
-        const montantAttenduExercice = memberExpectedAmountMap[member.id] || currentConfig?.montant_solidarite || 0;
+        const montantAttenduExercice = currentConfig?.montant_solidarite || 0;
 
         const montantPayeRounded = Math.round(montantPayeTotal);
         const montantAttenduRounded = Math.round(montantAttenduExercice);

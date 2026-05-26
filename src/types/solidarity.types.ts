@@ -1,4 +1,5 @@
 export interface SolidarityPayment {
+  montant_paye_total: number;
   montant_paye_exercice_en_cours: number;
   id: string;
   membre: string;
