@@ -36,6 +36,7 @@ export function useCreateRenflouementPayment() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["renflouements"] });
       queryClient.invalidateQueries({ queryKey: ["renflouement-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["caisse-inscription-current"] });
     },
   });
 }

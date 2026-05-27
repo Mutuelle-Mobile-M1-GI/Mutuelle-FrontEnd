@@ -305,8 +305,7 @@ const MultiStepModal = ({
         onSuccess: () => { reset(); onClose(); onSuccess(); Alert.alert("Succès", "Emprunt créé avec succès !"); },
         onError: (error: any) => {
           console.log(error.response.data.details)
-          Alert.alert("Erreur",
-            error?.response?.data?.details || error?.response?.data?.error || "Impossible de créer l'emprunt.");
+          Alert.alert("Erreur", "Impossible de créer l'emprunt.");
         },
       }
     );

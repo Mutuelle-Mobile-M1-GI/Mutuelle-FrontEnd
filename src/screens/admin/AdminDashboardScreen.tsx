@@ -816,6 +816,7 @@ const navigation = useNavigation<any>();
           queryClient.invalidateQueries({ queryKey: ["admin-dashboard"] });
           queryClient.invalidateQueries({ queryKey: ["tresor"] });
           queryClient.invalidateQueries({ queryKey: ["fonds-social"] });
+          queryClient.invalidateQueries({ queryKey: ["caisse-inscription-current"] });
         } catch (err) {
           console.error("Erreur lors du refresh du dashboard:", err);
         }
@@ -831,6 +832,10 @@ const navigation = useNavigation<any>();
       queryClient.invalidateQueries({ queryKey: ["current-user"] });
       queryClient.invalidateQueries({ queryKey: ["current-exercise"] });
       queryClient.invalidateQueries({ queryKey: ["current-session"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["tresor"] });
+      queryClient.invalidateQueries({ queryKey: ["fonds-social"] });
+      queryClient.invalidateQueries({ queryKey: ["caisse-inscription-current"] });
     } finally {
       setRefreshing(false);
     }

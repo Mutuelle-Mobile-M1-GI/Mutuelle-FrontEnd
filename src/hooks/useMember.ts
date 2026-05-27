@@ -10,7 +10,7 @@ export function useMembers(params?: Record<string, any>) {
       const token = await getStoredAccessToken();
       if (!token) throw new Error("Token manquant");
       const response = await fetchMembers(token, params);
-      console.log("🔍 Réponse API membres:", response);
+      //console.log("🔍 Réponse API membres:", response);
       return response;
     },
   });
@@ -57,7 +57,7 @@ export function useMemberFinance(id: string) {
 
 export function useCreateFullMember() {
   const queryClient = useQueryClient();
-  console.log("*************** UTILISATION DU HOOK DE CREATION DE MEMEBRE ***********")
+  //console.log("*************** UTILISATION DU HOOK DE CREATION DE MEMEBRE ***********")
   return useMutation({
     mutationFn: async (payload: any) => {
       const token = await getStoredAccessToken();

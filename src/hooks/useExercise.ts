@@ -71,6 +71,8 @@ export function useUpdateExercise() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["exercises"] });
       queryClient.invalidateQueries({ queryKey: ["current-exercise"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["caisse-inscription-current"] });
     },
   });
 }
@@ -87,6 +89,8 @@ export function useDeleteExercise() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["exercises"] });
       queryClient.invalidateQueries({ queryKey: ["current-exercise"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["caisse-inscription-current"] });
     },
   });
 }

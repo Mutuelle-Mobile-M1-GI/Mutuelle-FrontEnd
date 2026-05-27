@@ -25,6 +25,7 @@ export function useCreateNewSession() {
       await queryClient.invalidateQueries({ queryKey: ["current-session"] });
       await queryClient.invalidateQueries({ queryKey: ["sessions"] });
       await queryClient.invalidateQueries({ queryKey: ["admin-dashboard"] });
+      await queryClient.invalidateQueries({ queryKey: ["caisse-inscription-current"] });
       await queryClient.refetchQueries({ queryKey: ["renflouements"] });
       await queryClient.refetchQueries({ queryKey: ["renflouement-stats"] });
     },
@@ -89,6 +90,7 @@ export function useUpdateSession() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["sessions"] });
       queryClient.invalidateQueries({ queryKey: ["current-session"] });
+      queryClient.invalidateQueries({ queryKey: ["caisse-inscription-current"] });
     },
   });
 }
@@ -105,6 +107,7 @@ export function useDeleteSession() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["sessions"] });
       queryClient.invalidateQueries({ queryKey: ["current-session"] });
+      queryClient.invalidateQueries({ queryKey: ["caisse-inscription-current"] });
     },
   });
 }
@@ -122,6 +125,7 @@ export function useCloseSession() {
       queryClient.invalidateQueries({ queryKey: ["sessions"] });
       queryClient.invalidateQueries({ queryKey: ["current-session"] });
       queryClient.invalidateQueries({ queryKey: ["admin-dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["caisse-inscription-current"] });
     },
   });
 }
