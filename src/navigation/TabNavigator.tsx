@@ -198,7 +198,7 @@ export default function TabNavigator() {
           </>
         )}
       </Tab.Navigator>
-      <ChatbotFAB />
+      {/* <ChatbotFAB /> */}
     </View>
   );
 }

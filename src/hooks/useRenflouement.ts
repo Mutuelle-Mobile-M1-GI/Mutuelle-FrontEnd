@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { fetchRenflouements, fetchRenflouementStats, createRenflouementPayment } from "../services/renflouement.service";
+import { fetchRenflouements, fetchRenflouementStats, createRenflouementPayment, payRenflouementWithSavings } from "../services/renflouement.service";
 import { Renflouement, RenflouementPayment } from "../types/renflouement.types";
 import { getStoredAccessToken } from "../services/auth.service";
 
@@ -37,6 +37,23 @@ export function useCreateRenflouementPayment() {
       queryClient.invalidateQueries({ queryKey: ["renflouements"] });
       queryClient.invalidateQueries({ queryKey: ["renflouement-stats"] });
       queryClient.invalidateQueries({ queryKey: ["caisse-inscription-current"] });
+    },
+  });
+}
+
+export function usePayRenflouementWithSavings() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: any) => {
+      const token = await getStoredAccessToken();
+      if (!token) throw new Error("Token manquant");
+      return payRenflouementWithSavings(payload.renflouementId, payload, token);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["renflouements"] });
+      queryClient.invalidateQueries({ queryKey: ["renflouement-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["savings"] });
+      queryClient.invalidateQueries({ queryKey: ["member"] });
     },
   });
 }
