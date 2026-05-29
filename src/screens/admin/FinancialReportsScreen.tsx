@@ -1,7 +1,7 @@
 import React, { useState, useRef, useMemo } from "react";
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  FlatList, Animated, Dimensions, StatusBar, Modal, TextInput,
+  FlatList, Animated, Dimensions, StatusBar, Modal, TextInput, Alert,
 } from "react-native";
 import { COLORS, SPACING, BORDER_RADIUS, FONT_SIZES } from "../../constants/config";
 import { Ionicons } from "@expo/vector-icons";
@@ -16,6 +16,7 @@ import { useExercises } from "../../hooks/useExercise";
 import { useSessions } from "../../hooks/useSession";
 import { useMembers } from "../../hooks/useMember";
 import { useSessionDepenses } from "../../hooks/useSessionDepenses";
+import { useHistoryExport, ExportData, ExportSession, ExportOperation } from "../../hooks/useHistoryExport";
 import { Exercise } from "../../types/exercise.types";
 import { Session } from "../../types/session.types";
 
@@ -152,7 +153,10 @@ const ExerciseDashboard = ({ exercice }: { exercice: Exercise }) => {
 
   const totalEmprunts = useMemo(() => arr(loansRaw).reduce((s: number, l: any) => s + (parseFloat(l.montant_emprunte) || 0), 0), [loansRaw]);
   const totalEpargne  = useMemo(() => arr(savingsRaw).reduce((s: number, e: any) => s + (parseFloat(e.montant) || 0), 0), [savingsRaw]);
-  const nombreMembres = arr(membersRaw).length;
+  // ✅ Filtrer les membres par exercice via exercice_inscription
+  const nombreMembres = useMemo(() =>
+    arr(membersRaw).filter((m: any) => String(m.exercice_inscription) === String(exercice.id)).length,
+  [membersRaw, exercice.id]);
   const fondsSocial   = (exercice as any)?.fonds_social_info?.montant_total ?? 0;
 
   const rows = [
@@ -545,9 +549,12 @@ const OperationDetailModal = ({ item, onClose }: { item: TimelineItem | null; on
               <DetailRow label="Notes"   value={item.data.notes || "Aucune note"} />
             </>)}
             {item.type === "renflouement" && (<>
-              <DetailRow label="Montant" value={formatMoney(item.data.montant)} />
-              <DetailRow label="Cause"   value={item.data.cause || "N/A"} />
-              <DetailRow label="Notes"   value={item.data.notes || "Aucune note"} />
+              <DetailRow label="Montant du"      value={formatMoney(item.data.montant_du    ?? item.data.montant)} />
+              <DetailRow label="Montant paye"    value={formatMoney(item.data.montant_paye  ?? item.data.montant)} />
+              <DetailRow label="Restant"         value={formatMoney(item.data.montant_restant ?? 0)} />
+              <DetailRow label="Cause"           value={item.data.cause || item.data.type_cause_display || "N/A"} />
+              <DetailRow label="Session"         value={item.data.session_nom || "N/A"} />
+              <DetailRow label="Statut"          value={item.data.is_solde ? "Solde" : `${item.data.pourcentage_paye ?? 0}% paye`} />
             </>)}
             {item.type === "epargne" && (<>
               <DetailRow label="Montant"  value={formatMoney(item.data.montant)} />
@@ -626,10 +633,25 @@ const PaginationBar = ({ current, total, onPrev, onNext }: {
   </View>
 );
 
+// ─── Bouton export ───────────────────────────────────────────────────────────
+
+const ExportButton = ({ onPress, label = "Exporter" }: { onPress: () => void; label?: string }) => (
+  <TouchableOpacity
+    style={s.exportBtn}
+    onPress={onPress}
+    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+  >
+    <Ionicons name="download-outline" size={15} color={COLORS.primary} />
+    <Text style={s.exportBtnText}>{label}</Text>
+  </TouchableOpacity>
+);
+
 // ─── Vue sessions ─────────────────────────────────────────────────────────────
 
-const SessionsView = ({ exercice, onSelectSession }: {
-  exercice: Exercise; onSelectSession: (s: Session) => void;
+const SessionsView = ({ exercice, onSelectSession, onExportExercice }: {
+  exercice: Exercise;
+  onSelectSession: (s: Session) => void;
+  onExportExercice: () => void;
 }) => {
   const { data: sessionsRaw, isLoading, error, refetch } = useSessions({ exercice: exercice.id });
   const sessions: Session[] = arr(sessionsRaw).sort(
@@ -648,6 +670,16 @@ const SessionsView = ({ exercice, onSelectSession }: {
       <View style={s.sectionHeader}>
         <Ionicons name="folder-open" size={18} color={COLORS.primary} />
         <Text style={s.sectionTitle}>{sessions.length} session{sessions.length !== 1 ? "s" : ""}</Text>
+        {sessions.length > 0 && (
+          <ExportButton
+            onPress={() => {
+              // Export exercice complet : toutes les sessions (données légères sans opérations détaillées)
+              // Les opérations complètes ne sont chargées que par session dans OperationsView
+              // On construit un ExportData minimal ici pour le déclenchement
+              onExportExercice();
+            }}
+          />
+        )}
       </View>
       {sessions.length === 0
         ? <EmptyState title="Aucune session" subtitle="Aucune session créée pour cet exercice" />
@@ -680,16 +712,50 @@ const OperationsView = ({ session, initialFilters }: { session: Session; initial
   const [selectedFilter, setSelectedFilter] = useState("all");
   const [page,           setPage]           = useState(1);
 
+  const { showExportMenu, exporting } = useHistoryExport();
+
+  // Construit les données d'export pour cette session
+  const buildSessionExport = (): ExportSession => ({
+    id:           String(session.id),
+    nom:          session.nom || "Session",
+    date:         (session as any).date_session || "",
+    collation,
+    autreDepense,
+    motifDepense,
+    totals,
+    operations:   timeline.map((i) => ({
+      type:         i.type,
+      typeLabel:    OPERATION_CONFIG[i.type]?.label ?? i.type,
+      memberName:   i.memberName || "",
+      memberNumero: i.memberNumero || "",
+      amount:       i.amount,
+      date:         i.date,
+    })),
+  });
+
+  const handleExportSession = () => {
+    const sessionExport = buildSessionExport();
+    const exportData: ExportData = {
+      exerciceNom:  (session as any).exercice_nom || "Exercice",
+      exerciceDate: "",
+      sessions:     [sessionExport],
+    };
+    showExportMenu(exportData, sessionExport);
+  };
+
   // ── Construire timeline ──
   const timeline = useMemo<TimelineItem[]>(() => {
     const items: TimelineItem[] = [];
 
-    arr(loansRaw).forEach((l: any) => items.push({
-      id: `loan-${l.id}`, type: "emprunt",
-      date: l.date_emprunt, amount: parseFloat(l.montant_emprunte) || 0,
-      data: l, status: l.statut,
-      memberName: extractMemberName(l), memberNumero: extractMemberNumero(l),
-    }));
+    arr(loansRaw)
+      // ✅ Filtre frontend : session_emprunt est l'UUID de la session mère
+      .filter((l: any) => !session.id || String(l.session_emprunt) === String(session.id))
+      .forEach((l: any) => items.push({
+        id: `loan-${l.id}`, type: "emprunt",
+        date: l.date_emprunt, amount: parseFloat(l.montant_emprunte) || 0,
+        data: l, status: l.statut,
+        memberName: extractMemberName(l), memberNumero: extractMemberNumero(l),
+      }));
 
     arr(repaymentsRaw).forEach((r: any) => items.push({
       id: `rep-${r.id}`, type: "remboursement",
@@ -705,14 +771,34 @@ const OperationsView = ({ session, initialFilters }: { session: Session; initial
       memberName: extractMemberName(sol), memberNumero: extractMemberNumero(sol),
     }));
 
-    arr(renflouementRaw).forEach((renf: any) => {
-      (renf.paiements_details || []).forEach((pay: any) => items.push({
-        id: `renf-${pay.id}`, type: "renflouement",
-        date: pay.date_paiement, amount: parseFloat(pay.montant) || 0,
-        data: { ...pay, cause: renf.cause },
-        memberName: extractMemberName(pay), memberNumero: extractMemberNumero(pay),
-      }));
-    });
+    arr(renflouementRaw)
+      // ✅ Filtre par session (champ "session" direct sur le renflouement)
+      .filter((renf: any) => !session.id || String(renf.session) === String(session.id))
+      .forEach((renf: any) => {
+        // Structure plate : montant_paye directement sur l'objet renflouement
+        // Les paiements_details sont des sous-remboursements optionnels
+        const paiements = renf.paiements_details;
+        if (Array.isArray(paiements) && paiements.length > 0) {
+          // Si paiements_details existe et est non vide, on les affiche un par un
+          paiements.forEach((pay: any) => items.push({
+            id: `renf-${renf.id}-${pay.id}`, type: "renflouement",
+            date: pay.date_paiement || renf.date_creation,
+            amount: parseFloat(pay.montant) || 0,
+            data: { ...pay, cause: renf.cause, session_nom: renf.session_nom },
+            memberName: extractMemberName(renf), memberNumero: extractMemberNumero(renf),
+          }));
+        } else {
+          // Sinon on affiche le renflouement lui-même avec montant_paye
+          items.push({
+            id: `renf-${renf.id}`, type: "renflouement",
+            date: renf.date_creation,
+            amount: parseFloat(renf.montant_paye) || parseFloat(renf.montant_du) || 0,
+            data: renf,
+            status: renf.is_solde ? "Soldé" : `${renf.pourcentage_paye ?? 0}% payé`,
+            memberName: extractMemberName(renf), memberNumero: extractMemberNumero(renf),
+          });
+        }
+      });
 
     arr(savingsRaw).forEach((sv: any) => items.push({
       id: `sav-${sv.id}`, type: "epargne",
@@ -790,6 +876,7 @@ const OperationsView = ({ session, initialFilters }: { session: Session; initial
           <View style={s.sectionHeader}>
             <Ionicons name="stats-chart" size={18} color={THEME.colors.admin[500]} />
             <Text style={s.sectionTitle}>Bilan de la session</Text>
+            <ExportButton onPress={handleExportSession} />
           </View>
           <SessionSummaryGrid
             totals={totals}
@@ -856,6 +943,7 @@ const OperationsView = ({ session, initialFilters }: { session: Session; initial
 
 export default function AdminHistoryScreen() {
   const insets = useSafeAreaInsets();
+  const { showExportMenu: showExportMenuExercice } = useHistoryExport();
   const { data: exercicesRaw, isLoading, error, refetch } = useExercises();
   const exercices: Exercise[] = arr(exercicesRaw).sort(
     (a: Exercise, b: Exercise) =>
@@ -946,7 +1034,34 @@ export default function AdminHistoryScreen() {
       )}
 
       {selectedExercice && !selectedSession && (
-        <SessionsView exercice={selectedExercice} onSelectSession={setSelectedSession} />
+        <SessionsView
+          exercice={selectedExercice}
+          onSelectSession={setSelectedSession}
+          onExportExercice={() => {
+            // Pour un export exercice complet on a besoin des opérations de chaque session.
+            // On passe les données disponibles : exercice + sessions (sans détail opérations).
+            // Le hook génère un fichier avec 1 onglet/page par session, bilan uniquement.
+            // Les totaux par session ne sont pas disponibles ici sans charger chaque session.
+            Alert.alert(
+              "Export exercice",
+              "L'export par exercice inclura la liste des sessions. Pour les opérations détaillées, exportez depuis chaque session individuellement.",
+              [
+                { text: "Annuler", style: "cancel" },
+                {
+                  text: "Exporter quand même",
+                  onPress: () => {
+                    const exportData: ExportData = {
+                      exerciceNom:  selectedExercice.nom,
+                      exerciceDate: (selectedExercice as any).date_debut || "",
+                      sessions:     [],
+                    };
+                    showExportMenuExercice(exportData);
+                  },
+                },
+              ]
+            );
+          }}
+        />
       )}
 
       {selectedExercice && selectedSession && (
@@ -1079,4 +1194,10 @@ const s = StyleSheet.create({
   summaryDepSepLine: { flex: 1, height: 0.5, backgroundColor: THEME.colors.neutral[200] },
   summaryDepSepText: { fontSize: 10, fontWeight: "700", color: THEME.colors.neutral[400], textTransform: "uppercase", letterSpacing: 0.5 },
   summaryDepMotif:   { fontSize: 10, color: THEME.colors.neutral[400], marginTop: 2, fontStyle: "italic" },
+
+  // Bouton export
+  exportBtn:     { flexDirection: "row", alignItems: "center", gap: 4, marginLeft: "auto",
+                   backgroundColor: THEME.colors.primary[50], borderRadius: 20,
+                   paddingHorizontal: SPACING.sm, paddingVertical: 4 },
+  exportBtnText: { fontSize: 11, fontWeight: "700", color: COLORS.primary },
 });

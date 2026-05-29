@@ -298,7 +298,7 @@ const MultiStepModal = ({
       {
         membre: selectedMember.id,
         session: currentSession.id,
-        montant_emprunte: montant,
+        montant_emprunte: parseFloat(montant.toFixed(2)),
         notes: notes.trim(),
       },
       {

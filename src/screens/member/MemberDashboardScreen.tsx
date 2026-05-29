@@ -22,6 +22,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from "@react-navigation/native";
 import { useCurrentExercise, useCurrentSession } from "../../hooks/useExercise";
 import { toNumber } from "lodash";
+import NotificationButton from "../../components/NotificationButton";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -405,15 +406,7 @@ export default function MemberDashboardScreen() {
             
             {/* Actions */}
             <View style={styles.headerActions}>
-              <TouchableOpacity 
-                style={styles.headerButton}
-                onPress={handleNotificationsPress}
-              >
-                <Ionicons name="notifications" size={24} color="white" />
-                {/* <View style={styles.notificationBadge}>
-                  <Text style={styles.notificationBadgeText}>3</Text>
-                </View> */}
-              </TouchableOpacity>
+              <NotificationButton />
               
               <TouchableOpacity 
                 style={styles.headerButton}
