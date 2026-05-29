@@ -18,7 +18,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
-import { useRenflouements, useRenflouementStats, useCreateRenflouementPayment } from "../../hooks/useRenflouement";
+import { useRenflouements, useRenflouementStats, useCreateRenflouementPayment, usePayRenflouementWithSavings } from "../../hooks/useRenflouement";
 import { Renflouement, RenflouementPayment } from "../../types/renflouement.types";
 import { COLORS, SPACING, BORDER_RADIUS, FONT_SIZES } from "../../constants/config";
 import { useAuthContext } from "../../context/AuthContext";
@@ -27,7 +27,7 @@ const { width } = Dimensions.get("window");
 const ITEMS_PER_PAGE = 10;
 
 // 🎯 Type pour le modal
-type ModalState = boolean | string;
+type ModalState = boolean | "payment" | "savings" | string;
 
 // 🎯 Formatage monétaire sécurisé
 const formatCurrency = (amount: number | undefined | null): string => {
@@ -68,9 +68,10 @@ interface RenflouementCardProps {
   item: Renflouement;
   onPayment: (item: Renflouement) => void;
   onDetails: (item: Renflouement) => void;
+  onPaymentWithSavings: (item: Renflouement) => void;  // ←
 }
 
-const RenflouementCard = ({ item, onPayment, onDetails, readOnly }: RenflouementCardProps & { readOnly?: boolean }) => (
+const RenflouementCard = ({ item, onPayment, onDetails, onPaymentWithSavings, readOnly }: RenflouementCardProps & { readOnly?: boolean }) => (
   <View style={[
     styles.renflouementCard,
     { borderLeftColor: item.is_solde ? COLORS.success : COLORS.warning }
@@ -194,6 +195,22 @@ const RenflouementCard = ({ item, onPayment, onDetails, readOnly }: Renflouement
           </Text>
         </TouchableOpacity>
       )}
+
+      {!readOnly && (
+        <TouchableOpacity
+          style={[
+            styles.actionButton,
+            styles.savingsButton,
+            { opacity: item.is_solde ? 0.5 : 1 }
+          ]}
+          onPress={() => onPaymentWithSavings(item)}
+          disabled={item.is_solde}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="wallet-outline" size={18} color="white" />
+          <Text style={styles.savingsButtonText}>Payer avec épargne</Text>
+        </TouchableOpacity>
+      )}
     </View>
   </View>
 );
@@ -201,18 +218,21 @@ const RenflouementCard = ({ item, onPayment, onDetails, readOnly }: Renflouement
 // 🎯 Composant principal
 export default function RenflouementScreen() {
   const { user } = useAuthContext();
-  const readOnly = !user?.can_write; // true pour Trésorier et Président
+  const readOnly = !user?.can_write;
   const [search, setSearch] = useState("");
   const [showModal, setShowModal] = useState<ModalState>(false);
+  const [modalType, setModalType] = useState<"payment" | "savings" | null>(null);
   const [currentRenflouement, setCurrentRenflouement] = useState<Renflouement | null>(null);
   const [montant, setMontant] = useState("");
   const [notes, setNotes] = useState("");
   const [displayedItems, setDisplayedItems] = useState(ITEMS_PER_PAGE);
+  const [filterStatus, setFilterStatus] = useState<'all' | 'solde' | 'en-cours'>('all');
 
   // Hooks
   const { data: stats, isLoading: loadingStats } = useRenflouementStats();
   const { data: renflouementsData, isLoading, isError, refetch } = useRenflouements();
   const createPayment = useCreateRenflouementPayment();
+  const payWithSavings = usePayRenflouementWithSavings();
 
   // 🔧 Protection des données avec types corrects
   const renflouements: Renflouement[] = useMemo(() => {
@@ -225,23 +245,30 @@ export default function RenflouementScreen() {
     return [];
   }, [renflouementsData]);
 
-  // Filtrage sécurisé
+  // Filtrage sécurisé (membres uniquement)
   const filteredRenflouements = useMemo(() => {
-    if (!search.trim()) return renflouements;
+    let filtered = renflouements;
+
+    // Filtrage par statut
+    if (filterStatus === 'solde') {
+      filtered = filtered.filter(item => item.is_solde);
+    } else if (filterStatus === 'en-cours') {
+      filtered = filtered.filter(item => !item.is_solde);
+    }
+
+    // Filtrage par recherche (membres uniquement)
+    if (!search.trim()) return filtered;
     
-    return renflouements.filter((item) => {
+    return filtered.filter((item) => {
       const searchFields = [
         item?.membre_info?.nom_complet,
         item?.membre_info?.numero_membre,
         item?.membre_info?.email,
-        item?.session_nom,
-        item?.cause,
-        item?.type_cause_display,
       ].filter(Boolean).join(" ").toLowerCase();
       
       return searchFields.includes(search.toLowerCase());
     });
-  }, [renflouements, search]);
+  }, [renflouements, search, filterStatus]);
 
   // Pagination
   const paginatedRenflouements = useMemo(() => {
@@ -254,16 +281,26 @@ export default function RenflouementScreen() {
     setDisplayedItems(prev => Math.min(prev + ITEMS_PER_PAGE, filteredRenflouements.length));
   };
 
-  // Reset pagination when search changes
+  // Reset pagination when search or filter changes
   useMemo(() => {
     setDisplayedItems(ITEMS_PER_PAGE);
-  }, [search]);
+  }, [search, filterStatus]);
 
   // Actions
   const openPaymentModal = (renflouement: Renflouement) => {
     setCurrentRenflouement(renflouement);
     setMontant("");
     setNotes("");
+    setModalType("payment");
+    setShowModal(true);
+  };
+
+  const openSavingsModal = (renflouement: Renflouement) => {
+    setCurrentRenflouement(renflouement);
+    // Pré-remplir avec le montant restant
+    setMontant(String(Math.ceil(Number(renflouement.montant_restant || 0))));
+    setNotes("");
+    setModalType("savings");
     setShowModal(true);
   };
 
@@ -273,7 +310,7 @@ export default function RenflouementScreen() {
   };
 
   // 1. Fonction qui déclenche l'alerte de confirmation
-const handleAddPayment = () => {
+  const handleAddPayment = () => {
   const montantNum = Number(montant);
   
   // Validation stricte (Point 6 de ta checklist)
@@ -302,6 +339,80 @@ const handleAddPayment = () => {
     }
   };
 
+  const handlePaymentWithSavings = () => {
+    if (!currentRenflouement) return;
+
+    const montantNum = montant ? Number(montant) : undefined;
+    const montantRestant = currentRenflouement.montant_restant || 0;
+
+    // Validation stricte - le montant est obligatoire
+    if (!montant || montantNum === undefined || isNaN(montantNum) || montantNum <= 0) {
+      Alert.alert(
+        "Montant invalide",
+        "Veuillez saisir un montant valide supérieur à 0."
+      );
+      return;
+    }
+
+    // Vérifier que le montant ne dépasse pas le restant
+    if (montantNum > montantRestant+500) { // On peut autoriser un petit dépassement de 500 FCFA pour arrondir
+      Alert.alert(
+        "Montant trop élevé",
+        `Le montant saisi (${formatCurrency(montantNum)}) dépasse le restant dû (${formatCurrency(montantRestant)}). Veuillez réduire le montant.`
+      );
+      return;
+    }
+
+    // Montant valide - demander confirmation
+    Alert.alert(
+      "Confirmation",
+      `Voulez-vous débiter ${formatCurrency(montantNum)} de votre épargne ?`,
+      [
+        { text: "Annuler", style: "cancel" },
+        {
+          text: "Confirmer",
+          onPress: () => {
+            submitPaymentWithSavings(montantNum);
+          }
+        }
+      ]
+    );
+  };
+
+  const submitPaymentWithSavings = (amount?: number) => {
+    if (!currentRenflouement) return;
+
+    const montantFinal = amount || (montant ? Number(montant) : undefined);
+
+    payWithSavings.mutate(
+      {
+        renflouementId: currentRenflouement.id,
+        montant: montantFinal,
+        notes: notes.trim() || undefined,
+      },
+      {
+        onSuccess: () => {
+          setShowModal(false);
+          setModalType(null);
+          setMontant("");
+          setNotes("");
+          setCurrentRenflouement(null);
+          refetch();
+          Alert.alert(
+            "Succès",
+            "Paiement avec épargne effectué avec succès !"
+          );
+        },
+        onError: (err: any) => {
+          Alert.alert(
+            "Erreur",
+            err?.response?.data?.error ||
+              "Impossible d'effectuer le paiement avec épargne."
+          );
+        },
+      }
+    );
+  };
   const submitPayment = () => {
     if (!currentRenflouement) return;
 
@@ -316,6 +427,7 @@ const handleAddPayment = () => {
       {
         onSuccess: () => {
           setShowModal(false);
+          setModalType(null);
           setMontant("");
           setNotes("");
           setCurrentRenflouement(null);
@@ -332,35 +444,9 @@ const handleAddPayment = () => {
   );
 };
 
-// 2. Fonction de traitement réel (Mutation)
-const processPayment = (montantFinal: number) => {
-  if (!currentRenflouement) return;
-
-  createPayment.mutate(
-    {
-      renflouement: currentRenflouement.id,
-      montant: montantFinal,
-      notes: notes.trim(),
-    },
-    {
-      onSuccess: () => {
-        setShowModal(false);
-        setMontant("");
-        setNotes("");
-        setCurrentRenflouement(null);
-        refetch();
-        // Feedback de succès (Point 7)
-        Alert.alert("Opération réussie", "Le paiement a bien été enregistré dans le fonds social.");
-      },
-      onError: (err: any) => {
-        Alert.alert("Échec du paiement", err?.response?.data?.error || "Une erreur est survenue.");
-      },
-    }
-  );
-};
-
   const closeModal = () => {
     setShowModal(false);
+    setModalType(null);
     setCurrentRenflouement(null);
     setMontant("");
     setNotes("");
@@ -449,7 +535,7 @@ const processPayment = (montantFinal: number) => {
               style={styles.searchInput}
               value={search}
               onChangeText={setSearch}
-              placeholder="Rechercher par nom, session, cause..."
+              placeholder="Rechercher par nom, numéro, email..."
               placeholderTextColor={COLORS.textLight}
             />
             {search.length > 0 && (
@@ -457,6 +543,31 @@ const processPayment = (montantFinal: number) => {
                 <Ionicons name="close-circle" size={20} color={COLORS.textSecondary} />
               </TouchableOpacity>
             )}
+          </View>
+
+          {/* Filtres de statut */}
+          <View style={styles.filtersContainer}>
+            {[
+              { key: 'all', label: 'Tous', count: renflouements.length },
+              { key: 'solde', label: 'Soldés', count: renflouements.filter(r => r.is_solde).length },
+              { key: 'en-cours', label: 'En cours', count: renflouements.filter(r => !r.is_solde).length },
+            ].map(filter => (
+              <TouchableOpacity
+                key={filter.key}
+                style={[
+                  styles.filterButton,
+                  { backgroundColor: filterStatus === filter.key ? COLORS.primary : COLORS.surface }
+                ]}
+                onPress={() => setFilterStatus(filter.key as any)}
+              >
+                <Text style={[
+                  styles.filterText,
+                  { color: filterStatus === filter.key ? 'white' : COLORS.text }
+                ]}>
+                  {filter.label} ({filter.count})
+                </Text>
+              </TouchableOpacity>
+            ))}
           </View>
         </View>
 
@@ -506,6 +617,7 @@ const processPayment = (montantFinal: number) => {
                   item={item}
                   onPayment={openPaymentModal}
                   onDetails={openDetailsModal}
+                  onPaymentWithSavings={openSavingsModal}
                   readOnly={readOnly}
                 />
               )}
@@ -535,111 +647,140 @@ const processPayment = (montantFinal: number) => {
         <View style={{height: 70}}></View>
       </ScrollView>
 
-      {/* Modal Paiement */}
+      {/* Modal Paiement / Paiement avec Épargne */}
       <Modal 
-        visible={showModal === true} 
+        visible={showModal === true && (modalType === "payment" || modalType === "savings")} 
         animationType="slide" 
         transparent
         statusBarTranslucent
       >
-        <BlurView intensity={20} style={StyleSheet.absoluteFillObject} />
-        <KeyboardAvoidingView 
-          style={styles.modalOverlay}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
-        >
-          <View style={styles.modalContainer}>
-            <LinearGradient
-              colors={[COLORS.primary, "#3A86FF"]}
-              style={styles.modalHeader}
-            >
-              <Text style={styles.modalTitle}>Nouveau Paiement</Text>
-              <TouchableOpacity onPress={closeModal}>
-                <Ionicons name="close" size={24} color="white" />
-              </TouchableOpacity>
-            </LinearGradient>
-
-            <ScrollView 
-              style={styles.modalBody} 
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-            >
-              <View style={styles.memberInfoSection}>
-                <Text style={styles.modalMemberName}>
-                  {currentRenflouement?.membre_info?.nom_complet}
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)' }}>
+          <BlurView intensity={20} style={StyleSheet.absoluteFillObject} />
+          <KeyboardAvoidingView 
+            style={styles.modalOverlay}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+          >
+            <View style={styles.modalContainer}>
+              <LinearGradient
+                colors={[COLORS.primary, "#3A86FF"]}
+                style={styles.modalHeader}
+              >
+                <Text style={styles.modalTitle}>
+                  {modalType === "savings" ? "Paiement avec Épargne" : "Nouveau Paiement"}
                 </Text>
-                <Text style={styles.modalMemberNumber}>
-                  {currentRenflouement?.membre_info?.numero_membre}
-                </Text>
-              </View>
+                <TouchableOpacity onPress={closeModal}>
+                  <Ionicons name="close" size={24} color="white" />
+                </TouchableOpacity>
+              </LinearGradient>
 
-              <View style={styles.modalFinancialInfo}>
-                <View style={styles.modalFinancialRow}>
-                  <Text style={styles.modalFinancialLabel}>Montant dû:</Text>
-                  <Text style={styles.modalFinancialValue}>
-                    {formatCurrency(currentRenflouement?.montant_du)}
+              <ScrollView 
+                style={styles.modalBody} 
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+              >
+                <View style={styles.memberInfoSection}>
+                  <Text style={styles.modalMemberName}>
+                    {currentRenflouement?.membre_info?.nom_complet}
+                  </Text>
+                  <Text style={styles.modalMemberNumber}>
+                    {currentRenflouement?.membre_info?.numero_membre}
                   </Text>
                 </View>
-                <View style={styles.modalFinancialRow}>
-                  <Text style={styles.modalFinancialLabel}>Reste à payer:</Text>
-                  <Text style={[styles.modalFinancialValue, { color: COLORS.error }]}>
-                    {formatCurrency(currentRenflouement?.montant_restant)}
-                  </Text>
+
+                <View style={styles.modalFinancialInfo}>
+                  <View style={styles.modalFinancialRow}>
+                    <Text style={styles.modalFinancialLabel}>Montant dû:</Text>
+                    <Text style={styles.modalFinancialValue}>
+                      {formatCurrency(currentRenflouement?.montant_du)}
+                    </Text>
+                  </View>
+                  <View style={styles.modalFinancialRow}>
+                    <Text style={styles.modalFinancialLabel}>Reste à payer:</Text>
+                    <Text style={[styles.modalFinancialValue, { color: COLORS.error }]}>
+                      {formatCurrency(currentRenflouement?.montant_restant)}
+                    </Text>
+                  </View>
                 </View>
-              </View>
 
-              <View style={styles.inputSection}>
-                <Text style={styles.inputLabel}>Montant du paiement *</Text>
-                <TextInput
-                  style={styles.input}
-                  value={montant}
-                  onChangeText={setMontant}
-                  placeholder="Entrez le montant en FCFA"
-                  keyboardType="numeric"
-                  placeholderTextColor={COLORS.textLight}
-                  editable={!createPayment.isPending}
-                />
-              </View>
-
-              <View style={styles.inputSection}>
-                <Text style={styles.inputLabel}>Notes (optionnel)</Text>
-                <TextInput
-                  style={[styles.input, styles.textArea]}
-                  value={notes}
-                  onChangeText={setNotes}
-                  placeholder="Ajouter une note..."
-                  multiline
-                  numberOfLines={3}
-                  textAlignVertical="top"
-                  placeholderTextColor={COLORS.textLight}
-                  editable={!createPayment.isPending}
-                />
-              </View>
-            </ScrollView>
-
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.cancelButton]}
-                onPress={closeModal}
-                disabled={createPayment.isPending}
-              >
-                <Text style={styles.cancelButtonText}>Annuler</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[styles.modalButton, styles.confirmButton]}
-                onPress={handleAddPayment}
-                disabled={createPayment.isPending}
-              >
-                {createPayment.isPending ? (
-                  <ActivityIndicator size="small" color="white" />
-                ) : (
-                  <Text style={styles.confirmButtonText}>Valider</Text>
+                {modalType === "savings" && (
+                  <View style={[styles.modalFinancialInfo, { backgroundColor: COLORS.warning + "10", borderColor: COLORS.warning }]}>
+                    <View style={{ flexDirection: "row", alignItems: "center", marginBottom: SPACING.md }}>
+                      <Ionicons name="wallet-outline" size={20} color={COLORS.warning} />
+                      <Text style={[styles.modalFinancialLabel, { marginLeft: SPACING.sm, fontWeight: "600", color: COLORS.warning }]}>
+                        Paiement depuis l'épargne
+                      </Text>
+                    </View>
+                    <Text style={[styles.modalFinancialLabel, { fontSize: FONT_SIZES.sm, color: COLORS.textSecondary }]}>
+                      Le montant sera débité directement de l'épargne personnelle du membre.
+                    </Text>
+                  </View>
                 )}
-              </TouchableOpacity>
+
+                <View style={styles.inputSection}>
+                  <Text style={styles.inputLabel}>
+                    Montant du paiement *
+                  </Text>
+                  <TextInput
+                    style={styles.input}
+                    value={montant}
+                    onChangeText={setMontant}
+                    placeholder="Entrez le montant en FCFA"
+                    keyboardType="numeric"
+                    placeholderTextColor={COLORS.textLight}
+                    editable={!createPayment.isPending && !payWithSavings.isPending}
+                  />
+                </View>
+
+                <View style={styles.inputSection}>
+                  <Text style={styles.inputLabel}>Notes (optionnel)</Text>
+                  <TextInput
+                    style={[styles.input, styles.textArea]}
+                    value={notes}
+                    onChangeText={setNotes}
+                    placeholder="Ajouter une note..."
+                    multiline
+                    numberOfLines={3}
+                    textAlignVertical="top"
+                    placeholderTextColor={COLORS.textLight}
+                    editable={!createPayment.isPending && !payWithSavings.isPending}
+                  />
+                </View>
+              </ScrollView>
+
+              <View style={styles.modalActions}>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.cancelButton]}
+                  onPress={closeModal}
+                  disabled={createPayment.isPending || payWithSavings.isPending}
+                >
+                  <Text style={styles.cancelButtonText}>Annuler</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={[
+                    styles.modalButton,
+                    modalType === "savings" ? styles.savingsConfirmButton : styles.confirmButton
+                  ]}
+                  onPress={
+                    modalType === "savings"
+                      ? handlePaymentWithSavings
+                      : handleAddPayment
+                  }
+                  disabled={createPayment.isPending || payWithSavings.isPending}
+                >
+                  {createPayment.isPending || payWithSavings.isPending ? (
+                    <ActivityIndicator size="small" color="white" />
+                  ) : (
+                    <Text style={styles.confirmButtonText}>
+                      {modalType === "savings" ? "Débiter l'épargne" : "Valider"}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
-        </KeyboardAvoidingView>
+          </KeyboardAvoidingView>
+        </View>
       </Modal>
 
       {/* Modal Détails */}
@@ -653,49 +794,51 @@ const processPayment = (montantFinal: number) => {
         transparent
         statusBarTranslucent
       >
-        <BlurView intensity={20} style={StyleSheet.absoluteFillObject} />
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContainer}>
-            <LinearGradient
-              colors={[COLORS.primary, "#3A86FF"]}
-              style={styles.modalHeader}
-            >
-              <Text style={styles.modalTitle}>Historique des Paiements</Text>
-              <TouchableOpacity onPress={closeModal}>
-                <Ionicons name="close" size={24} color="white" />
-              </TouchableOpacity>
-            </LinearGradient>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)' }}>
+          <BlurView intensity={20} style={StyleSheet.absoluteFillObject} />
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContainer}>
+              <LinearGradient
+                colors={[COLORS.primary, "#3A86FF"]}
+                style={styles.modalHeader}
+              >
+                <Text style={styles.modalTitle}>Historique des Paiements</Text>
+                <TouchableOpacity onPress={closeModal}>
+                  <Ionicons name="close" size={24} color="white" />
+                </TouchableOpacity>
+              </LinearGradient>
 
-            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
-              <View style={styles.memberInfoSection}>
-                <Text style={styles.modalMemberName}>
-                  {currentRenflouement?.membre_info?.nom_complet}
-                </Text>
-                <Text style={styles.modalMemberNumber}>
-                  {currentRenflouement?.membre_info?.numero_membre}
-                </Text>
-              </View>
+              <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+                <View style={styles.memberInfoSection}>
+                  <Text style={styles.modalMemberName}>
+                    {currentRenflouement?.membre_info?.nom_complet}
+                  </Text>
+                  <Text style={styles.modalMemberNumber}>
+                    {currentRenflouement?.membre_info?.numero_membre}
+                  </Text>
+                </View>
 
-              <View style={styles.paymentsListContainer}>
-                {currentRenflouement?.paiements_details && currentRenflouement.paiements_details.length > 0 ? (
-                  <FlatList
-                    data={currentRenflouement.paiements_details}
-                    keyExtractor={(item) => item.id}
-                    renderItem={renderPaymentItem}
-                    showsVerticalScrollIndicator={false}
-                    scrollEnabled={false}
-                    ItemSeparatorComponent={() => <View style={{ height: SPACING.sm }} />}
-                  />
-                ) : (
-                  <View style={styles.emptyPayments}>
-                    <Ionicons name="receipt-outline" size={48} color={COLORS.textLight} />
-                    <Text style={styles.emptyPaymentsText}>
-                      Aucun paiement enregistré
-                    </Text>
-                  </View>
-                )}
-              </View>
-            </ScrollView>
+                <View style={styles.paymentsListContainer}>
+                  {currentRenflouement?.paiements_details && currentRenflouement.paiements_details.length > 0 ? (
+                    <FlatList
+                      data={currentRenflouement.paiements_details}
+                      keyExtractor={(item) => item.id}
+                      renderItem={renderPaymentItem}
+                      showsVerticalScrollIndicator={false}
+                      scrollEnabled={false}
+                      ItemSeparatorComponent={() => <View style={{ height: SPACING.sm }} />}
+                    />
+                  ) : (
+                    <View style={styles.emptyPayments}>
+                      <Ionicons name="receipt-outline" size={48} color={COLORS.textLight} />
+                      <Text style={styles.emptyPaymentsText}>
+                        Aucun paiement enregistré
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              </ScrollView>
+            </View>
           </View>
         </View>
       </Modal>
@@ -798,12 +941,31 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
     gap: SPACING.sm,
+    marginBottom: SPACING.md,
   },
   searchInput: {
     flex: 1,
     fontSize: FONT_SIZES.md,
     color: COLORS.text,
     paddingVertical: SPACING.md,
+  },
+
+  // Filters
+  filtersContainer: {
+    flexDirection: "row",
+    gap: SPACING.sm,
+    flexWrap: "wrap",
+  },
+  filterButton: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  filterText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: "600",
   },
 
   // Results Counter
@@ -954,7 +1116,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: SPACING.sm,
+    paddingVertical: SPACING.md,
     borderRadius: BORDER_RADIUS.md,
     gap: SPACING.xs,
   },
@@ -1176,6 +1338,9 @@ const styles = StyleSheet.create({
   confirmButton: {
     backgroundColor: COLORS.primary,
   },
+  savingsConfirmButton: {
+    backgroundColor: COLORS.warning,
+  },
   confirmButtonText: {
     fontSize: FONT_SIZES.md,
     fontWeight: "600",
@@ -1225,5 +1390,16 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.md,
     color: COLORS.textSecondary,
     marginTop: SPACING.md,
+  },
+  savingsButton: {
+    backgroundColor: COLORS.warning, // ou une couleur spécifique
+    flex: 1,
+  },
+  savingsButtonText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: "600",
+    color: "white",
+    textAlign: "center",
+    flex: 1,
   },
 });

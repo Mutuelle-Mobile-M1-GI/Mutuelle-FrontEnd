@@ -1148,6 +1148,8 @@ export default function InscriptionsScreen() {
                 }}
                 onPayment={() => {
                   setSelectedMember(member);
+                  const restant = member.donnees_financieres?.inscription?.montant_restant_inscription || 0;
+                  setPaymentAmount(restant.toString());
                   setShowPaymentModal(true);
                 }}
                 onDetail={() => {

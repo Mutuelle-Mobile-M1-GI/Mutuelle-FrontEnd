@@ -25,6 +25,7 @@ export function useCreateSolidarityPayment() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["solidarity-payments"] });
       queryClient.invalidateQueries({ queryKey: ["social-fund-current"] });
+      queryClient.invalidateQueries({ queryKey: ["caisse-inscription-current"] });
     },
   });
 }

@@ -37,6 +37,7 @@ export interface MemberFinancialData {
     total_solidarite_payee: number;
     dette_solidarite_cumul: number;
     solidarite_a_jour: boolean;
+    montant_reporte: number;
   };
   epargne: {
     epargne_base: number;

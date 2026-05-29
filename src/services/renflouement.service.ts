@@ -23,3 +23,18 @@ export const createRenflouementPayment = async (payload: any, accessToken: strin
   });
   return data;
 };
+
+export const payRenflouementWithSavings = async (
+  renflouementId: string,
+  payload: { montant?: number; notes?: string },
+  accessToken: string
+): Promise<any> => {
+  const { data } = await axios.post(
+    API_BASE_URL + API_ENDPOINTS.renflouementPayWithSavings(renflouementId),
+    payload,
+    {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    }
+  );
+  return data;
+};

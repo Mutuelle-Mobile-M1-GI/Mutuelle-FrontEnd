@@ -912,7 +912,7 @@ export default function SavingsScreen() {
                   const isInteret = tx.type_transaction === "INTERET";
                   const color     = isDepot ? COLORS.success : isInteret ? COLORS.primary : COLORS.error;
                   const icon      = isDepot ? "arrow-up-circle" : isInteret ? "trending-up" : "arrow-down-circle";
-                  const sign      = isDepot || isInteret ? "+" : "−";
+                  const sign      = isDepot || isInteret ? "" : "";
                   return (
                     <View
                       key={tx.id}
@@ -931,7 +931,7 @@ export default function SavingsScreen() {
                           </Text>
                         </View>
                         <Text style={[styles.txAmount, { color }]}>
-                          {sign} {formatCurrency(Number(tx.montant))}
+                          {sign} {formatCurrency(Math.abs(Number(tx.montant)))}
                         </Text>
                         {(tx.membre_info?.nom_complet) && (
                           <View style={styles.txMemberRow}>

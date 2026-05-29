@@ -49,6 +49,7 @@ export function useCreateAssistances() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["assistances"] });
+      queryClient.invalidateQueries({ queryKey: ["caisse-inscription-current"] });
     },
   });
 }
@@ -77,6 +78,7 @@ export function useCreateAssistance() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["assistances"] });
+      queryClient.invalidateQueries({ queryKey: ["caisse-inscription-current"] });
     },
   });
 }
@@ -91,6 +93,7 @@ export function useUpdateAssistance() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["assistances"] });
+      queryClient.invalidateQueries({ queryKey: ["caisse-inscription-current"] });
     },
   });
 }

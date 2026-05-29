@@ -674,225 +674,233 @@ const openTierModal = (index: number) => {
 
   return (
     <>
-      <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
+      <View style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
           <Text style={styles.title}>Paramètres</Text>
           <Text style={styles.subtitle}>Administration de la mutuelle</Text>
         </View>
 
-        {/* Profile Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Profil</Text>
-          <View style={styles.profileCard}>
-            <View style={styles.profileInfo}>
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>
-                  {user?.first_name?.[0]}{user?.last_name?.[0]}
-                </Text>
-              </View>
-              <View style={styles.profileDetails}>
-                <Text style={styles.profileName}>{user?.nom_complet}</Text>
-                <Text style={styles.profileEmail}>{user?.email}</Text>
-                <Text style={styles.profileRole}>
-                    {authUser?.role === "SECRETAIRE_GENERALE" ? "Secrétaire Générale"
-                      : authUser?.role === "TRESORIER" ? "Trésorier"
-                      : authUser?.role === "PRESIDENT" ? "Président"
-                      : "Membre"}
-                  </Text>
-              </View>
-            </View>
-            <TouchableOpacity
-              style={styles.editButton}
-              onPress={() => navigation.navigate("Profile")}
-            >
-              <Ionicons name="pencil-outline" size={20} color={COLORS.primary} />
-            </TouchableOpacity>
-          </View>
-        </View>
+        <ScrollView         
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
 
-        {/* Configuration Mutuelle */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Configuration Mutuelle</Text>
-          {(readOnly
-            // Trésorier/Président : seulement montant_inscription, montant_solidarite, taux_interet
-            ? configItems.filter(item =>
-                ['montant_inscription', 'montant_solidarite', 'taux_interet'].includes(item.key)
-              )
-            : configItems
-          ).map((item) => (
-            <TouchableOpacity
-              key={item.key}
-              style={[styles.settingItem, readOnly && { opacity: 0.6 }]}
-              onPress={readOnly ? undefined : () => openConfigModal(item.key, item.title)}
-              disabled={readOnly || updateConfigMutation.isPending}
+          {/* Profile Section */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Profil</Text>
+            <View style={styles.profileCard}>
+              <View style={styles.profileInfo}>
+                <View style={styles.avatar}>
+                  <Text style={styles.avatarText}>
+                    {user?.first_name?.[0]}{user?.last_name?.[0]}
+                  </Text>
+                </View>
+                <View style={styles.profileDetails}>
+                  <Text style={styles.profileName}>{user?.nom_complet}</Text>
+                  <Text style={styles.profileEmail}>{user?.email}</Text>
+                  <Text style={styles.profileRole}>
+                      {authUser?.role === "SECRETAIRE_GENERALE" ? "Secrétaire Générale"
+                        : authUser?.role === "TRESORIER" ? "Trésorier"
+                        : authUser?.role === "PRESIDENT" ? "Président"
+                        : "Membre"}
+                    </Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                style={styles.editButton}
+                onPress={() => navigation.navigate("Profile")}
+              >
+                <Ionicons name="pencil-outline" size={20} color={COLORS.primary} />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Configuration Mutuelle */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Configuration Mutuelle</Text>
+            {(readOnly
+              // Trésorier/Président : seulement montant_inscription, montant_solidarite, taux_interet
+              ? configItems.filter(item =>
+                  ['montant_inscription', 'montant_solidarite', 'taux_interet'].includes(item.key)
+                )
+              : configItems
+            ).map((item) => (
+              <TouchableOpacity
+                key={item.key}
+                style={[styles.settingItem, readOnly && { opacity: 0.6 }]}
+                onPress={readOnly ? undefined : () => openConfigModal(item.key, item.title)}
+                disabled={readOnly || updateConfigMutation.isPending}
+              >
+                <View style={styles.settingItemLeft}>
+                  <View style={styles.settingIcon}>
+                    <Ionicons name={item.icon as any} size={20} color={COLORS.primary} />
+                  </View>
+                  <View style={styles.settingInfo}>
+                    <Text style={styles.settingTitle}>{item.title}</Text>
+                    <Text style={styles.settingValue}>{item.value}</Text>
+                  </View>
+                </View>
+                {/* Pas de flèche en readOnly car pas cliquable */}
+                {!readOnly && (
+                  updateConfigMutation.isPending
+                    ? <ActivityIndicator size="small" color={COLORS.primary} />
+                    : <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
+                )}
+              </TouchableOpacity>
+            ))}
+            {/* Types d'Assistance — masqué pour Trésorier/Président */}
+            {!readOnly && (
+              <TouchableOpacity
+                style={styles.settingItem}
+                onPress={() => setAssistanceManagerVisible(true)}
+              >
+                <View style={styles.settingItemLeft}>
+                  <View style={styles.settingIcon}>
+                    <Ionicons name="medical-outline" size={20} color={COLORS.primary} />
+                  </View>
+                  <View style={styles.settingInfo}>
+                    <Text style={styles.settingTitle}>Types d'Assistance</Text>
+                    <Text style={styles.settingValue}>Gérer les aides (Mariage, Décès...)</Text>
+                  </View>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* Section Coefficients — masquée pour Trésorier/Président */}
+          {!readOnly && (
+            <>
+            <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Coefficients d'emprunt par tranches</Text>
+
+          <View style={styles.section}>
+            <TouchableOpacity 
+              style={styles.settingItem} 
+              onPress={() => setIsTiersExpanded(!isTiersExpanded)}
+              activeOpacity={0.7}
             >
               <View style={styles.settingItemLeft}>
                 <View style={styles.settingIcon}>
-                  <Ionicons name={item.icon as any} size={20} color={COLORS.primary} />
+                  <Ionicons name="layers-outline" size={20} color={COLORS.primary} />
                 </View>
                 <View style={styles.settingInfo}>
-                  <Text style={styles.settingTitle}>{item.title}</Text>
-                  <Text style={styles.settingValue}>{item.value}</Text>
+                  <Text style={styles.settingTitle}>Coefficients d'emprunt</Text>
+                  <Text style={styles.settingValue}>Par tranches de montant</Text>
                 </View>
               </View>
-              {/* Pas de flèche en readOnly car pas cliquable */}
-              {!readOnly && (
-                updateConfigMutation.isPending
-                  ? <ActivityIndicator size="small" color={COLORS.primary} />
-                  : <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
-              )}
+              <Ionicons 
+                name={isTiersExpanded ? "chevron-up" : "chevron-forward"} 
+                size={20} 
+                color={COLORS.textSecondary} 
+              />
             </TouchableOpacity>
-          ))}
-          {/* Types d'Assistance — masqué pour Trésorier/Président */}
+
+            </View>
+            {/* Contenu déroulant : Vos éléments de tranches */}
+            {isTiersExpanded && (
+              <View style={{ marginTop: 8 }}> 
+                {editableTiers.map((tier, index) => (
+                  <TouchableOpacity 
+                    key={index} 
+                    style={styles.tierCard}
+                    onPress={() => openTierModal(index)}
+                  >
+                    <View style={styles.tierInfo}>
+                      <Text style={styles.tierRange}>
+                        {tier.min_amount / 1000}k - {tier.max_amount / 1000}k FCFA
+                      </Text>
+                      <Text style={styles.tierCoef}>
+                        Multiplicateur : <Text style={{ color: COLORS.primary, fontWeight: '700' }}>{tier.coefficient}x</Text>
+                        {tier.max_cap ? ` • Plafond: ${tier.max_cap.toLocaleString()} FCFA` : ''}
+                      </Text>
+                    </View>
+                    <Ionicons name="pencil-outline" size={16} color={COLORS.textSecondary} />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+          </View>
+            </>
+          )}
+          
+          {/*modif*/}
+          {/* Section Exercices — masquée pour Trésorier/Président */}
           {!readOnly && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Exercices</Text>
+              <TouchableOpacity
+                style={styles.settingItem}
+                onPress={handleCreateNewExercise}
+                disabled={createExerciseMutation.isPending}
+              >
+                <View style={styles.settingItemLeft}>
+                  <View style={styles.settingIcon}>
+                    <Ionicons name="add-circle-outline" size={20} color={COLORS.success} />
+                  </View>
+                  <View style={styles.settingInfo}>
+                    <Text style={styles.settingTitle}>Créer nouvel exercice</Text>
+                    <Text style={styles.settingDescription}>Démarrer un nouvel exercice financier</Text>
+                  </View>
+                </View>
+                {createExerciseMutation.isPending ? (
+                  <ActivityIndicator size="small" color={COLORS.success} />
+                ) : (
+                  <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
+                )}
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {/* Sécurité */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Sécurité</Text>
+            
             <TouchableOpacity
               style={styles.settingItem}
-              onPress={() => setAssistanceManagerVisible(true)}
+              onPress={() => navigation.navigate("Profile")}
             >
               <View style={styles.settingItemLeft}>
                 <View style={styles.settingIcon}>
-                  <Ionicons name="medical-outline" size={20} color={COLORS.primary} />
+                  <Ionicons name="lock-closed-outline" size={20} color={COLORS.primary} />
                 </View>
                 <View style={styles.settingInfo}>
-                  <Text style={styles.settingTitle}>Types d'Assistance</Text>
-                  <Text style={styles.settingValue}>Gérer les aides (Mariage, Décès...)</Text>
+                  <Text style={styles.settingTitle}>Changer le mot de passe</Text>
+                  <Text style={styles.settingDescription}>Modifier votre mot de passe</Text>
                 </View>
               </View>
               <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
             </TouchableOpacity>
-          )}
-        </View>
 
-  {/* Section Coefficients — masquée pour Trésorier/Président */}
-{!readOnly && (
-  <>
-  <View style={styles.section}>
-  <Text style={styles.sectionTitle}>Coefficients d'emprunt par tranches</Text>
-
-<View style={styles.section}>
-  <TouchableOpacity 
-    style={styles.settingItem} 
-    onPress={() => setIsTiersExpanded(!isTiersExpanded)}
-    activeOpacity={0.7}
-  >
-    <View style={styles.settingItemLeft}>
-      <View style={styles.settingIcon}>
-        <Ionicons name="layers-outline" size={20} color={COLORS.primary} />
-      </View>
-      <View style={styles.settingInfo}>
-        <Text style={styles.settingTitle}>Coefficients d'emprunt</Text>
-        <Text style={styles.settingValue}>Par tranches de montant</Text>
-      </View>
-    </View>
-    <Ionicons 
-      name={isTiersExpanded ? "chevron-up" : "chevron-forward"} 
-      size={20} 
-      color={COLORS.textSecondary} 
-    />
-  </TouchableOpacity>
-
-  </View>
-  {/* Contenu déroulant : Vos éléments de tranches */}
-  {isTiersExpanded && (
-    <View style={{ marginTop: 8 }}> 
-      {editableTiers.map((tier, index) => (
-        <TouchableOpacity 
-          key={index} 
-          style={styles.tierCard}
-          onPress={() => openTierModal(index)}
-        >
-          <View style={styles.tierInfo}>
-            <Text style={styles.tierRange}>
-              {tier.min_amount / 1000}k - {tier.max_amount / 1000}k FCFA
-            </Text>
-            <Text style={styles.tierCoef}>
-              Multiplicateur : <Text style={{ color: COLORS.primary, fontWeight: '700' }}>{tier.coefficient}x</Text>
-              {tier.max_cap ? ` • Plafond: ${tier.max_cap.toLocaleString()} FCFA` : ''}
-            </Text>
-          </View>
-          <Ionicons name="pencil-outline" size={16} color={COLORS.textSecondary} />
-        </TouchableOpacity>
-      ))}
-    </View>
-  )}
-</View>
-  </>
-)}
-{/*modif*/}
-        {/* Section Exercices — masquée pour Trésorier/Président */}
-        {!readOnly && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Exercices</Text>
             <TouchableOpacity
               style={styles.settingItem}
-              onPress={handleCreateNewExercise}
-              disabled={createExerciseMutation.isPending}
+              onPress={() => navigation.navigate("Pin")}
             >
               <View style={styles.settingItemLeft}>
                 <View style={styles.settingIcon}>
-                  <Ionicons name="add-circle-outline" size={20} color={COLORS.success} />
+                  <Ionicons name="keypad-outline" size={20} color={COLORS.primary} />
                 </View>
                 <View style={styles.settingInfo}>
-                  <Text style={styles.settingTitle}>Créer nouvel exercice</Text>
-                  <Text style={styles.settingDescription}>Démarrer un nouvel exercice financier</Text>
+                  <Text style={styles.settingTitle}>Changer le code PIN</Text>
+                  <Text style={styles.settingDescription}>Redéfinir votre code PIN</Text>
                 </View>
               </View>
-              {createExerciseMutation.isPending ? (
-                <ActivityIndicator size="small" color={COLORS.success} />
-              ) : (
-                <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
-              )}
+              <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
             </TouchableOpacity>
           </View>
-        )}
 
-        {/* Sécurité */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Sécurité</Text>
-          
-          <TouchableOpacity
-            style={styles.settingItem}
-            onPress={() => navigation.navigate("Profile")}
-          >
-            <View style={styles.settingItemLeft}>
-              <View style={styles.settingIcon}>
-                <Ionicons name="lock-closed-outline" size={20} color={COLORS.primary} />
-              </View>
-              <View style={styles.settingInfo}>
-                <Text style={styles.settingTitle}>Changer le mot de passe</Text>
-                <Text style={styles.settingDescription}>Modifier votre mot de passe</Text>
-              </View>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.settingItem}
-            onPress={() => navigation.navigate("Pin")}
-          >
-            <View style={styles.settingItemLeft}>
-              <View style={styles.settingIcon}>
-                <Ionicons name="keypad-outline" size={20} color={COLORS.primary} />
-              </View>
-              <View style={styles.settingInfo}>
-                <Text style={styles.settingTitle}>Changer le code PIN</Text>
-                <Text style={styles.settingDescription}>Redéfinir votre code PIN</Text>
-              </View>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
-          </TouchableOpacity>
-        </View>
-
-        {/* Actions */}
-        <View style={styles.section}>
-          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-            <Ionicons name="log-out-outline" size={20} color={COLORS.error} />
-            <Text style={styles.logoutText}>Se déconnecter</Text>
-          </TouchableOpacity>
-        </View>
-        <View style={{height:70}}></View>
+          {/* Actions */}
+          <View style={styles.section}>
+            <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+              <Ionicons name="log-out-outline" size={20} color={COLORS.error} />
+              <Text style={styles.logoutText}>Se déconnecter</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={{height:70}}></View>
       </ScrollView>
+      </View>
 
       {/* Modal de configuration */}
       {currentConfigField && (
@@ -918,24 +926,24 @@ const openTierModal = (index: number) => {
         loading={createExerciseMutation.isPending}
       />
        {/* MODAL 1: Liste des assistances (Le Manager) */}
-    <AssistanceManagerModal
-    visible={assistanceManagerVisible}
-    onClose={() => setAssistanceManagerVisible(false)}
-    assistanceTypes={Array.isArray(typesQuery.data) ? typesQuery.data : []} 
-    loading={typesQuery.isLoading}
-    onAdd={handleOpenAdd}
-    onEdit={handleOpenEdit}
-    // onDelete={handleDelete} // Garde-le en commentaire si tu n'as pas encore la fonction
-  />
+      <AssistanceManagerModal
+        visible={assistanceManagerVisible}
+        onClose={() => setAssistanceManagerVisible(false)}
+        assistanceTypes={Array.isArray(typesQuery.data) ? typesQuery.data : []} 
+        loading={typesQuery.isLoading}
+        onAdd={handleOpenAdd}
+        onEdit={handleOpenEdit}
+        // onDelete={handleDelete} // Garde-le en commentaire si tu n'as pas encore la fonction
+      />
 
       {/* MODAL 2: Le Formulaire (Créer/Modifier) - celui créé précédemment */}
-        <AssistanceModal
-          visible={formVisible}
-          onClose={() => setFormVisible(false)}
-          initialData={selectedType}
-          onSubmit={handleAssistanceSubmit}
-          loading={createMutation.isPending || updateMutation.isPending}
-        />
+      <AssistanceModal
+        visible={formVisible}
+        onClose={() => setFormVisible(false)}
+        initialData={selectedType}
+        onSubmit={handleAssistanceSubmit}
+        loading={createMutation.isPending || updateMutation.isPending}
+      />
     </>
   );
 }
@@ -1234,6 +1242,9 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: 'white',
   },
+  scrollView: {
+    flex: 1,
+  },
 });
 const stylesAssistance = StyleSheet.create({
   modalOverlay: {
@@ -1319,7 +1330,7 @@ const stylesAssistance = StyleSheet.create({
     fontWeight: '700',
   },
   modalBodyCompact: {
-  padding: 16,
-  maxHeight: 400, // Permet le scroll si trop de contenu
-},
+    padding: 16,
+    maxHeight: 400, // Permet le scroll si trop de contenu
+  },
 });
