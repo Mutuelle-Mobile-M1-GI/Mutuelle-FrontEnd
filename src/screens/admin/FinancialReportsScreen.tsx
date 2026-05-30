@@ -651,7 +651,7 @@ const ExportButton = ({ onPress, label = "Exporter" }: { onPress: () => void; la
 const SessionsView = ({ exercice, onSelectSession, onExportExercice }: {
   exercice: Exercise;
   onSelectSession: (s: Session) => void;
-  onExportExercice: () => void;
+  onExportExercice: (sessions: Session[]) => void;
 }) => {
   const { data: sessionsRaw, isLoading, error, refetch } = useSessions({ exercice: exercice.id });
   const sessions: Session[] = arr(sessionsRaw).sort(
@@ -673,10 +673,7 @@ const SessionsView = ({ exercice, onSelectSession, onExportExercice }: {
         {sessions.length > 0 && (
           <ExportButton
             onPress={() => {
-              // Export exercice complet : toutes les sessions (données légères sans opérations détaillées)
-              // Les opérations complètes ne sont chargées que par session dans OperationsView
-              // On construit un ExportData minimal ici pour le déclenchement
-              onExportExercice();
+              onExportExercice(sessions);
             }}
           />
         )}
@@ -953,11 +950,149 @@ export default function AdminHistoryScreen() {
   const [selectedExercice, setSelectedExercice] = useState<Exercise | null>(null);
   const [selectedSession,  setSelectedSession]  = useState<Session  | null>(null);
   const [exPage,           setExPage]           = useState(1);
+  const [exportingExercice, setExportingExercice] = useState(false);
+
+  // Charger les données pour l'export d'exercice uniquement si exportingExercice est true
+  const { data: loansRaw }        = useLoans({ exercice: selectedExercice?.id });
+  const { data: repaymentsRaw }   = useRepayments({ exercice: selectedExercice?.id });
+  const { data: solidarityRaw }   = useSolidarityPayments({ exercice: selectedExercice?.id });
+  const { data: renflouementRaw } = useRenflouements({ exercice: selectedExercice?.id });
+  const { data: savingsRaw }      = useSavings({ exercice: selectedExercice?.id });
+  const { data: assistancesRaw }  = useAssistances({ exercice: selectedExercice?.id });
+  const { data: membersRaw }      = useMembers();
 
   const totalExPages   = Math.max(1, Math.ceil(exercices.length / EXERCISES_PER_PAGE));
   const pagedExercices = exercices.slice((exPage - 1) * EXERCISES_PER_PAGE, exPage * EXERCISES_PER_PAGE);
 
   const showDashboard = !!selectedExercice && !selectedSession;
+
+  // ── Fonction pour construire les exports complets avec opérations ──
+  const buildExerciceExportData = (exercice: Exercise, sessions: Session[]): ExportData => {
+    const exportSessions: ExportSession[] = [];
+
+    for (const session of sessions) {
+      // Construire la timeline pour cette session
+      const items: TimelineItem[] = [];
+
+      arr(loansRaw)
+        .filter((l: any) => !session.id || String(l.session_emprunt) === String(session.id))
+        .forEach((l: any) => items.push({
+          id: `loan-${l.id}`, type: "emprunt",
+          date: l.date_emprunt, amount: parseFloat(l.montant_emprunte) || 0,
+          data: l, status: l.statut,
+          memberName: extractMemberName(l), memberNumero: extractMemberNumero(l),
+        }));
+
+      arr(repaymentsRaw).forEach((r: any) => items.push({
+        id: `rep-${r.id}`, type: "remboursement",
+        date: r.date_remboursement, amount: parseFloat(r.montant) || 0,
+        data: r,
+        memberName: extractMemberName(r), memberNumero: extractMemberNumero(r),
+      }));
+
+      arr(solidarityRaw).forEach((sol: any) => items.push({
+        id: `sol-${sol.id}`, type: "solidarite",
+        date: sol.date_paiement, amount: parseFloat(sol.montant) || 0,
+        data: sol,
+        memberName: extractMemberName(sol), memberNumero: extractMemberNumero(sol),
+      }));
+
+      arr(renflouementRaw)
+        .filter((renf: any) => !session.id || String(renf.session) === String(session.id))
+        .forEach((renf: any) => {
+          const paiements = renf.paiements_details;
+          if (Array.isArray(paiements) && paiements.length > 0) {
+            paiements.forEach((pay: any) => items.push({
+              id: `renf-${renf.id}-${pay.id}`, type: "renflouement",
+              date: pay.date_paiement || renf.date_creation,
+              amount: parseFloat(pay.montant) || 0,
+              data: { ...pay, cause: renf.cause, session_nom: renf.session_nom },
+              memberName: extractMemberName(renf), memberNumero: extractMemberNumero(renf),
+            }));
+          } else {
+            items.push({
+              id: `renf-${renf.id}`, type: "renflouement",
+              date: renf.date_creation,
+              amount: parseFloat(renf.montant_paye) || parseFloat(renf.montant_du) || 0,
+              data: renf,
+              status: renf.is_solde ? "Soldé" : `${renf.pourcentage_paye ?? 0}% payé`,
+              memberName: extractMemberName(renf), memberNumero: extractMemberNumero(renf),
+            });
+          }
+        });
+
+      arr(savingsRaw).forEach((sv: any) => items.push({
+        id: `sav-${sv.id}`, type: "epargne",
+        date: sv.date_transaction || sv.date_creation, amount: parseFloat(sv.montant) || 0,
+        data: sv, status: sv.type_transaction_display || sv.type,
+        memberName: extractMemberName(sv), memberNumero: extractMemberNumero(sv),
+      }));
+
+      arr(assistancesRaw).forEach((a: any) => items.push({
+        id: `ast-${a.id}`, type: "assistance",
+        date: a.date_paiement || a.date_demande, amount: parseFloat(a.montant) || 0,
+        data: a, status: a.statut,
+        memberName: extractMemberName(a), memberNumero: extractMemberNumero(a),
+      }));
+
+      arr(membersRaw)
+        .filter((m: any) => String(m.session_inscription) === String(session.id))
+        .forEach((m: any) => {
+          const montant = parseFloat(m.donnees_financieres?.inscription?.montant_paye_inscription) || 0;
+          const nom    = m.utilisateur?.nom_complet || m.utilisateur?.username || "Membre";
+          const numero = m.numero_membre || "";
+          items.push({
+            id:           `ins-${m.id}`,
+            type:         "paiement-inscription",
+            date:         m.date_inscription || m.date_creation,
+            amount:       montant,
+            data:         { ...m, membre_info: { nom_complet: nom, numero_membre: numero } },
+            memberName:   nom,
+            memberNumero: numero,
+          });
+        });
+
+      items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+      // Calculer les totaux
+      const totals: Record<string, number> = {};
+      items.forEach((i) => { totals[i.type] = (totals[i.type] || 0) + i.amount; });
+
+      exportSessions.push({
+        id:           String(session.id),
+        nom:          session.nom || "Session",
+        date:         (session as any).date_session || "",
+        collation:    0,
+        autreDepense: 0,
+        motifDepense: "",
+        totals,
+        operations:   items.map((i) => ({
+          type:         i.type,
+          typeLabel:    OPERATION_CONFIG[i.type]?.label ?? i.type,
+          memberName:   i.memberName || "",
+          memberNumero: i.memberNumero || "",
+          amount:       i.amount,
+          date:         i.date,
+        })),
+      });
+    }
+
+    return {
+      exerciceNom:  exercice.nom,
+      exerciceDate: (exercice as any).date_debut || "",
+      sessions:     exportSessions,
+    };
+  };
+
+  const handleExportExercice = (sessions: Session[]) => {
+    try {
+      if (!selectedExercice) return;
+      const exportData = buildExerciceExportData(selectedExercice, sessions);
+      showExportMenuExercice(exportData);
+    } catch (e: any) {
+      Alert.alert("Erreur", e?.message ?? "Erreur lors de la construction de l'export");
+    }
+  };
 
   if (isLoading && !selectedExercice) return <LoadingView message="Chargement des exercices…" />;
   if (error    && !selectedExercice)  return <ErrorView  message="Impossible de charger les exercices" onRetry={refetch} />;
@@ -1037,30 +1172,7 @@ export default function AdminHistoryScreen() {
         <SessionsView
           exercice={selectedExercice}
           onSelectSession={setSelectedSession}
-          onExportExercice={() => {
-            // Pour un export exercice complet on a besoin des opérations de chaque session.
-            // On passe les données disponibles : exercice + sessions (sans détail opérations).
-            // Le hook génère un fichier avec 1 onglet/page par session, bilan uniquement.
-            // Les totaux par session ne sont pas disponibles ici sans charger chaque session.
-            Alert.alert(
-              "Export exercice",
-              "L'export par exercice inclura la liste des sessions. Pour les opérations détaillées, exportez depuis chaque session individuellement.",
-              [
-                { text: "Annuler", style: "cancel" },
-                {
-                  text: "Exporter quand même",
-                  onPress: () => {
-                    const exportData: ExportData = {
-                      exerciceNom:  selectedExercice.nom,
-                      exerciceDate: (selectedExercice as any).date_debut || "",
-                      sessions:     [],
-                    };
-                    showExportMenuExercice(exportData);
-                  },
-                },
-              ]
-            );
-          }}
+          onExportExercice={handleExportExercice}
         />
       )}
 

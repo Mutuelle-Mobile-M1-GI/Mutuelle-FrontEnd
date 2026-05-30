@@ -72,6 +72,9 @@ const ALL_TYPES = [
 const writeBase64ToFile = async (fileName: string, base64Content: string): Promise<string> => {
   const dir = new Directory(Paths.document);
   const file = new File(dir, fileName);
+  if (file.exists) {
+    file.delete();
+  }
   await file.write(base64Content, { encoding: "base64" });
   return file.uri;
 };
@@ -80,6 +83,9 @@ const movePdfToDocument = async (fromUri: string, fileName: string): Promise<str
   const srcFile = new File(fromUri);
   const dir = new Directory(Paths.document);
   const destFile = new File(dir, fileName);
+  if (destFile.exists) {
+    destFile.delete();
+  }
   await srcFile.move(destFile);
   return destFile.uri;
 };

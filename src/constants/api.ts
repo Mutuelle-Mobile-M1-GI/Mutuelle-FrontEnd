@@ -3,7 +3,7 @@
 import { useEmpruntTiers } from "../hooks/useEmpruntTiers";
 import { createLoan } from "../services/loan.service";
 
-export const API_BASE_URL = "http://10.76.165.72:8000/api";
+export const API_BASE_URL = "http://192.168.0.201:8000/api";
 
 export const API_ENDPOINTS = {
   // Auth
