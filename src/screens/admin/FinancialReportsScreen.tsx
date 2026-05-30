@@ -19,6 +19,7 @@ import { useSessionDepenses } from "../../hooks/useSessionDepenses";
 import { useHistoryExport, ExportData, ExportSession, ExportOperation } from "../../hooks/useHistoryExport";
 import { Exercise } from "../../types/exercise.types";
 import { Session } from "../../types/session.types";
+import { useRetraitsEpargne } from "../../hooks/useRetraitEpargne";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 const EXERCISES_PER_PAGE = 6;
@@ -29,7 +30,7 @@ const OPS_PER_PAGE = 10;
 type TimelineItem = {
   id: string;
   type: "emprunt" | "remboursement" | "solidarite" | "renflouement"
-      | "epargne"  | "assistance"   | "paiement-inscription";
+      | "epargne" | "assistance" | "paiement-inscription" | "retrait-epargne"; // ← ajouter
   date: string;
   amount: number;
   data: any;
@@ -76,6 +77,13 @@ const OPERATION_CONFIG = {
   epargne:              { label: "Épargnes",        icon: "wallet",            gradient: THEME.gradients.pink,    lightBg: "#FDF2F8", textColor: "#BE185D" },
   assistance:           { label: "Assistances",     icon: "heart",             gradient: THEME.gradients.purple,  lightBg: "#FAF5FF", textColor: "#7C3AED" },
   "paiement-inscription": { label: "Inscriptions", icon: "school",            gradient: THEME.gradients.cyan,    lightBg: "#ECFEFF", textColor: "#0891B2" },
+  "retrait-epargne": {
+    label: "Retrait d'épargne",
+    icon: "arrow-up-circle",
+    gradient: ["#F43F5E", "#BE123C"] as [string, string],
+    lightBg: "#FFF1F2",
+    textColor: "#BE123C",
+  },
 } as const;
 
 // ─── Utilitaires ─────────────────────────────────────────────────────────────
@@ -492,7 +500,7 @@ const DetailRow = ({ label, value }: { label: string; value: string }) => (
   </View>
 );
 
-const OperationDetailModal = ({ item, onClose }: { item: TimelineItem | null; onClose: () => void }) => {
+const OperationDetailModal = ({ item, onClose, children }: { item: TimelineItem | null; onClose: () => void; children?: React.ReactNode }) => {
   if (!item) return null;
   const config = OPERATION_CONFIG[item.type];
   return (
@@ -576,6 +584,7 @@ const OperationDetailModal = ({ item, onClose }: { item: TimelineItem | null; on
               <DetailRow label="Session" value={item.data.session_nom || "N/A"} />
               <DetailRow label="Notes"   value={item.data.notes || "Aucune note"} />
             </>)}
+            {children}
           </ScrollView>
         </View>
       </View>
@@ -701,6 +710,8 @@ const OperationsView = ({ session, initialFilters }: { session: Session; initial
   const collation    = parseFloat(depensesRaw?.depenses?.[0]?.montant_collation     ?? "0") || 0;
   const autreDepense = parseFloat(depensesRaw?.depenses?.[0]?.montant_autre_depense ?? "0") || 0;
   const motifDepense = depensesRaw?.depenses?.[0]?.motif_autre_depense ?? "";
+  // Ajouter avec les autres hooks de données
+  const { data: retraitsEpargneRaw } = useRetraitsEpargne({ session: session.id });
   // Inscriptions : reconstruites depuis les membres (pas d'endpoint dédié)
   const { data: membersRaw }      = useMembers();
 
@@ -785,11 +796,14 @@ const OperationsView = ({ session, initialFilters }: { session: Session; initial
             memberName: extractMemberName(renf), memberNumero: extractMemberNumero(renf),
           }));
         } else {
-          // Sinon on affiche le renflouement lui-même avec montant_paye
+          // ✅ Ne pas afficher si aucun paiement n'a encore été effectué
+          const montantPaye = parseFloat(renf.montant_paye) || 0;
+          if (montantPaye <= 0) return; // ← ajouter cette ligne
+
           items.push({
             id: `renf-${renf.id}`, type: "renflouement",
             date: renf.date_creation,
-            amount: parseFloat(renf.montant_paye) || parseFloat(renf.montant_du) || 0,
+            amount: montantPaye,
             data: renf,
             status: renf.is_solde ? "Soldé" : `${renf.pourcentage_paye ?? 0}% payé`,
             memberName: extractMemberName(renf), memberNumero: extractMemberNumero(renf),
@@ -803,6 +817,20 @@ const OperationsView = ({ session, initialFilters }: { session: Session; initial
       data: sv, status: sv.type_transaction_display || sv.type,
       memberName: extractMemberName(sv), memberNumero: extractMemberNumero(sv),
     }));
+
+    arr(retraitsEpargneRaw)
+    .filter((rt: any) => !session.id || String(rt.session) === String(session.id))
+    .forEach((rt: any) => {
+      items.push({
+        id:           `retrait-epargne-${rt.id}`,
+        type:         "retrait-epargne",
+        date:         rt.date_retrait,
+        amount:       parseFloat(rt.montant) || 0,
+        data:         rt,
+        memberName:   rt.membre_info?.nom   || extractMemberName(rt),
+        memberNumero: rt.membre_info?.numero_membre || extractMemberNumero(rt),
+      });
+    });
 
     arr(assistancesRaw).forEach((a: any) => items.push({
       id: `ast-${a.id}`, type: "assistance",
@@ -832,7 +860,7 @@ const OperationsView = ({ session, initialFilters }: { session: Session; initial
       });
 
     return items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [loansRaw, repaymentsRaw, solidarityRaw, renflouementRaw, savingsRaw, assistancesRaw, membersRaw, session.id]);
+  }, [loansRaw, repaymentsRaw, solidarityRaw, renflouementRaw, savingsRaw, assistancesRaw, membersRaw, retraitsEpargneRaw, session.id]);
 
   // ── Filtrage : d'abord par type, ensuite par nom de membre ──
   const filteredTimeline = useMemo(() => {
@@ -931,7 +959,14 @@ const OperationsView = ({ session, initialFilters }: { session: Session; initial
         </View>
       </ScrollView>
 
-      <OperationDetailModal item={selectedItem} onClose={() => setSelectedItem(null)} />
+      <OperationDetailModal item={selectedItem} onClose={() => setSelectedItem(null)}>
+        {selectedItem?.type === "retrait-epargne" && (<>
+          <DetailRow label="Montant retiré"    value={formatMoney(selectedItem.data.montant)} />
+          <DetailRow label="Motif"             value={selectedItem.data.motif || "Aucun motif"} />
+          <DetailRow label="Épargne restante"  value={formatMoney(selectedItem.data.epargne_disponible ?? 0)} />
+          <DetailRow label="Session"           value={selectedItem.data.session_nom || "N/A"} />
+        </>)}
+      </OperationDetailModal>
     </>
   );
 };
@@ -941,6 +976,7 @@ const OperationsView = ({ session, initialFilters }: { session: Session; initial
 export default function AdminHistoryScreen() {
   const insets = useSafeAreaInsets();
   const { showExportMenu: showExportMenuExercice } = useHistoryExport();
+  const { data: retraitsEpargneRaw } = useRetraitsEpargne();
   const { data: exercicesRaw, isLoading, error, refetch } = useExercises();
   const exercices: Exercise[] = arr(exercicesRaw).sort(
     (a: Exercise, b: Exercise) =>
@@ -949,7 +985,7 @@ export default function AdminHistoryScreen() {
 
   const [selectedExercice, setSelectedExercice] = useState<Exercise | null>(null);
   const [selectedSession,  setSelectedSession]  = useState<Session  | null>(null);
-  const [exPage,           setExPage]           = useState(1);
+  const [exPage,           setExPage]           = useState(1); 
   const [exportingExercice, setExportingExercice] = useState(false);
 
   // Charger les données pour l'export d'exercice uniquement si exportingExercice est true
@@ -1027,6 +1063,20 @@ export default function AdminHistoryScreen() {
         data: sv, status: sv.type_transaction_display || sv.type,
         memberName: extractMemberName(sv), memberNumero: extractMemberNumero(sv),
       }));
+
+      arr(retraitsEpargneRaw)
+      .filter((rt: any) => !session.id || String(rt.session) === String(session.id))
+      .forEach((rt: any) => {
+        items.push({
+          id:           `retrait-epargne-${rt.id}`,
+          type:         "retrait-epargne",
+          date:         rt.date_retrait,
+          amount:       parseFloat(rt.montant) || 0,
+          data:         rt,
+          memberName:   rt.membre_info?.nom || extractMemberName(rt),
+          memberNumero: rt.membre_info?.numero_membre || extractMemberNumero(rt),
+        });
+      });
 
       arr(assistancesRaw).forEach((a: any) => items.push({
         id: `ast-${a.id}`, type: "assistance",

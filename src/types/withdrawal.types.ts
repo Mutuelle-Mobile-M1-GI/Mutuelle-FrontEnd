@@ -1,4 +1,4 @@
-export type WithdrawalStatus = 'EN_ATTENTE' | 'APPROUVE' | 'REJETE';
+export type WithdrawalStatus = 'APPROUVE' | 'REJETE';
 
 export interface WithdrawalTransaction {
   id: string;
@@ -11,14 +11,11 @@ export interface WithdrawalTransaction {
   session: string;
   session_nom: string;
   montant: string | number;
-  statut: WithdrawalStatus;
-  statut_display: string;
   motif?: string;
   notes_admin?: string;
-  date_demande: string;
-  date_traitement?: string | null;
+  date_retrait: string;
   epargne_disponible: number;
-  epargne_transaction?: string | null;
+  epargne_transaction: string;
   epargne_transaction_info?: {
     id: string;
     montant: number;
@@ -31,5 +28,10 @@ export interface WithdrawalCreatePayload {
   session: string;
   montant: number;
   motif?: string;
-  notes_admin?: string;
+}
+
+export interface SavingsAvailable {
+  membre_id: string;
+  numero_membre: string;
+  epargne_disponible: number;
 }

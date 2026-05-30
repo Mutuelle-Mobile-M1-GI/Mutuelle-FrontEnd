@@ -20,7 +20,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import { useSavings, useCreateSaving, useSavingsStats } from "../../hooks/useSaving";
-import { useCreateWithdrawal } from "../../hooks/useWithdrawal";
+import { useCreateWithdrawal, useSavingsAvailable } from "../../hooks/useWithdrawal";
 import { useMembers } from "../../hooks/useMember";
 import { useCurrentSession } from "../../hooks/useSession";
 import { COLORS, SPACING, BORDER_RADIUS, FONT_SIZES } from "../../constants/config";
@@ -227,7 +227,11 @@ export default function SavingsScreen() {
     isLoading: loadingStats,
     refetch: refetchStats,
   } = useSavingsStats();
-  const { data: membersData, isLoading: loadingMembers } = useMembers();
+  const { 
+    data: membersData, 
+    isLoading: loadingMembers,
+    refetch: refetchMembers,
+  } = useMembers();
   const { data: currentSession, isLoading: loadingSession } = useCurrentSession();
   const createSaving = useCreateSaving();
   const createWithdrawal = useCreateWithdrawal();
@@ -473,8 +477,13 @@ export default function SavingsScreen() {
       return;
     }
 
-    if (Number(withdrawalAmount) > (selectedWithdrawalMember.total_epargne ?? 0)) {
-      Alert.alert("Erreur", "Le montant dépasse l'épargne disponible !");
+    const availableBalance = selectedWithdrawalMember.total_epargne ?? 0;
+    
+    if (Number(withdrawalAmount) > availableBalance) {
+      Alert.alert(
+        "Erreur",
+        `Le montant dépasse l'épargne disponible (${formatCurrency(availableBalance)}) !`
+      );
       return;
     }
 
@@ -486,17 +495,31 @@ export default function SavingsScreen() {
         motif: withdrawalMotif.trim() || undefined,
       },
       {
-        onSuccess: () => {
+        onSuccess: async (data) => {
           closeWithdrawalModal();
-          Alert.alert("Succès", "Demande de retrait enregistrée avec succès !");
+          
+          // Forcer le refetch de TOUS les données affectées par le retrait
+          // Stats, savings, et membres (pour mettre à jour les données du modal)
+          await Promise.all([
+            refetchStats(),
+            refetchSavings(),
+            refetchMembers(),
+          ]);
+          
+          // Afficher le nouveau solde après retrait
+          const newBalance = (selectedWithdrawalMember.total_epargne ?? 0) - Number(withdrawalAmount);
+          Alert.alert(
+            "Succès",
+            `Retrait de ${formatCurrency(Number(withdrawalAmount))} effectué.\nNouveau solde : ${formatCurrency(newBalance)}`
+          );
         },
         onError: (error: any) => {
-          Alert.alert(
-            "Erreur",
+          const errorMessage = 
+            error?.response?.data?.error ||
             error?.response?.data?.details ||
-              error?.response?.data?.error ||
-              "Impossible d'enregistrer le retrait."
-          );
+            error?.response?.data?.message ||
+            "Impossible d'enregistrer le retrait.";
+          Alert.alert("Erreur", errorMessage);
         },
       }
     );
