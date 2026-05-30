@@ -20,6 +20,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import { useSavings, useCreateSaving, useSavingsStats } from "../../hooks/useSaving";
+import { useCreateWithdrawal } from "../../hooks/useWithdrawal";
 import { useMembers } from "../../hooks/useMember";
 import { useCurrentSession } from "../../hooks/useSession";
 import { COLORS, SPACING, BORDER_RADIUS, FONT_SIZES } from "../../constants/config";
@@ -201,6 +202,19 @@ export default function SavingsScreen() {
   const [savingAmount, setSavingAmount] = useState("");
   const [savingNotes, setSavingNotes] = useState("");
 
+  // Modal retrait multi-step
+  const [showWithdrawalModal, setShowWithdrawalModal] = useState(false);
+  const [withdrawalStep, setWithdrawalStep] = useState<1 | 2 | 3>(1);
+
+  // Step 1 : sélection membre retrait
+  const [withdrawalMemberSearch, setWithdrawalMemberSearch] = useState("");
+  const [withdrawalMemberPage, setWithdrawalMemberPage] = useState(MODAL_MEMBERS_PER_PAGE);
+  const [selectedWithdrawalMember, setSelectedWithdrawalMember] = useState<MemberSavings | null>(null);
+
+  // Step 2 : saisie montant retrait
+  const [withdrawalAmount, setWithdrawalAmount] = useState("");
+  const [withdrawalMotif, setWithdrawalMotif] = useState("");
+
   // ── Hooks de données ──────────────────────────────────────────────────────
   const {
     data: savingsData,
@@ -216,6 +230,7 @@ export default function SavingsScreen() {
   const { data: membersData, isLoading: loadingMembers } = useMembers();
   const { data: currentSession, isLoading: loadingSession } = useCurrentSession();
   const createSaving = useCreateSaving();
+  const createWithdrawal = useCreateWithdrawal();
 
   // ── Normalisation des données ──────────────────────────────────────────────
   const savings: SavingTransaction[] = useMemo(() => {
@@ -325,6 +340,24 @@ export default function SavingsScreen() {
   );
   const hasMoreModalMembers = modalMemberPage < modalFilteredMembers.length;
 
+  // ── Membres filtrés pour le modal de retrait (uniquement ceux avec épargne) ──
+  const withdrawalFilteredMembers = useMemo(() => {
+    const eligible = finalMembersList.filter((m) => m.total_epargne > 0);
+    if (!withdrawalMemberSearch.trim()) return eligible;
+    return eligible.filter(
+      (m) =>
+        m.nom_complet.toLowerCase().includes(withdrawalMemberSearch.toLowerCase()) ||
+        m.numero_membre.toLowerCase().includes(withdrawalMemberSearch.toLowerCase())
+    );
+  }, [finalMembersList, withdrawalMemberSearch]);
+
+  useMemo(() => {
+    setWithdrawalMemberPage(MODAL_MEMBERS_PER_PAGE);
+  }, [withdrawalMemberSearch]);
+
+  const withdrawalFilteredMembersTotal = withdrawalFilteredMembers;
+  const hasMoreWithdrawalMembers = withdrawalMemberPage < withdrawalFilteredMembers.length;
+
   // ── Dernière transaction du membre sélectionné ────────────────────────────
   const selectedMemberLastTransaction = useMemo(() => {
     if (!selectedMember) return null;
@@ -399,6 +432,70 @@ export default function SavingsScreen() {
             error?.response?.data?.details ||
               error?.response?.data?.error ||
               "Impossible d'enregistrer le dépôt."
+          );
+        },
+      }
+    );
+  };
+
+  // ── Fonctions pour le modal de retrait ──
+  const openWithdrawalModal = (preselected?: MemberSavings) => {
+    if (preselected) {
+      setSelectedWithdrawalMember(preselected);
+      setWithdrawalStep(2);
+    } else {
+      setSelectedWithdrawalMember(null);
+      setWithdrawalStep(1);
+    }
+    setWithdrawalMemberSearch("");
+    setWithdrawalAmount("");
+    setWithdrawalMotif("");
+    setShowWithdrawalModal(true);
+  };
+
+  const closeWithdrawalModal = () => {
+    setShowWithdrawalModal(false);
+    setSelectedWithdrawalMember(null);
+    setWithdrawalAmount("");
+    setWithdrawalMotif("");
+    setWithdrawalStep(1);
+    setWithdrawalMemberSearch("");
+  };
+
+  const handleCreateWithdrawal = () => {
+    if (!selectedWithdrawalMember || !currentSession?.id) {
+      Alert.alert("Erreur", "Aucune session en cours !");
+      return;
+    }
+
+    if (!withdrawalAmount.trim() || Number(withdrawalAmount) <= 0) {
+      Alert.alert("Erreur", "Veuillez entrer un montant valide !");
+      return;
+    }
+
+    if (Number(withdrawalAmount) > (selectedWithdrawalMember.total_epargne ?? 0)) {
+      Alert.alert("Erreur", "Le montant dépasse l'épargne disponible !");
+      return;
+    }
+
+    createWithdrawal.mutate(
+      {
+        membre: selectedWithdrawalMember.id,
+        session: currentSession.id,
+        montant: parseFloat(Number(withdrawalAmount).toFixed(2)),
+        motif: withdrawalMotif.trim() || undefined,
+      },
+      {
+        onSuccess: () => {
+          closeWithdrawalModal();
+          Alert.alert("Succès", "Demande de retrait enregistrée avec succès !");
+        },
+        onError: (error: any) => {
+          Alert.alert(
+            "Erreur",
+            error?.response?.data?.details ||
+              error?.response?.data?.error ||
+              "Impossible d'enregistrer le retrait."
           );
         },
       }
@@ -744,6 +841,333 @@ export default function SavingsScreen() {
   );
 
   const stepLabels = ["Membre", "Montant", "Validation"];
+  const withdrawalStepLabels = ["Membre", "Montant", "Validation"];
+
+  // ── Rendu des étapes du retrait ──
+
+  const renderWithdrawalStep1 = () => (
+    <View style={{ flex: 1 }}>
+      <Text style={styles.stepTitle}>Choisir un membre</Text>
+
+      {/* Barre de recherche */}
+      <View style={styles.modalSearchContainer}>
+        <Ionicons name="search" size={18} color={COLORS.textSecondary} />
+        <TextInput
+          style={styles.modalSearchInput}
+          value={withdrawalMemberSearch}
+          onChangeText={setWithdrawalMemberSearch}
+          placeholder="Rechercher par nom ou numéro..."
+          placeholderTextColor={COLORS.textLight}
+          autoFocus
+        />
+        {withdrawalMemberSearch.length > 0 && (
+          <TouchableOpacity onPress={() => setWithdrawalMemberSearch("")}>
+            <Ionicons name="close-circle" size={18} color={COLORS.textSecondary} />
+          </TouchableOpacity>
+        )}
+      </View>
+
+      <Text style={styles.modalResultCount}>
+        {withdrawalFilteredMembers.length} membre
+        {withdrawalFilteredMembers.length !== 1 ? "s" : ""}
+      </Text>
+
+      <ScrollView style={styles.modalMemberList} showsVerticalScrollIndicator={false}>
+        {withdrawalFilteredMembers.slice(0, withdrawalMemberPage).map((member) => (
+          <TouchableOpacity
+            key={member.id}
+            style={[
+              styles.modalMemberItem,
+              selectedWithdrawalMember?.id === member.id && styles.modalMemberItemSelected,
+            ]}
+            onPress={() => {
+              setSelectedWithdrawalMember(member);
+              setWithdrawalStep(2);
+            }}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.modalMemberAvatar, { backgroundColor: COLORS.success }]}>
+              <Text style={styles.modalMemberAvatarText}>
+                {getInitials(member.nom_complet)}
+              </Text>
+            </View>
+            <View style={styles.modalMemberItemInfo}>
+              <Text style={styles.modalMemberItemName}>{member.nom_complet}</Text>
+              <Text style={styles.modalMemberItemNumber}>{member.numero_membre}</Text>
+            </View>
+            <View style={styles.modalMemberItemAmount}>
+              <Text style={styles.modalMemberItemAmountText}>
+                {formatCurrency(member.total_epargne)}
+              </Text>
+              <Ionicons name="chevron-forward" size={16} color={COLORS.textSecondary} />
+            </View>
+          </TouchableOpacity>
+        ))}
+
+        {hasMoreWithdrawalMembers && (
+          <TouchableOpacity
+            style={styles.modalLoadMore}
+            onPress={() =>
+              setWithdrawalMemberPage((p) =>
+                Math.min(p + MODAL_MEMBERS_PER_PAGE, withdrawalFilteredMembers.length)
+              )
+            }
+          >
+            <Text style={styles.modalLoadMoreText}>
+              Voir plus ({withdrawalFilteredMembers.length - withdrawalMemberPage} restant
+              {withdrawalFilteredMembers.length - withdrawalMemberPage !== 1 ? "s" : ""})
+            </Text>
+            <Ionicons name="chevron-down" size={16} color={COLORS.success} />
+          </TouchableOpacity>
+        )}
+        <View style={{ height: 20 }} />
+      </ScrollView>
+
+      {/* Navigation */}
+      <View style={styles.stepNavRow}>
+        <TouchableOpacity
+          style={[styles.stepNavBtn, styles.stepNavBtnSecondary]}
+          onPress={() => closeWithdrawalModal()}
+        >
+          <Ionicons name="arrow-back" size={16} color={COLORS.textSecondary} />
+          <Text style={styles.stepNavBtnTextSecondary}>Annuler</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            styles.stepNavBtn,
+            styles.stepNavBtnPrimary,
+            { opacity: !selectedWithdrawalMember ? 0.4 : 1 },
+          ]}
+          onPress={() => setWithdrawalStep(2)}
+          disabled={!selectedWithdrawalMember}
+        >
+          <Text style={styles.stepNavBtnTextPrimary}>Continuer</Text>
+          <Ionicons name="arrow-forward" size={16} color="white" />
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+
+  const renderWithdrawalStep2 = () => (
+    <ScrollView showsVerticalScrollIndicator={false}>
+      <Text style={styles.stepTitle}>Montant du retrait</Text>
+
+      {/* Informations membre */}
+      {selectedWithdrawalMember && (
+        <View style={styles.memberDetailCard}>
+          <View style={styles.memberDetailAvatar}>
+            <Text style={styles.memberDetailAvatarText}>
+              {getInitials(selectedWithdrawalMember.nom_complet)}
+            </Text>
+          </View>
+          <View style={styles.memberDetailInfo}>
+            <Text style={styles.memberDetailName}>{selectedWithdrawalMember.nom_complet}</Text>
+            <Text style={styles.memberDetailNumber}>{selectedWithdrawalMember.numero_membre}</Text>
+            {selectedWithdrawalMember.email ? (
+              <Text style={styles.memberDetailEmail} numberOfLines={1}>
+                {selectedWithdrawalMember.email}
+              </Text>
+            ) : null}
+          </View>
+          <TouchableOpacity
+            style={styles.changeBtn}
+            onPress={() => {
+              setWithdrawalStep(1);
+              setWithdrawalAmount("");
+            }}
+          >
+            <Ionicons name="swap-horizontal" size={16} color={COLORS.primary} />
+            <Text style={styles.changeBtnText}>Changer</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Épargne actuelle */}
+      {selectedWithdrawalMember && (
+        <View style={styles.infoBox}>
+          <Ionicons name="wallet-outline" size={20} color={COLORS.success} />
+          <View style={styles.infoBoxContent}>
+            <Text style={styles.infoBoxLabel}>Épargne disponible</Text>
+            <Text style={[styles.infoBoxValue, { color: COLORS.success }]}>
+              {formatCurrency(selectedWithdrawalMember.total_epargne)}
+            </Text>
+          </View>
+        </View>
+      )}
+
+      {/* Saisie montant */}
+      <View style={styles.formSection}>
+        <Text style={styles.inputLabel}>
+          Montant du retrait <Text style={styles.required}>*</Text>
+        </Text>
+        <TextInput
+          style={styles.input}
+          value={withdrawalAmount}
+          onChangeText={(v) => setWithdrawalAmount(v.replace(/[^0-9.]/g, ""))}
+          placeholder="Montant en FCFA"
+          keyboardType="decimal-pad"
+          placeholderTextColor={COLORS.textLight}
+          autoFocus
+        />
+
+        <Text style={styles.inputLabel}>Motif (optionnel)</Text>
+        <TextInput
+          style={[styles.input, styles.textArea]}
+          value={withdrawalMotif}
+          onChangeText={setWithdrawalMotif}
+          placeholder="Raison du retrait, justification, etc..."
+          multiline
+          numberOfLines={3}
+          placeholderTextColor={COLORS.textLight}
+        />
+      </View>
+
+      {/* Validation du montant */}
+      {withdrawalAmount && Number(withdrawalAmount) > 0 && (
+        <>
+          {Number(withdrawalAmount) > (selectedWithdrawalMember?.total_epargne ?? 0) && (
+            <View style={styles.warnBox}>
+              <Ionicons name="alert-circle" size={16} color={COLORS.error} />
+              <Text style={styles.warnText}>
+                Dépasse l'épargne disponible ({formatCurrency(selectedWithdrawalMember?.total_epargne ?? 0)})
+              </Text>
+            </View>
+          )}
+          {Number(withdrawalAmount) <= (selectedWithdrawalMember?.total_epargne ?? 0) && Number(withdrawalAmount) > 0 && (
+            <View style={[styles.warnBox, { backgroundColor: COLORS.success + "15" }]}>
+              <Ionicons name="checkmark-circle" size={16} color={COLORS.success} />
+              <Text style={[styles.warnText, { color: COLORS.success }]}>
+                Montant valide • Nouveau solde : {formatCurrency((selectedWithdrawalMember?.total_epargne ?? 0) - Number(withdrawalAmount))}
+              </Text>
+            </View>
+          )}
+        </>
+      )}
+
+      {/* Navigation */}
+      <View style={styles.stepNavRow}>
+        <TouchableOpacity
+          style={[styles.stepNavBtn, styles.stepNavBtnSecondary]}
+          onPress={() => setWithdrawalStep(1)}
+        >
+          <Ionicons name="arrow-back" size={16} color={COLORS.textSecondary} />
+          <Text style={styles.stepNavBtnTextSecondary}>Retour</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            styles.stepNavBtn,
+            styles.stepNavBtnPrimary,
+            { opacity: !withdrawalAmount.trim() || Number(withdrawalAmount) <= 0 || Number(withdrawalAmount) > (selectedWithdrawalMember?.total_epargne ?? 0) ? 0.4 : 1 },
+          ]}
+          onPress={() => setWithdrawalStep(3)}
+          disabled={!withdrawalAmount.trim() || Number(withdrawalAmount) <= 0 || Number(withdrawalAmount) > (selectedWithdrawalMember?.total_epargne ?? 0)}
+        >
+          <Text style={styles.stepNavBtnTextPrimary}>Continuer</Text>
+          <Ionicons name="arrow-forward" size={16} color="white" />
+        </TouchableOpacity>
+      </View>
+      <View style={{ height: 20 }} />
+    </ScrollView>
+  );
+
+  const renderWithdrawalStep3 = () => (
+    <ScrollView showsVerticalScrollIndicator={false}>
+      <Text style={styles.stepTitle}>Récapitulatif</Text>
+
+      <View style={styles.recapCard}>
+        {/* Membre */}
+        <View style={styles.recapSection}>
+          <Text style={styles.recapSectionTitle}>Membre</Text>
+          <View style={styles.recapMemberRow}>
+            <View style={styles.recapAvatar}>
+              <Text style={styles.recapAvatarText}>
+                {selectedWithdrawalMember ? getInitials(selectedWithdrawalMember.nom_complet) : "?"}
+              </Text>
+            </View>
+            <View>
+              <Text style={styles.recapMemberName}>{selectedWithdrawalMember?.nom_complet}</Text>
+              <Text style={styles.recapMemberNumber}>{selectedWithdrawalMember?.numero_membre}</Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.recapDivider} />
+
+        {/* Transaction */}
+        <View style={styles.recapSection}>
+          <Text style={styles.recapSectionTitle}>Retrait</Text>
+          <View style={styles.recapRow}>
+            <Text style={styles.recapLabel}>Montant</Text>
+            <Text style={[styles.recapValueLarge, { color: COLORS.success }]}>
+              {formatCurrency(Number(withdrawalAmount))}
+            </Text>
+          </View>
+          <View style={styles.recapRow}>
+            <Text style={styles.recapLabel}>Session</Text>
+            <Text style={styles.recapValue}>{currentSession?.nom || "—"}</Text>
+          </View>
+          {withdrawalMotif.trim() ? (
+            <View style={[styles.recapRow, { alignItems: "flex-start" }]}>
+              <Text style={styles.recapLabel}>Motif</Text>
+              <Text style={[styles.recapValue, { flex: 1, textAlign: "right" }]}>
+                {withdrawalMotif}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+
+        <View style={styles.recapDivider} />
+
+        {/* Après opération */}
+        <View style={styles.recapSection}>
+          <Text style={styles.recapSectionTitle}>Après ce retrait</Text>
+          <View style={styles.recapRow}>
+            <Text style={styles.recapLabel}>Épargne actuelle</Text>
+            <Text style={styles.recapValue}>
+              {formatCurrency(selectedWithdrawalMember?.total_epargne)}
+            </Text>
+          </View>
+          <View style={styles.recapRow}>
+            <Text style={styles.recapLabel}>Nouveau solde estimé</Text>
+            <Text style={[styles.recapValueLarge, { color: COLORS.success }]}>
+              {formatCurrency(
+                (selectedWithdrawalMember?.total_epargne ?? 0) - Number(withdrawalAmount)
+              )}
+            </Text>
+          </View>
+        </View>
+      </View>
+
+      {/* Actions */}
+      <View style={styles.stepNavRow}>
+        <TouchableOpacity
+          style={[styles.stepNavBtn, styles.stepNavBtnSecondary]}
+          onPress={() => setWithdrawalStep(2)}
+        >
+          <Ionicons name="arrow-back" size={16} color={COLORS.textSecondary} />
+          <Text style={styles.stepNavBtnTextSecondary}>Modifier</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            styles.stepNavBtn,
+            styles.stepNavBtnConfirm,
+            { opacity: createWithdrawal.isPending ? 0.6 : 1 },
+          ]}
+          onPress={handleCreateWithdrawal}
+          disabled={createWithdrawal.isPending}
+        >
+          {createWithdrawal.isPending ? (
+            <ActivityIndicator size="small" color="white" />
+          ) : (
+            <>
+              <Text style={styles.stepNavBtnTextPrimary}>Confirmer</Text>
+            </>
+          )}
+        </TouchableOpacity>
+      </View>
+      <View style={{ height: 20 }} />
+    </ScrollView>
+  );
 
   // ── Rendu principal ────────────────────────────────────────────────────────
   return (
@@ -809,28 +1233,30 @@ export default function SavingsScreen() {
               </View>
             </View>
 
-            {/* ── Barre de recherche + bouton ajout ── */}
+            {/* ── Barre de recherche + boutons ── */}
             <View style={styles.searchSection}>
-              <View style={styles.searchRow}>
-                <View style={styles.searchContainer}>
-                  <Ionicons name="search" size={20} color={COLORS.textSecondary} />
-                  <TextInput
-                    style={styles.searchInput}
-                    value={search}
-                    onChangeText={setSearch}
-                    placeholder="Rechercher par nom de membre..."
-                    placeholderTextColor={COLORS.textLight}
-                  />
-                  {search.length > 0 && (
-                    <TouchableOpacity onPress={() => setSearch("")}>
-                      <Ionicons name="close-circle" size={20} color={COLORS.textSecondary} />
-                    </TouchableOpacity>
-                  )}
-                </View>
+              {/* Ligne 1 : barre de recherche seule */}
+              <View style={styles.searchContainer}>
+                <Ionicons name="search" size={20} color={COLORS.textSecondary} />
+                <TextInput
+                  style={styles.searchInput}
+                  value={search}
+                  onChangeText={setSearch}
+                  placeholder="Rechercher par nom de membre..."
+                  placeholderTextColor={COLORS.textLight}
+                />
+                {search.length > 0 && (
+                  <TouchableOpacity onPress={() => setSearch("")}>
+                    <Ionicons name="close-circle" size={20} color={COLORS.textSecondary} />
+                  </TouchableOpacity>
+                )}
+              </View>
 
-                {!readOnly && (
+              {/* Ligne 2 : les deux boutons côte à côte */}
+              {!readOnly && (
+                <View style={styles.actionButtonsRow}>
                   <TouchableOpacity
-                    style={styles.addFabButton}
+                    style={[styles.addFabButton, styles.addFabButtonLeft]}
                     onPress={() => openAddModal()}
                     activeOpacity={0.85}
                   >
@@ -844,16 +1270,27 @@ export default function SavingsScreen() {
                       <Text style={styles.addFabText}>Ajouter épargne</Text>
                     </LinearGradient>
                   </TouchableOpacity>
-                )}
-              </View>
 
+                  <TouchableOpacity
+                    style={[styles.addFabButton, styles.withdrawalFabButton]}
+                    onPress={() => openWithdrawalModal()}
+                    activeOpacity={0.85}
+                  >
+                    <LinearGradient
+                      colors={["#059669", "#10B981"]}
+                      style={styles.addFabGradient}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                    >
+                      <Ionicons name="arrow-down-circle" size={18} color="white" />
+                      <Text style={styles.addFabText}>Effectuer un retrait</Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {/* Compteur transactions */}
               {!isLoading && filteredSavings.length > 0 && (
-                // <Text style={styles.resultsCount}>
-                //   {paginatedSavings.length} / {filteredSavings.length} transaction
-                //   {filteredSavings.length !== 1 ? "s" : ""} affichée
-                //   {filteredSavings.length !== 1 ? "s" : ""}
-                // </Text>
-
                 <View style={styles.counter}>
                   <Ionicons name="list" size={16} color={"#B5179E"} />
                   <Text style={styles.counterText}>
@@ -1025,6 +1462,79 @@ export default function SavingsScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* ── Modal retrait multi-step ── */}
+      <Modal
+        visible={showWithdrawalModal}
+        animationType="slide"
+        transparent
+        statusBarTranslucent
+      >
+        <BlurView intensity={80} style={StyleSheet.absoluteFillObject} />
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContainer}>
+              {/* En-tête modal */}
+              <LinearGradient
+                colors={["#059669", "#10B981"]}
+                style={styles.modalHeader}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.modalTitle}>Demande de retrait</Text>
+                  <Text style={styles.modalStepLabel}>
+                    Étape {withdrawalStep} : {withdrawalStepLabels[withdrawalStep - 1]}
+                  </Text>
+                </View>
+                <TouchableOpacity onPress={closeWithdrawalModal}>
+                  <Ionicons name="close" size={24} color="white" />
+                </TouchableOpacity>
+              </LinearGradient>
+
+              {/* Indicateur d'étapes */}
+              <View style={styles.stepIndicatorWrapper}>
+                <View style={styles.stepIndicator}>
+                  {[1, 2, 3].map((step) => (
+                    <React.Fragment key={step}>
+                      <View
+                        style={[
+                          styles.stepDot,
+                          withdrawalStep >= step ? styles.stepDotActive : styles.stepDotInactive,
+                        ]}
+                      >
+                        {withdrawalStep > step ? (
+                          <Ionicons name="checkmark" size={12} color="white" />
+                        ) : (
+                          <Text style={styles.stepDotText}>{step}</Text>
+                        )}
+                      </View>
+                      {step < 3 && (
+                        <View
+                          style={[
+                            styles.stepLine,
+                            withdrawalStep > step ? styles.stepLineActive : styles.stepLineInactive,
+                          ]}
+                        />
+                      )}
+                    </React.Fragment>
+                  ))}
+                </View>
+              </View>
+
+              {/* Corps du modal */}
+              <View style={styles.modalBody}>
+                {withdrawalStep === 1 && renderWithdrawalStep1()}
+                {withdrawalStep === 2 && renderWithdrawalStep2()}
+                {withdrawalStep === 3 && renderWithdrawalStep3()}
+              </View>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1171,6 +1681,20 @@ const styles = StyleSheet.create({
     color: "white",
     fontSize: FONT_SIZES.sm,
     fontWeight: "700",
+  },
+  actionButtonsRow: {
+    flexDirection: "row",
+    gap: SPACING.md,
+    marginTop: SPACING.sm,   // ← espace entre la recherche et les boutons
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  addFabButtonLeft: {
+    flex: 1,
+  },
+  withdrawalFabButton: {
+    flex: 1,
+    shadowColor: "#059669",
   },
   resultsCount: {
     fontSize: FONT_SIZES.sm,

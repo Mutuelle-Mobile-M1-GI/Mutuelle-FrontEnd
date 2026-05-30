@@ -46,6 +46,17 @@ export const API_ENDPOINTS = {
 
   // Épargne
   savings: "/transactions/epargne-transactions/",
+  savingsStats: "/transactions/epargne-transactions/statistiques/",
+  savingsAvailable: (memberId: string) => `/transactions/epargne_disponible/?membre_id=${memberId}`,
+
+  // Retraits d'épargne
+  withdrawals: "/transactions/retraits-epargne/",
+  withdrawalCreate: "/transactions/retraits-epargne/",
+  withdrawalByMember: (memberId: string) => `/transactions/retraits-epargne/par_membre/?membre_id=${memberId}`,
+  withdrawalByStatus: (status: string) => `/transactions/retraits-epargne/?statut=${status}`,
+  withdrawalApprove: (id: string) => `/transactions/retraits-epargne/${id}/approuver/`,
+  withdrawalReject: (id: string) => `/transactions/retraits-epargne/${id}/rejeter/`,
+  withdrawalDetails: (id: string) => `/transactions/retraits-epargne/${id}/`,
 
   // Emprunts & remboursements
   loans: "/transactions/emprunts/",
