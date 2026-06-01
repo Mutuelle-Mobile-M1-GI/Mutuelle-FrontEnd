@@ -113,7 +113,7 @@ const RenflouementPaymentCard = ({ item }: { item: RenflouementPayment }) => {
           <View style={rfc.amountItem}>
             <Text style={rfc.amountLabel}>Restant</Text>
             <Text style={[rfc.amountValue, { color: item.renflouement_info.montant_restant > 0 ? COLORS.error : COLORS.success }]}>
-              {formatCurrency(item.renflouement_info.montant_restant)}
+              {item.renflouement_info.montant_restant > 0 ? formatCurrency(item.renflouement_info.montant_restant) : "0,00"}
             </Text>
           </View>
         </View>
@@ -257,75 +257,126 @@ const MultiStepModal = ({ visible, onClose, onSuccess }: MultiStepProps) => {
     if (finalMontant > montantRestant && finalMontant <= montantRestant + 100) {
       finalMontant = montantRestant;
     }
-payWithSavings.mutate(
-  {
-    renflouementId: selectedRenflouement.id,
-    montant: finalMontant,
-    notes: notes.trim(),
-  },
-  {
-    onError: (error: any) => {
-      let errorMessage = "Impossible d'effectuer le paiement avec l'épargne.";
 
-      // 1. Vérifier si la réponse existe
-      const responseData = error?.response?.data;
-      console.log(error?.response?.data);
-      if (responseData) {
-        // 2. Priorité à "error" (champ standard dans vos réponses)
-        if (responseData.error) {
-          errorMessage = responseData.error;
-        }
-        // 3. Sinon, chercher "details" ou "message"
-        else if (responseData.details) {
-          errorMessage = responseData.details;
-        }
-        else if (responseData.message) {
-          errorMessage = responseData.message;
-        }
-        // 4. Parcourir les champs de validation Django (ex: { "montant": ["Le montant doit être supérieur à 0"] })
-        else if (typeof responseData === 'object') {
-          const firstKey = Object.keys(responseData)[0];
-          if (firstKey && Array.isArray(responseData[firstKey])) {
-            errorMessage = responseData[firstKey][0];
-          } else if (firstKey && typeof responseData[firstKey] === 'string') {
-            errorMessage = responseData[firstKey];
-          }
-        }
-      } else if (error?.message) {
-        errorMessage = error.message;
-      }
+    // Confirmation Alert
+    Alert.alert(
+      "Confirmer le paiement",
+      `Payer ${formatCurrency(finalMontant)} pour ${selectedMember?.utilisateur?.nom_complet}?\n\nReste à payer après: ${formatCurrency(montantRestant - finalMontant)}`,
+      [
+        { text: "Annuler", onPress: () => {}, style: "cancel" },
+        {
+          text: "Confirmer",
+          onPress: () => {
+            payWithSavings.mutate(
+              {
+                renflouementId: selectedRenflouement.id,
+                montant: finalMontant,
+                notes: notes.trim(),
+              },
+              {
+                onSuccess: () => {
+                  reset();
+                  onClose();
+                  onSuccess();
+                  Alert.alert(
+                    "✅ Succès",
+                    `Paiement de ${formatCurrency(finalMontant)} effectué avec succès depuis l'épargne !`,
+                    [{ text: "OK", style: "default" }]
+                  );
+                },
+                onError: (error: any) => {
+                  let errorMessage = "Impossible d'effectuer le paiement avec l'épargne.";
+                  const responseData = error?.response?.data;
+                  
+                  if (responseData) {
+                    if (responseData.error) {
+                      errorMessage = responseData.error;
+                    } else if (responseData.details) {
+                      errorMessage = responseData.details;
+                    } else if (responseData.message) {
+                      errorMessage = responseData.message;
+                    } else if (typeof responseData === 'object') {
+                      const firstKey = Object.keys(responseData)[0];
+                      if (firstKey && Array.isArray(responseData[firstKey])) {
+                        errorMessage = responseData[firstKey][0];
+                      } else if (firstKey && typeof responseData[firstKey] === 'string') {
+                        errorMessage = responseData[firstKey];
+                      }
+                    }
+                  } else if (error?.message) {
+                    errorMessage = error.message;
+                  }
 
-      Alert.alert("Erreur", errorMessage);
-    },
-  }
-);  };
+                  Alert.alert("Erreur", errorMessage, [{ text: "OK", style: "default" }]);
+                },
+              }
+            );
+          },
+          style: "default",
+        },
+      ]
+    );
+  };
 
   const handleClose = () => { reset(); onClose(); };
 
   const handleSubmit = () => {
     if (!selectedRenflouement || montantSaisi <= 0) return;
-    createPayment.mutate(
-      {
-        renflouement: selectedRenflouement.id,
-        montant: montantSaisi,
-        notes: notes.trim(),
-      },
-      {
-        onSuccess: () => {
-          reset();
-          onClose();
-          onSuccess();
-          Alert.alert("Succès", "Paiement de renflouement enregistré !");
+
+    // Confirmation Alert
+    Alert.alert(
+      "Confirmer le paiement",
+      `Payer ${formatCurrency(montantSaisi)} pour ${selectedMember?.utilisateur?.nom_complet}?\n\nReste à payer après: ${formatCurrency(montantRestant - montantSaisi)}`,
+      [
+        { text: "Annuler", onPress: () => {}, style: "cancel" },
+        {
+          text: "Confirmer",
+          onPress: () => {
+            createPayment.mutate(
+              {
+                renflouement: selectedRenflouement.id,
+                montant: montantSaisi,
+                notes: notes.trim(),
+              },
+              {
+                onSuccess: () => {
+                  reset();
+                  onClose();
+                  onSuccess();
+                  Alert.alert(
+                    "✅ Succès",
+                    `Paiement de ${formatCurrency(montantSaisi)} enregistré avec succès !`,
+                    [{ text: "OK", style: "default" }]
+                  );
+                },
+                onError: (err: any) => {
+                  let errorMessage = "Impossible d'enregistrer le paiement.";
+                  
+                  if (err?.response?.data?.error) {
+                    errorMessage = err.response.data.error;
+                  } else if (err?.response?.data?.details) {
+                    errorMessage = err.response.data.details;
+                  } else if (err?.response?.data?.message) {
+                    errorMessage = err.response.data.message;
+                  } else if (typeof err?.response?.data === 'object') {
+                    const firstKey = Object.keys(err.response.data)[0];
+                    if (firstKey && Array.isArray(err.response.data[firstKey])) {
+                      errorMessage = err.response.data[firstKey][0];
+                    } else if (firstKey && typeof err.response.data[firstKey] === 'string') {
+                      errorMessage = err.response.data[firstKey];
+                    }
+                  } else if (err?.message) {
+                    errorMessage = err.message;
+                  }
+
+                  Alert.alert("❌ Erreur", errorMessage, [{ text: "OK", style: "default" }]);
+                },
+              }
+            );
+          },
+          style: "default",
         },
-        onError: (err: any) => {
-          Alert.alert(
-            "Erreur",
-            err?.response?.data?.error ||
-            err?.response?.data?.details ||
-            "Impossible d'enregistrer le paiement."
-          );
-        },
-      }
+      ]
     );
   };
 
@@ -612,7 +663,7 @@ payWithSavings.mutate(
                       <View style={ms.warnBox}>
                         <Ionicons name="alert-circle" size={16} color={COLORS.error} />
                         <Text style={ms.warnText}>
-                          Dépasse le restant dû ({formatCurrency(montantRestant)})
+                          Dépasse le restant dû ({formatCurrency(montantRestant)}) (marge de 100 FCFA seulement)
                         </Text>
                       </View>
                     )}
@@ -933,11 +984,11 @@ export default function RenflouementScreen() {
           <Text style={s.headerSubtitle}>Historique des contributions payées</Text>
         </View>
         {/* Pills résumé */}
-        <View style={s.pillsRow}>
+        {/* <View style={s.pillsRow}>
           <View style={s.pill}><Text style={s.pillVal}>{payments.length}</Text><Text style={s.pillLab}>Total paiements</Text></View>
           <View style={s.pill}><Text style={s.pillVal}>{nbrSoldes}</Text><Text style={s.pillLab}>Soldés</Text></View>
           <View style={s.pill}><Text style={s.pillVal}>{nbrPartiels}</Text><Text style={s.pillLab}>Partiels</Text></View>
-        </View>
+        </View> */}
       </LinearGradient>
 
       <ScrollView
