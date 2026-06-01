@@ -841,13 +841,6 @@ const navigation = useNavigation<any>();
     }
   };
 
-  // Ouvrir le mini-historique interne (raccourcis soldes uniquement)
-  const openHistorique = (title: string, filters: string[] = [], session: any = null) => {
-    setHistoriqueTitle(title);
-    setHistoriqueFilters(filters);
-    setHistoriqueSession(session);
-    setHistoriqueVisible(true);
-  };
 
   // ── Navigation vers FinancialReportsScreen avec pré-sélection session ──
   // IMPORTANT : on passe les IDs en NUMBER (pas en string) pour correspondre
@@ -1040,8 +1033,9 @@ const navigation = useNavigation<any>();
       Alert.alert("Succès", "Session créée avec succès !");
       setShowSessionModal(false);
     } catch (error: any) {
-      const errorMessage = formatErrorMessage(error, "Impossible de créer la session");
-      Alert.alert("Erreur", errorMessage);
+      //const errorMessage = formatErrorMessage(error, "Impossible de créer la session");
+      //console.log(errorMessage);
+      Alert.alert("Erreur", "Impossible de créer la session. \nAsssurez-vous que la date soit valide et différente de celles déjà enregistrées !");
     }
   };
 

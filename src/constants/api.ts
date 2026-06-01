@@ -3,7 +3,7 @@
 import { useEmpruntTiers } from "../hooks/useEmpruntTiers";
 import { createLoan } from "../services/loan.service";
 
-export const API_BASE_URL = "http://10.76.165.72:8000/api";
+export const API_BASE_URL = "http://192.168.150.100:8000/api";
 
 export const API_ENDPOINTS = {
   // Auth
@@ -95,6 +95,7 @@ export const API_ENDPOINTS = {
   renflouements: "/transactions/renflouements/",
   renflouementStats: "/transactions/renflouements/statistiques/",
   renflouementPayments: "/transactions/paiements-renflouement/",
+  renflouementPayWithSavings: (id: string) => `/transactions/renflouements/${id}/payer_avec_epargne/`,
 
   // Assistances
   assistances: "/transactions/assistances/",

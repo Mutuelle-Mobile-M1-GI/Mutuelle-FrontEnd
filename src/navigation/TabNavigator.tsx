@@ -13,7 +13,7 @@ import RenflouementScreen from "../screens/admin/RenflouementScreen";
 import MemberDashboardScreen from "../screens/member/MemberDashboardScreen";
 import MemberHistoryScreen from "../screens/member/MemberHistoryScreen";
 import MemberSettingsScreen from "../screens/member/MemberSettingsScreen";
-import ChatbotFAB from "../components/ChatbotFAB";
+//import ChatbotFAB from "../components/ChatbotFAB";
 
 const Tab = createBottomTabNavigator();
 

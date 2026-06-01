@@ -422,7 +422,7 @@ export default function SolidarityScreen() {
     }
 
     if (!paymentAmount.trim() || isNaN(Number(paymentAmount)) || Number(paymentAmount) <= 0) {
-      Alert.alert("Erreur", "Veuillez saisir un montant valide (positif).");
+      Alert.alert("Erreur", "Veuillez saisir un montant valide.");
       return;
     }
 
@@ -432,6 +432,15 @@ export default function SolidarityScreen() {
     }
 
     const montantSaisi = Number(paymentAmount);
+    const montantRestant = selectedMember.montant_restant || 0;
+    
+    if (montantSaisi > montantRestant) {
+      Alert.alert(
+        "Montant invalide",
+        `Le montant saisi (${formatCurrency(montantSaisi)}) dépasse le montant restant à payer (${formatCurrency(montantRestant)}). Veuillez saisir un montant inférieur ou égal à ${formatCurrency(montantRestant)}.`
+      );
+      return;
+    }
     const montantAttendu = Math.round(currentConfig?.montant_solidarite || 0);
     const dejaPaye = selectedMember.montant_paye;
     const restantAvant = selectedMember.montant_restant;
@@ -786,11 +795,11 @@ export default function SolidarityScreen() {
                     styles.modalButton,
                     styles.confirmButton,
                     {
-                      opacity: (!paymentAmount.trim() || createSolidarityPayment.isPending) ? 0.5 : 1
+                      opacity: (!paymentAmount.trim() || createSolidarityPayment.isPending || (selectedMember && Number(paymentAmount) > selectedMember.montant_restant)) ? 0.5 : 1
                     }
                   ]}
                   onPress={handleCreatePayment}
-                  disabled={!paymentAmount.trim() || createSolidarityPayment.isPending}
+                  disabled={!paymentAmount.trim() || createSolidarityPayment.isPending || Boolean(selectedMember && Number(paymentAmount) > selectedMember.montant_restant)}
                 >
                   {createSolidarityPayment.isPending ? (
                     <ActivityIndicator size="small" color="white" />

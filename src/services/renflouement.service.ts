@@ -3,11 +3,25 @@ import { API_BASE_URL, API_ENDPOINTS } from "../constants/api";
 import { Renflouement, RenflouementPayment } from "../types/renflouement.types";
 
 export const fetchRenflouements = async (accessToken: string, params?: Record<string, any>): Promise<Renflouement[]> => {
-  const { data } = await axios.get<Renflouement[]>(API_BASE_URL + API_ENDPOINTS.renflouements, {
+  const { data } = await axios.get<Renflouement[] | { results: Renflouement[] }>(`${API_BASE_URL}${API_ENDPOINTS.renflouements}?membre_id=${params?.membre_id}`, {
     params,
     headers: { Authorization: `Bearer ${accessToken}` }
   });
-  return data;
+  // Normaliser la réponse (peut être un tableau ou {results: [...]})
+  console.log(data);
+  return Array.isArray(data) ? data : data?.results ?? [];
+};
+
+export const fetchRenflouementPayments = async (accessToken: string, params?: Record<string, any>): Promise<RenflouementPayment[]> => {
+  const { data } = await axios.get<{ results: RenflouementPayment[] } | RenflouementPayment[]>(
+    `${API_BASE_URL}${API_ENDPOINTS.renflouementPayments}`,
+    {
+      params,
+      headers: { Authorization: `Bearer ${accessToken}` }
+    }
+  );
+  // Normaliser la réponse (peut être un tableau ou {results: [...]})
+  return Array.isArray(data) ? data : data?.results ?? [];
 };
 
 export const fetchRenflouementStats = async (accessToken: string): Promise<any> => {

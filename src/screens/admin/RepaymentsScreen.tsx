@@ -1,525 +1,502 @@
-import React, { useState, useMemo, useCallback, useRef, useEffect } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   View,
   Text,
   StyleSheet,
-  FlatList,
+  ScrollView,
   TouchableOpacity,
+  TextInput,
   Modal,
   ActivityIndicator,
-  TextInput,
   Alert,
-  Animated,
-  RefreshControl,
   Dimensions,
-  Pressable,
+  SafeAreaView,
+  RefreshControl,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from "../../constants/config";
+import { LinearGradient } from "expo-linear-gradient";
+import { BlurView } from "expo-blur";
 import { useRepayments, useCreateRepayment, useLoans } from "../../hooks/useLoan";
 import { useMembers } from "../../hooks/useMember";
 import { useCurrentSession } from "../../hooks/useSession";
+import { COLORS, SPACING, BORDER_RADIUS, FONT_SIZES } from "../../constants/config";
 import { useNavigation } from "@react-navigation/native";
-  import { LinearGradient } from 'expo-linear-gradient';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthContext } from "../../context/AuthContext";
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-// 🎨 Couleurs du thème vert
+
+const { width } = Dimensions.get("window");
+const ITEMS_PER_PAGE = 10;
+
+// 🎨 Thème vert (identique à l'existant)
 const GREEN_THEME = {
   primary: '#22C55E',
   secondary: '#16A34A',
   light: '#DCFCE7',
-  gradient: ['#22C55E', '#16A34A'],
-  gradientLight: ['#F0FDF4', '#DCFCE7'] as const,
-  success: '#15803D',
-  accent: '#059669',
 };
 
-// 💰 Utilitaire pour formater les montants
-const formatMoney = (val: any, fallback = "--") => {
-  const num = typeof val === "string" ? parseFloat(val) : val;
-  return typeof num === "number" && !isNaN(num)
-    ? `${num.toLocaleString("fr-FR")} FCFA`
-    : fallback;
+// 💰 Formatage monétaire
+const formatCurrency = (amount: number | undefined | null): string => {
+  if (!amount || isNaN(amount)) return "0 FCFA";
+  return new Intl.NumberFormat('fr-FR', {
+    style: 'currency',
+    currency: 'XAF',
+    minimumFractionDigits: 0,
+  }).format(amount);
 };
 
-// 📅 Utilitaire pour formater les dates
-const formatDate = (dateStr: string) => {
-  if (!dateStr) return "--";
+const formatDate = (dateStr: string | undefined): string => {
+  if (!dateStr) return "—";
   try {
     return new Date(dateStr).toLocaleDateString('fr-FR', {
       day: '2-digit',
-      month: '2-digit',
-      year: 'numeric'
+      month: 'short',
+      year: 'numeric',
     });
   } catch {
     return dateStr.slice(0, 10);
   }
 };
 
-// 🔍 Composant de recherche simple
-const SearchBar = ({ search, onSearchChange, placeholder }: any) => {
-  const [isFocused, setIsFocused] = useState(false);
+// 🎯 Carte de remboursement (style LoansScreen)
+const RepaymentCard = ({ item }: { item: any }) => {
+  const montant = Number(item.montant) || 0;
+  const capital = Number(item.montant_capital) || 0;
+  const interet = Number(item.montant_interet) || 0;
 
   return (
-    <View style={styles.searchContainer}>
-      <View style={[styles.searchInputContainer, isFocused && styles.searchInputFocused]}>
-        <Ionicons name="search" size={20} color={GREEN_THEME.primary} />
-        <TextInput
-          style={styles.searchInput}
-          placeholder={placeholder}
-          value={search}
-          onChangeText={onSearchChange}
-          onFocus={() => setIsFocused(true)}
-          onBlur={() => setIsFocused(false)}
-          placeholderTextColor={COLORS.textLight}
-        />
-        {search.length > 0 && (
-          <TouchableOpacity onPress={() => onSearchChange("")}>
-            <Ionicons name="close-circle" size={20} color={COLORS.textLight} />
-          </TouchableOpacity>
-        )}
+    <View style={[styles.repaymentCard, { borderLeftColor: GREEN_THEME.primary }]}>
+      <View style={styles.cardHeader}>
+        <View style={styles.memberAvatar}>
+          <Text style={styles.memberInitials}>
+            {(item.emprunt_info?.membre_nom || "?")[0]?.toUpperCase()}
+          </Text>
+        </View>
+        <View style={styles.memberInfo}>
+          <Text style={styles.memberName}>{item.emprunt_info?.membre_nom || "—"}</Text>
+          <Text style={styles.memberNumber}>{item.emprunt_info?.membre_numero || "—"}</Text>
+        </View>
+        <View style={styles.amountBadge}>
+          <Text style={styles.amountBadgeText}>{formatCurrency(montant)}</Text>
+        </View>
       </View>
+
+      <View style={styles.cardDetails}>
+        <View style={styles.detailRow}>
+          <View style={styles.detailItem}>
+            <Text style={styles.detailLabel}>Capital</Text>
+            <Text style={styles.detailValue}>{formatCurrency(capital)}</Text>
+          </View>
+          <View style={styles.detailItem}>
+            <Text style={styles.detailLabel}>Intérêts</Text>
+            <Text style={styles.detailValue}>{formatCurrency(interet)}</Text>
+          </View>
+        </View>
+        <View style={styles.detailRow}>
+          <View style={styles.detailItem}>
+            <Text style={styles.detailLabel}>Session</Text>
+            <Text style={styles.detailValue}>{item.session_nom || "—"}</Text>
+          </View>
+          <View style={styles.detailItem}>
+            <Text style={styles.detailLabel}>Date</Text>
+            <Text style={styles.detailValue}>{formatDate(item.date_remboursement)}</Text>
+          </View>
+        </View>
+      </View>
+
+      {item.notes ? (
+        <View style={styles.notesContainer}>
+          <Ionicons name="document-text" size={14} color={COLORS.textSecondary} />
+          <Text style={styles.notesText} numberOfLines={1}>{item.notes}</Text>
+        </View>
+      ) : null}
     </View>
   );
 };
 
-// 💳 Composant carte de remboursement
-const RepaymentCard = ({ item, index }: any) => {
-  const animatedValue = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    Animated.timing(animatedValue, {
-      toValue: 1,
-      duration: 300,
-      delay: index * 50,
-      useNativeDriver: true,
-    }).start();
-  }, []);
-
-  const animatedStyle = {
-    opacity: animatedValue,
-    transform: [
-      {
-        translateY: animatedValue.interpolate({
-          inputRange: [0, 1],
-          outputRange: [20, 0],
-        }),
-      },
-    ],
-  };
-
-  return (
-    <Animated.View style={[styles.repaymentCard, animatedStyle]}>
-      <LinearGradient
-        colors={['#FFFFFF', '#FAFFFE']}
-        style={styles.cardGradient}
-      >
-        {/* Header de la carte */}
-        <View style={styles.cardHeader}>
-          <View style={styles.memberInfo}>
-            <View style={styles.memberAvatar}>
-              <Text style={styles.memberInitials}>
-                {(item.emprunt_info?.membre_nom || "?").substring(0, 2).toUpperCase()}
-              </Text>
-            </View>
-            <View style={styles.memberDetails}>
-              <Text style={styles.memberName}>
-                {item.emprunt_info?.membre_nom || "--"}
-              </Text>
-              <Text style={styles.memberNumber}>
-                N° {item.emprunt_info?.membre_numero || "--"}
-              </Text>
-            </View>
-          </View>
-          
-          <View style={styles.amountContainer}>
-            <Text style={styles.amount}>{formatMoney(item.montant)}</Text>
-            <Text style={styles.date}>{formatDate(item.date_remboursement)}</Text>
-          </View>
-        </View>
-
-        {/* Détails du remboursement */}
-        <View style={styles.cardDetails}>
-          <View style={styles.detailRow}>
-            <View style={styles.detailItem}>
-              <Text style={styles.detailLabel}>Capital</Text>
-              <Text style={styles.detailValue}>{formatMoney(item.montant_capital)}</Text>
-            </View>
-            <View style={styles.detailItem}>
-              <Text style={styles.detailLabel}>Intérêts</Text>
-              <Text style={styles.detailValue}>{formatMoney(item.montant_interet)}</Text>
-            </View>
-          </View>
-          
-          <View style={styles.detailRow}>
-            <View style={styles.detailItem}>
-              <Text style={styles.detailLabel}>Emprunt initial</Text>
-              <Text style={styles.detailValue}>
-                {formatMoney(item.emprunt_info?.montant_emprunte)}
-              </Text>
-            </View>
-            <View style={styles.detailItem}>
-              <Text style={styles.detailLabel}>Session</Text>
-              <Text style={styles.detailValue}>{item.session_nom || "--"}</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Notes si présentes */}
-        {item.notes && (
-          <View style={styles.notesContainer}>
-            <Ionicons name="document-text" size={16} color={COLORS.textSecondary} />
-            <Text style={styles.notesText}>{item.notes}</Text>
-          </View>
-        )}
-
-        {/* Indicateur de statut */}
-        <View style={styles.statusIndicator}>
-          <View style={[styles.statusDot, { backgroundColor: GREEN_THEME.success }]} />
-          <Text style={styles.statusText}>Remboursement validé</Text>
-        </View>
-      </LinearGradient>
-    </Animated.View>
-  );
-};
-
-// 🆕 Modal d'ajout rapide (2 étapes max)
-const AddRepaymentModal = ({ 
-  visible, 
-  onClose, 
-  onSubmit,
-  loading 
-}: any) => {
+// 🎯 Modal multi-step pour ajouter un remboursement
+const AddRepaymentModal = ({ visible, onClose, onSubmit, loading }: any) => {
+  const [step, setStep] = useState(1);
   const [selectedMember, setSelectedMember] = useState<any>(null);
   const [memberSearch, setMemberSearch] = useState("");
   const [amount, setAmount] = useState("");
   const [notes, setNotes] = useState("");
-  const [step, setStep] = useState(1); // 1: Membre, 2: Détails
 
   const { data: membersRaw, isLoading: loadingMembers } = useMembers();
-  const { data: loansRaw, isLoading: loadingLoans } = useLoans({ statut: "EN_COURS" });
+  const { data: loansRaw, isLoading: loadingLoans } = useLoans({ statut: ["EN_COURS", "EN_RETARD"] });
 
-  // Traitement des données
-  const membersArr = useMemo(() => {
+  const members = useMemo(() => {
     if (!membersRaw) return [];
-    if (Array.isArray(membersRaw)) return membersRaw;
-    return (membersRaw as any).results || [];
+    return Array.isArray(membersRaw) ? membersRaw : (membersRaw as any).results || [];
   }, [membersRaw]);
 
-  const loansArr = useMemo(() => {
+  const loans = useMemo(() => {
     if (!loansRaw) return [];
-    if (Array.isArray(loansRaw)) return loansRaw;
-    return (loansRaw as any).results || [];
+    return Array.isArray(loansRaw) ? loansRaw : (loansRaw as any).results || [];
   }, [loansRaw]);
 
-  // 🔍 Recherche de membres avec debounce
-  const [debouncedSearch, setDebouncedSearch] = useState(memberSearch);
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(memberSearch), 300);
-    return () => clearTimeout(timer);
-  }, [memberSearch]);
+  // Filtrer les membres qui ont un emprunt EN_COURS ou EN_RETARD
+  const membersWithActiveLoan = useMemo(() => {
+    const activeLoanMemberIds = new Set(
+      loans.filter((loan: any) => (loan.statut === "EN_COURS" || loan.statut === "EN_RETARD")).map((loan: any) => loan.membre_info?.id)
+    );
+    return members.filter((m: any) => activeLoanMemberIds.has(m.id));
+  }, [members, loans]);
 
-  // Filtrage des membres par recherche
   const filteredMembers = useMemo(() => {
-    if (!debouncedSearch.trim()) return membersArr;
-    const searchLower = debouncedSearch.trim().toLowerCase();
-    
-    return membersArr.filter((member: any) => {
-      const nom = member?.utilisateur?.nom_complet || member?.nom_complet || "";
-      const numero = member?.numero_membre || "";
-      const email = member?.utilisateur?.email || "";
-      
-      return (
-        nom.toLowerCase().includes(searchLower) ||
-        numero.toLowerCase().includes(searchLower) ||
-        email.toLowerCase().includes(searchLower)
-      );
+    if (!memberSearch.trim()) return membersWithActiveLoan;
+    const q = memberSearch.toLowerCase();
+    return membersWithActiveLoan.filter((m: any) => {
+      const nom = m.utilisateur?.nom_complet || m.nom_complet || "";
+      const numero = m.numero_membre || "";
+      return nom.toLowerCase().includes(q) || numero.toLowerCase().includes(q);
     });
-  }, [membersArr, debouncedSearch]);
+  }, [membersWithActiveLoan, memberSearch]);
 
-  // 🎯 Trouve l'emprunt en cours du membre sélectionné
-  const memberLoan = useMemo(() => {
+  const selectedMemberLoan = useMemo(() => {
     if (!selectedMember) return null;
-    return loansArr.find((loan: any) => 
-      loan?.membre_info?.id === selectedMember.id && 
-      loan?.statut === 'EN_COURS'
+    return loans.find((loan: any) => 
+      loan.membre_info?.id === selectedMember.id && (loan.statut === "EN_COURS" || loan.statut === "EN_RETARD")
     ) || null;
-  }, [loansArr, selectedMember]);
+  }, [loans, selectedMember]);
 
-  const handleSelectMember = (member: any) => {
-    setSelectedMember(member);
-    setStep(2);
-  };
-
-  const handleSubmit = () => {
-    if (!memberLoan || !amount || isNaN(Number(amount)) || Number(amount) <= 0) {
-      Alert.alert("Erreur", "Veuillez remplir tous les champs correctement.");
-      return;
-    }
-
-    const numAmount = Number(amount);
-    const maxAmount = memberLoan.montant_total_a_rembourser - memberLoan.montant_rembourse;
-
-    if (numAmount > maxAmount) {
-      Alert.alert(
-        "Montant trop élevé", 
-        `Le montant maximum remboursable est de ${formatMoney(maxAmount)}`
-      );
-      return;
-    }
-
-    onSubmit({
-      emprunt: memberLoan.id,
-      montant: numAmount,
-      notes,
-    });
-  };
+  const restant = selectedMemberLoan
+    ? (selectedMemberLoan.montant_total_a_rembourser - selectedMemberLoan.montant_rembourse)
+    : 0;
 
   const resetModal = () => {
+    setStep(1);
     setSelectedMember(null);
     setMemberSearch("");
     setAmount("");
     setNotes("");
-    setStep(1);
   };
 
   useEffect(() => {
-    if (!visible) {
-      setTimeout(resetModal, 300);
-    }
+    if (!visible) resetModal();
   }, [visible]);
 
-  const renderStep1 = () => (
-    <View style={styles.modalStep}>
-      <Text style={styles.modalStepTitle}>Sélectionner un membre</Text>
-      
-      {/* Recherche de membre */}
-      <SearchBar
-        search={memberSearch}
-        onSearchChange={setMemberSearch}
-        placeholder="Rechercher un membre..."
-      />
+  const handleMemberSelect = (member: any) => {
+    setSelectedMember(member);
+    setStep(2);
+  };
 
-      {loadingMembers ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={GREEN_THEME.primary} />
-          <Text style={styles.loadingText}>Chargement des membres...</Text>
-        </View>
-      ) : filteredMembers.length === 0 ? (
-        <View style={styles.emptyState}>
-          <Ionicons name="person-outline" size={48} color={COLORS.textLight} />
-          <Text style={styles.emptyText}>
-            {memberSearch ? "Aucun membre trouvé" : "Aucun membre disponible"}
-          </Text>
-        </View>
-      ) : (
-        <FlatList
-          data={filteredMembers}
-          keyExtractor={item => item.id}
-          renderItem={({ item }) => {
-            const nom = item?.utilisateur?.nom_complet || item?.nom_complet || "--";
-            const numero = item?.numero_membre || "--";
-            const email = item?.utilisateur?.email || "";
-            
-            // Vérifier si ce membre a un emprunt en cours
-            const hasLoan = loansArr.some((loan: any) => 
-              loan?.membre_info?.id === item.id && loan?.statut === 'EN_COURS'
-            );
+  const handleValidateAmount = () => {
+    if (!amount.trim() || isNaN(Number(amount)) || Number(amount) <= 0) {
+      Alert.alert("Erreur", "Montant invalide.");
+      return;
+    }
+    if (Number(amount) > restant) {
+      Alert.alert(
+        "Montant trop élevé",
+        `Le montant maximum remboursable est ${formatCurrency(restant)}.`
+      );
+      return;
+    }
+    setStep(3);
+  };
 
-            return (
-              <TouchableOpacity
-                style={[
-                  styles.memberCard,
-                  !hasLoan && styles.memberCardDisabled
-                ]}
-                onPress={() => hasLoan ? handleSelectMember(item) : null}
-                disabled={!hasLoan}
-              >
-                <View style={styles.memberCardContent}>
-                  <View style={[
-                    styles.memberAvatar,
-                    !hasLoan && styles.memberAvatarDisabled
-                  ]}>
-                    <Text style={[
-                      styles.memberInitials,
-                      !hasLoan && styles.memberInitialsDisabled
-                    ]}>
-                      {nom.substring(0, 2).toUpperCase()}
-                    </Text>
-                  </View>
-                  
-                  <View style={styles.memberInfo}>
-                    <Text style={[
-                      styles.memberName,
-                      !hasLoan && styles.memberNameDisabled
-                    ]}>
-                      {nom}
-                    </Text>
-                    
-                   
-                  </View>
-                  
-                  <View style={styles.memberStatus}>
-                    {hasLoan ? (
-                      <View style={styles.hasLoanBadge}>
-                        <Ionicons name="cash" size={16} color={GREEN_THEME.primary} />
-                        <Text style={styles.hasLoanText}>Emprunt actif</Text>
-                      </View>
-                    ) : (
-                      <View style={styles.noLoanBadge}>
-                        <Text style={styles.noLoanText}>Aucun emprunt</Text>
-                      </View>
-                    )}
-                  </View>
-                </View>
-              </TouchableOpacity>
-            );
-          }}
-          style={styles.membersList}
-          showsVerticalScrollIndicator={false}
-        />
-      )}
-    </View>
-  );
+  const handleSubmit = () => {
+    if (!selectedMemberLoan) return;
+    const montantNum = parseFloat(amount);
+    onSubmit({
+      emprunt: selectedMemberLoan.id,
+      montant: montantNum,
+      notes: notes.trim(),
+    });
+  };
 
-  const renderStep2 = () => (
-    <View style={styles.modalStep}>
-      <Text style={styles.modalStepTitle}>
-        Remboursement pour {selectedMember?.utilisateur?.nom_complet}
-      </Text>
-      
-      {/* Informations sur l'emprunt */}
-      {memberLoan && (
-        <View style={styles.loanInfoCard}>
-          <LinearGradient
-            colors={GREEN_THEME.gradientLight}
-            style={styles.loanInfoGradient}
-          >
-            <View style={styles.loanInfoHeader}>
-              <Ionicons name="cash" size={24} color={GREEN_THEME.primary} />
-              <Text style={styles.loanInfoTitle}>Emprunt en cours</Text>
-            </View>
-            
-            <View style={styles.loanInfoDetails}>
-              <View style={styles.loanInfoRow}>
-                <Text style={styles.loanInfoLabel}>Montant emprunté</Text>
-                <Text style={styles.loanInfoValue}>
-                  {formatMoney(memberLoan.montant_emprunte)}
-                </Text>
-              </View>
-              
-              <View style={styles.loanInfoRow}>
-                <Text style={styles.loanInfoLabel}>Total à rembourser</Text>
-                <Text style={styles.loanInfoValue}>
-                  {formatMoney(memberLoan.montant_total_a_rembourser)}
-                </Text>
-              </View>
-              
-              <View style={styles.loanInfoRow}>
-                <Text style={styles.loanInfoLabel}>Déjà remboursé</Text>
-                <Text style={styles.loanInfoValue}>
-                  {formatMoney(memberLoan.montant_rembourse)}
-                </Text>
-              </View>
-              
-              <View style={[styles.loanInfoRow, styles.loanInfoRowHighlight]}>
-                <Text style={styles.loanInfoLabelHighlight}>Restant à rembourser</Text>
-                <Text style={styles.loanInfoValueHighlight}>
-                  {formatMoney(memberLoan.montant_total_a_rembourser - memberLoan.montant_rembourse)}
-                </Text>
-              </View>
-            </View>
-          </LinearGradient>
-        </View>
-      )}
-
-      {/* Formulaire de remboursement */}
-      <View style={styles.formContainer}>
-        <View style={styles.inputGroup}>
-          <Text style={styles.inputLabel}>Montant du remboursement *</Text>
-          <TextInput
-            style={styles.modalInput}
-            value={amount}
-            onChangeText={setAmount}
-            placeholder="0"
-            keyboardType="numeric"
-            placeholderTextColor={COLORS.textLight}
-          />
-          {memberLoan && (
-            <Text style={styles.inputHint}>
-              Maximum: {formatMoney(memberLoan.montant_total_a_rembourser - memberLoan.montant_rembourse)}
-            </Text>
-          )}
-        </View>
-
-        <View style={styles.inputGroup}>
-          <Text style={styles.inputLabel}>Notes (optionnel)</Text>
-          <TextInput
-            style={[styles.modalInput, styles.modalInputMultiline]}
-            value={notes}
-            onChangeText={setNotes}
-            placeholder="Ajouter une note..."
-            multiline
-            numberOfLines={3}
-            placeholderTextColor={COLORS.textLight}
-          />
-        </View>
-      </View>
-
-      <View style={styles.modalButtons}>
-        <TouchableOpacity 
-          style={styles.backButton}
-          onPress={() => setStep(1)}
-        >
-          <Ionicons name="arrow-back" size={20} color={GREEN_THEME.primary} />
-          {/* <Text style={styles.backButtonText}>Retour</Text> */}
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.submitButton, loading && styles.submitButtonDisabled]}
-          onPress={handleSubmit}
-          disabled={loading}
-        >
-          {loading ? (
-            <ActivityIndicator size="small" color="white" />
-          ) : (
-            <>
-              <Ionicons name="checkmark" size={20} color="white" />
-              <Text style={styles.submitButtonText}>Valider</Text>
-            </>
-          )}
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
+  const stepLabels = ["Membre", "Montant", "Récapitulatif"];
 
   return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      presentationStyle="pageSheet"
-      onRequestClose={onClose}
-    >
-      <View style={styles.modalContainer}>
-        <LinearGradient
-          colors={GREEN_THEME.gradientLight}
-          style={styles.modalHeader}
-        >
-          <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-            <Ionicons name="close" size={24} color={GREEN_THEME.primary} />
-          </TouchableOpacity>
-          <Text style={styles.modalTitle}>Nouveau remboursement</Text>
-          <View style={styles.stepIndicator}>
-            <Text style={styles.stepText}>{step}/2</Text>
-          </View>
-        </LinearGradient>
+    <Modal visible={visible} animationType="slide" transparent statusBarTranslucent>
+      <BlurView intensity={80} style={StyleSheet.absoluteFillObject} />
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <LinearGradient
+              colors={[GREEN_THEME.primary, GREEN_THEME.secondary]}
+              style={styles.modalHeader}
+            >
+              <View style={styles.modalHeaderRow}>
+                <TouchableOpacity onPress={onClose} style={styles.modalClose}>
+                  <Ionicons name="close" size={24} color="white" />
+                </TouchableOpacity>
+                <Text style={styles.modalTitle}>Nouveau remboursement</Text>
+                <View style={{ width: 40 }} />
+              </View>
+              <View style={styles.stepIndicator}>
+                <View style={styles.stepBar}>
+                  {[1, 2, 3].map((s) => (
+                    <View key={s} style={styles.stepBarItem}>
+                      <View style={[styles.stepDot, step >= s && styles.stepDotActive]}>
+                        {step > s ? (
+                          <Ionicons name="checkmark" size={12} color="white" />
+                        ) : (
+                          <Text style={[styles.stepNum, step === s && { color: GREEN_THEME.primary }]}>
+                            {s}
+                          </Text>
+                        )}
+                      </View>
+                      {s < 3 && <View style={[styles.stepLine, step > s && styles.stepLineActive]} />}
+                    </View>
+                  ))}
+                </View>
+                <Text style={styles.stepLabel}>{stepLabels[step - 1]}</Text>
+              </View>
+            </LinearGradient>
 
-        <View style={styles.modalContent}>
-          {step === 1 && renderStep1()}
-          {step === 2 && renderStep2()}
+            <View style={styles.modalBody}>
+              {step === 1 && (
+                <View style={{ flex: 1 }}>
+                  <View style={styles.modalSearchContainer}>
+                    <Ionicons name="search" size={18} color={COLORS.textSecondary} />
+                    <TextInput
+                      style={styles.modalSearchInput}
+                      value={memberSearch}
+                      onChangeText={setMemberSearch}
+                      placeholder="Rechercher un membre..."
+                      placeholderTextColor={COLORS.textLight}
+                      autoFocus
+                    />
+                    {memberSearch.length > 0 && (
+                      <TouchableOpacity onPress={() => setMemberSearch("")}>
+                        <Ionicons name="close-circle" size={18} color={COLORS.textSecondary} />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                  <Text style={styles.modalResultCount}>
+                    {filteredMembers.length} membre{filteredMembers.length !== 1 ? "s" : ""}
+                  </Text>
+
+                  <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
+                    {loadingMembers ? (
+                      <ActivityIndicator size="large" color={GREEN_THEME.primary} style={{ marginTop: 40 }} />
+                    ) : filteredMembers.length === 0 ? (
+                      <View style={styles.emptyModal}>
+                        <Ionicons name="people-outline" size={48} color={COLORS.textLight} />
+                        <Text style={styles.emptyModalText}>
+                          {memberSearch ? "Aucun membre trouvé" : "Aucun membre avec emprunt en cours ou en retard"}
+                        </Text>
+                      </View>
+                    ) : (
+                      filteredMembers.map((member: any) => {
+                        const nom = member.utilisateur?.nom_complet || member.nom_complet || "—";
+                        const numero = member.numero_membre || "—";
+                        return (
+                          <TouchableOpacity
+                            key={member.id}
+                            style={styles.modalMemberItem}
+                            onPress={() => handleMemberSelect(member)}
+                          >
+                            <View style={styles.modalMemberAvatar}>
+                              <Text style={styles.modalMemberInitials}>
+                                {nom.substring(0, 2).toUpperCase()}
+                              </Text>
+                            </View>
+                            <View style={{ flex: 1 }}>
+                              <Text style={styles.modalMemberName}>{nom}</Text>
+                              <Text style={styles.modalMemberNumber}>{numero}</Text>
+                            </View>
+                            <Ionicons name="chevron-forward" size={18} color={COLORS.textLight} />
+                          </TouchableOpacity>
+                        );
+                      })
+                    )}
+                  </ScrollView>
+                </View>
+              )}
+
+              {step === 2 && selectedMemberLoan && (
+                <ScrollView showsVerticalScrollIndicator={false}>
+                  <View style={styles.memberBanner}>
+                    <View style={styles.memberBannerAvatar}>
+                      <Text style={styles.memberBannerInitials}>
+                        {(selectedMember.utilisateur?.nom_complet || "?")[0]?.toUpperCase()}
+                      </Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.memberBannerName}>
+                        {selectedMember.utilisateur?.nom_complet}
+                      </Text>
+                      <Text style={styles.memberBannerNumber}>{selectedMember.numero_membre}</Text>
+                    </View>
+                    <TouchableOpacity onPress={() => setStep(1)} style={styles.changeBtn}>
+                      <Text style={styles.changeBtnText}>Changer</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.loanSummary}>
+                    <Text style={styles.loanSummaryTitle}>Détails de l'emprunt</Text>
+                    <View style={styles.loanSummaryRow}>
+                      <Text style={styles.loanSummaryLabel}>Montant emprunté</Text>
+                      <Text style={styles.loanSummaryValue}>
+                        {formatCurrency(selectedMemberLoan.montant_emprunte)}
+                      </Text>
+                    </View>
+                    <View style={styles.loanSummaryRow}>
+                      <Text style={styles.loanSummaryLabel}>Déjà remboursé</Text>
+                      <Text style={styles.loanSummaryValue}>
+                        {formatCurrency(selectedMemberLoan.montant_rembourse)}
+                      </Text>
+                    </View>
+                    <View style={[styles.loanSummaryRow, styles.loanSummaryRowHighlight]}>
+                      <Text style={styles.loanSummaryLabel}>Restant à rembourser</Text>
+                      <Text style={[styles.loanSummaryValue, { color: GREEN_THEME.primary, fontWeight: 'bold' }]}>
+                        {formatCurrency(restant)}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>Montant *</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={amount}
+                      onChangeText={setAmount}
+                      placeholder="Montant en FCFA"
+                      keyboardType="numeric"
+                      placeholderTextColor={COLORS.textLight}
+                    />
+                    <Text style={styles.inputHint}>Maximum : {formatCurrency(restant)}</Text>
+                  </View>
+
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>Notes (optionnel)</Text>
+                    <TextInput
+                      style={[styles.input, styles.textArea]}
+                      value={notes}
+                      onChangeText={setNotes}
+                      placeholder="Notes..."
+                      multiline
+                      numberOfLines={3}
+                      placeholderTextColor={COLORS.textLight}
+                    />
+                  </View>
+
+                  <View style={styles.modalActions}>
+                    <TouchableOpacity
+                      style={[styles.modalButton, styles.backModalButton]}
+                      onPress={() => setStep(1)}
+                    >
+                      <Text style={styles.backModalButtonText}>Retour</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.modalButton, styles.submitModalButton, (!amount || Number(amount) <= 0 || Number(amount) > restant) && { opacity: 0.6 }]}
+                      onPress={handleValidateAmount}
+                      disabled={!amount || Number(amount) <= 0 || Number(amount) > restant}
+                    >
+                      <Text style={styles.submitModalButtonText}>Suivant</Text>
+                    </TouchableOpacity>
+                  </View>
+                </ScrollView>
+              )}
+
+              {step === 3 && selectedMemberLoan && (
+                <ScrollView showsVerticalScrollIndicator={false}>
+                  <View style={styles.recapCard}>
+                    <Text style={styles.recapTitle}>Récapitulatif du remboursement</Text>
+                    
+                    <View style={styles.recapSection}>
+                      <Text style={styles.recapSectionTitle}>Membre</Text>
+                      <View style={styles.recapMemberBanner}>
+                        <View style={styles.recapMemberAvatar}>
+                          <Text style={styles.recapMemberInitials}>
+                            {(selectedMember.utilisateur?.nom_complet || "?")[0]?.toUpperCase()}
+                          </Text>
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.recapMemberName}>
+                            {selectedMember.utilisateur?.nom_complet}
+                          </Text>
+                          <Text style={styles.recapMemberNumber}>{selectedMember.numero_membre}</Text>
+                        </View>
+                        <TouchableOpacity onPress={() => setStep(2)} style={styles.editBtn}>
+                          <Ionicons name="pencil" size={16} color={GREEN_THEME.primary} />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+
+                    <View style={styles.recapDividerLine} />
+
+                    <View style={styles.recapSection}>
+                      <Text style={styles.recapSectionTitle}>Détails de l'emprunt</Text>
+                      <View style={styles.recapRow}>
+                        <Text style={styles.recapLabel}>Montant emprunté</Text>
+                        <Text style={styles.recapValue}>
+                          {formatCurrency(selectedMemberLoan.montant_emprunte)}
+                        </Text>
+                      </View>
+                      <View style={styles.recapRow}>
+                        <Text style={styles.recapLabel}>Déjà remboursé</Text>
+                        <Text style={styles.recapValue}>
+                          {formatCurrency(selectedMemberLoan.montant_rembourse)}
+                        </Text>
+                      </View>
+                      <View style={styles.recapRow}>
+                        <Text style={styles.recapLabel}>Restant avant</Text>
+                        <Text style={styles.recapValue}>
+                          {formatCurrency(restant)}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.recapDividerLine} />
+
+                    <View style={styles.recapSection}>
+                      <Text style={styles.recapSectionTitle}>Remboursement</Text>
+                      <View style={styles.recapRow}>
+                        <Text style={styles.recapLabel}>Montant à rembourser</Text>
+                        <Text style={[styles.recapValue, { color: GREEN_THEME.primary, fontWeight: 'bold', fontSize: FONT_SIZES.lg }]}>
+                          {formatCurrency(Number(amount))}
+                        </Text>
+                      </View>
+                      <View style={styles.recapRow}>
+                        <Text style={styles.recapLabel}>Restant après</Text>
+                        <Text style={[styles.recapValue, { color: COLORS.textSecondary }]}>
+                          {formatCurrency(Math.max(0, restant - Number(amount)))}
+                        </Text>
+                      </View>
+                      {notes.trim() && (
+                        <>
+                          <View style={styles.recapDivider} />
+                          <View style={styles.recapNotesSection}>
+                            <Ionicons name="document-text" size={16} color={COLORS.textSecondary} />
+                            <Text style={styles.recapNotes}>{notes.trim()}</Text>
+                          </View>
+                        </>
+                      )}
+                    </View>
+                  </View>
+
+                  <View style={styles.modalActions}>
+                    <TouchableOpacity
+                      style={[styles.modalButton, styles.backModalButton]}
+                      onPress={() => setStep(2)}
+                    >
+                      <Text style={styles.backModalButtonText}>Modifier</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.modalButton, styles.submitModalButton, loading && { opacity: 0.6 }]}
+                      onPress={handleSubmit}
+                      disabled={loading}
+                    >
+                      {loading ? (
+                        <ActivityIndicator size="small" color="white" />
+                      ) : (
+                        <Text style={styles.submitModalButtonText}>Valider</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                </ScrollView>
+              )}
+            </View>
+          </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };
@@ -527,700 +504,318 @@ const AddRepaymentModal = ({
 // 📱 Composant principal
 export default function RepaymentsScreen() {
   const { user } = useAuthContext();
-  const readOnly = !user?.can_write; // true pour Trésorier et Président
+  const readOnly = !user?.can_write;
   const navigation = useNavigation();
-  const insets = useSafeAreaInsets();
   const [search, setSearch] = useState("");
-  const [modalVisible, setModalVisible] = useState(false);
+  const [showModal, setShowModal] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  
-  // Data hooks
+  const [displayedItems, setDisplayedItems] = useState(ITEMS_PER_PAGE);
+
   const { data: repaymentsRaw, isLoading, refetch } = useRepayments();
   const { data: session } = useCurrentSession();
   const createRepayment = useCreateRepayment();
 
-  // Traitement des données avec gestion pagination DRF
-  const repaymentsArr = useMemo(() => {
+  const repayments = useMemo(() => {
     if (!repaymentsRaw) return [];
-    if (Array.isArray(repaymentsRaw)) return repaymentsRaw;
-    return (repaymentsRaw as any).results || [];
+    return Array.isArray(repaymentsRaw) ? repaymentsRaw : (repaymentsRaw as any).results || [];
   }, [repaymentsRaw]);
 
-  // 🔍 Recherche filtrée avec debounce
-  const [debouncedSearch, setDebouncedSearch] = useState(search);
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(search), 300);
-    return () => clearTimeout(timer);
-  }, [search]);
-
   const filteredRepayments = useMemo(() => {
-    if (!debouncedSearch.trim()) return repaymentsArr;
-    const searchLower = debouncedSearch.trim().toLowerCase();
-    
-    return repaymentsArr.filter((item: any) => {
-      const nom = item?.emprunt_info?.membre_nom || "";
-      const numero = item?.emprunt_info?.membre_numero || "";
-      const notes = item?.notes || "";
-      const montant = item?.montant?.toString() || "";
-      
-      return (
-        nom.toLowerCase().includes(searchLower) ||
-        numero.toLowerCase().includes(searchLower) ||
-        notes.toLowerCase().includes(searchLower) ||
-        montant.includes(searchLower.replace(/\s/g, ''))
-      );
+    if (!search.trim()) return repayments;
+    const q = search.toLowerCase();
+    return repayments.filter((item: any) => {
+      const nom = item.emprunt_info?.membre_nom || "";
+      const numero = item.emprunt_info?.membre_numero || "";
+      return nom.toLowerCase().includes(q) || numero.toLowerCase().includes(q);
     });
-  }, [repaymentsArr, debouncedSearch]);
+  }, [repayments, search]);
 
-  // Gestion du refresh
-  const handleRefresh = useCallback(async () => {
+  const paginated = useMemo(() => filteredRepayments.slice(0, displayedItems), [filteredRepayments, displayedItems]);
+  const hasMore = displayedItems < filteredRepayments.length;
+
+  const loadMore = () => setDisplayedItems(prev => Math.min(prev + ITEMS_PER_PAGE, filteredRepayments.length));
+
+  const handleRefresh = async () => {
     setRefreshing(true);
     await refetch();
     setRefreshing(false);
-  }, [refetch]);
+  };
 
-  // Gestion ajout remboursement
-  const handleAddRepayment = useCallback(async (data: any) => {
+  const handleAddRepayment = async (data: any) => {
     try {
       await createRepayment.mutateAsync({
         ...data,
         session: session?.id,
       });
-      
-      Alert.alert(
-        "Succès ✅", 
-        "Le remboursement a été ajouté avec succès !",
-        [{ text: "OK", onPress: () => setModalVisible(false) }]
-      );
-      
+      setShowModal(false);
       refetch();
+      Alert.alert("Succès", "Remboursement enregistré !");
     } catch (error: any) {
-      Alert.alert(
-        "Erreur ❌",
-        error?.response?.data?.error || error?.message || "Erreur lors de l'ajout"
-      );
+      Alert.alert("Erreur", error?.response?.data?.error || "Impossible d'enregistrer");
     }
-  }, [createRepayment, session, refetch]);
+  };
+
+  useEffect(() => {
+    setDisplayedItems(ITEMS_PER_PAGE);
+  }, [search]);
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* Header avec gradient et navigation */}
+    <SafeAreaView style={styles.container}>
       <LinearGradient
-        colors={GREEN_THEME.gradient as [string, string]}
+        colors={[GREEN_THEME.primary, GREEN_THEME.secondary]}
         style={styles.header}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
       >
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+          <Ionicons name="arrow-back" size={24} color="white" />
+        </TouchableOpacity>
         <View style={styles.headerContent}>
-          <View style={styles.headerTop}>
-            {/* Bouton retour */}
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={() => navigation.goBack()}
-            >
-              <Ionicons name="arrow-back" size={24} color="white" />
-            </TouchableOpacity>
-
-            {/* Titre et icône */}
-            <View style={styles.headerCenter}>
-              <View style={styles.headerIcon}>
-                <Ionicons name="wallet" size={28} color="white" />
-              </View>
-              <Text style={styles.headerTitle}>Remboursements</Text>
-            </View>
-
-            {/* Bouton d'ajout */}
-            {!readOnly ? (
-              <TouchableOpacity
-                style={styles.addButton}
-                onPress={() => setModalVisible(true)}
-              >
-                <Ionicons name="add" size={24} color={GREEN_THEME.primary} />
-              </TouchableOpacity>
-            ) : <View style={{ width: 44 }} />}
-          </View>
-
-          {/* Compteur simple */}
-          <View style={styles.counterContainer}>
-            <Text style={styles.counterText}>
-              {filteredRepayments.length} remboursement{filteredRepayments.length > 1 ? 's' : ''}
-              {search && ` sur ${repaymentsArr.length}`}
-            </Text>
-          </View>
+          <Ionicons name="repeat" size={32} color="white" style={styles.headerIcon} />
+          <Text style={styles.headerTitle}>Remboursements</Text>
+          <Text style={styles.headerSubtitle}>
+            Session : {session?.nom || "Chargement..."}
+          </Text>
         </View>
       </LinearGradient>
 
-      {/* Zone de recherche */}
-      <SearchBar
-        search={search}
-        onSearchChange={setSearch}
-        placeholder="Rechercher un membre, montant..."
-      />
-
-      {/* Liste des remboursements */}
-      <View style={styles.listContainer}>
-        {isLoading && !refreshing ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={GREEN_THEME.primary} />
-            <Text style={styles.loadingText}>Chargement des remboursements...</Text>
-          </View>
-        ) : filteredRepayments.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <LinearGradient
-              colors={GREEN_THEME.gradientLight}
-              style={styles.emptyGradient}
-            >
-              <Ionicons name="receipt-outline" size={64} color={GREEN_THEME.primary} />
-              <Text style={styles.emptyTitle}>
-                {search ? "Aucun résultat" : "Aucun remboursement"}
-              </Text>
-              <Text style={styles.emptySubtitle}>
-                {search 
-                  ? "Essayez de modifier votre recherche"
-                  : "Les remboursements apparaîtront ici"
-                }
-              </Text>
-              {!search && !readOnly && (
-                <TouchableOpacity
-                  style={styles.emptyButton}
-                  onPress={() => setModalVisible(true)}
-                >
-                  <Text style={styles.emptyButtonText}>Ajouter le premier</Text>
-                </TouchableOpacity>
-              )}
-            </LinearGradient>
-          </View>
-        ) : (
-          <FlatList
-            data={filteredRepayments}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item, index }) => (
-              <RepaymentCard item={item} index={index} />
-            )}
-            contentContainerStyle={styles.listContent}
-            showsVerticalScrollIndicator={false}
-            refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={handleRefresh}
-                colors={[GREEN_THEME.primary]}
-                tintColor={GREEN_THEME.primary}
-              />
-            }
-            initialNumToRender={10}
-            maxToRenderPerBatch={5}
-            windowSize={10}
-            removeClippedSubviews={true}
-            getItemLayout={(data, index) => ({
-              length: 200,
-              offset: 200 * index,
-              index,
-            })}
+      <View style={styles.searchSection}>
+        <View style={styles.searchContainer}>
+          <Ionicons name="search" size={20} color={COLORS.textSecondary} />
+          <TextInput
+            style={styles.searchInput}
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Rechercher un membre..."
+            placeholderTextColor={COLORS.textLight}
           />
+          {search.length > 0 && (
+            <TouchableOpacity onPress={() => setSearch("")}>
+              <Ionicons name="close-circle" size={20} color={COLORS.textSecondary} />
+            </TouchableOpacity>
+          )}
+        </View>
+        {!readOnly && (
+          <TouchableOpacity style={styles.addButton} onPress={() => setShowModal(true)}>
+            <LinearGradient
+              colors={[GREEN_THEME.primary, GREEN_THEME.secondary]}
+              style={styles.addButtonGradient}
+            >
+              <Ionicons name="add" size={20} color="white" />
+              <Text style={styles.addButtonText}>Ajouter</Text>
+            </LinearGradient>
+          </TouchableOpacity>
         )}
       </View>
 
-      {/* Modal d'ajout */}
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={styles.listContent}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={GREEN_THEME.primary} />}
+      >
+        {isLoading ? (
+          <View style={styles.center}>
+            <ActivityIndicator size="large" color={GREEN_THEME.primary} />
+            <Text style={styles.loadingText}>Chargement...</Text>
+          </View>
+        ) : filteredRepayments.length === 0 ? (
+          <View style={styles.center}>
+            <Ionicons name="receipt-outline" size={64} color={COLORS.textLight} />
+            <Text style={styles.emptyTitle}>Aucun remboursement</Text>
+            <Text style={styles.emptyText}>
+              {search ? "Aucun résultat pour cette recherche" : "Commencez par enregistrer un remboursement"}
+            </Text>
+            {!search && !readOnly && (
+              <TouchableOpacity style={styles.emptyButton} onPress={() => setShowModal(true)}>
+                <Text style={styles.emptyButtonText}>Ajouter un remboursement</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        ) : (
+          <>
+            <View style={styles.counter}>
+              <Ionicons name="list" size={16} color={GREEN_THEME.primary} />
+              <Text style={styles.counterText}>
+                <Text style={styles.counterBold}>{paginated.length}</Text> sur{" "}
+                <Text style={styles.counterBold}>{filteredRepayments.length}</Text> remboursement{filteredRepayments.length > 1 ? "s" : ""}
+              </Text>
+            </View>
+            {paginated.map((item: any) => (
+              <RepaymentCard key={item.id} item={item} />
+            ))}
+            {hasMore && (
+              <TouchableOpacity style={styles.loadMoreButton} onPress={loadMore}>
+                <LinearGradient
+                  colors={[GREEN_THEME.primary, GREEN_THEME.secondary]}
+                  style={styles.loadMoreGradient}
+                >
+                  <Text style={styles.loadMoreText}>
+                    Voir plus ({filteredRepayments.length - displayedItems} restant{filteredRepayments.length - displayedItems > 1 ? "s" : ""})
+                  </Text>
+                  <Ionicons name="chevron-down" size={20} color="white" />
+                </LinearGradient>
+              </TouchableOpacity>
+            )}
+          </>
+        )}
+        <View style={{ height: 70 }} />
+      </ScrollView>
+
       <AddRepaymentModal
-        visible={modalVisible}
-        onClose={() => setModalVisible(false)}
+        visible={showModal}
+        onClose={() => setShowModal(false)}
         onSubmit={handleAddRepayment}
         loading={createRepayment.isPending}
       />
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
+  container: { flex: 1, backgroundColor: COLORS.background },
+  header: { paddingHorizontal: SPACING.lg, paddingTop: SPACING.xl, paddingBottom: SPACING.lg },
+  headerContent: { alignItems: "center" },
+  headerIcon: { marginBottom: SPACING.sm },
+  headerTitle: { fontSize: FONT_SIZES.xxxl, fontWeight: "bold", color: "white", marginBottom: SPACING.xs, textAlign: "center" },
+  headerSubtitle: { fontSize: FONT_SIZES.md, color: "rgba(255,255,255,0.8)", textAlign: "center" },
 
-  // Header
-  header: {
-    paddingHorizontal: SPACING.lg,
-    paddingBottom: SPACING.xl,
-    borderBottomLeftRadius: BORDER_RADIUS.xl,
-    borderBottomRightRadius: BORDER_RADIUS.xl,
-  },
-  headerContent: {
-    paddingTop: SPACING.md,
-  },
-  headerTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: SPACING.md,
-  },
-  backButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerCenter: {
-    flex: 1,
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'center',
-  },
-  headerIcon: {
-    marginRight: SPACING.sm,
-  },
-  headerTitle: {
-    fontSize: FONT_SIZES.xl,
-    fontWeight: '700',
-    color: 'white',
-  },
-  addButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'white',
-    alignItems: 'center',
-    justifyContent: 'center',
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-  },
-  counterContainer: {
-    alignItems: 'center',
-  },
-  counterText: {
-    fontSize: FONT_SIZES.md,
-    color: 'rgba(255,255,255,0.9)',
-    fontWeight: '500',
-  },
+  searchSection: { flexDirection: "row", paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md, gap: SPACING.md, alignItems: "center" },
+  searchContainer: { flex: 1, flexDirection: "row", alignItems: "center", backgroundColor: COLORS.surface, borderRadius: BORDER_RADIUS.lg, paddingHorizontal: SPACING.md, borderWidth: 1, borderColor: COLORS.border, gap: SPACING.sm },
+  searchInput: { flex: 1, fontSize: FONT_SIZES.md, color: COLORS.text, paddingVertical: SPACING.md },
+  addButton: { borderRadius: BORDER_RADIUS.lg, overflow: "hidden" },
+  addButtonGradient: { flexDirection: "row", alignItems: "center", justifyContent: "center", paddingHorizontal: SPACING.md, paddingVertical: SPACING.md, gap: SPACING.sm, borderRadius: BORDER_RADIUS.lg },
+  addButtonText: { color: "white", fontSize: FONT_SIZES.md, fontWeight: "600" },
 
-  // Search
-  searchContainer: {
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
-  },
-  searchInputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  listContent: { paddingHorizontal: SPACING.lg, paddingBottom: SPACING.xl },
+  center: { alignItems: "center", justifyContent: "center", paddingVertical: SPACING.xxl },
+  loadingText: { fontSize: FONT_SIZES.md, color: COLORS.textSecondary, marginTop: SPACING.md },
+  emptyTitle: { fontSize: FONT_SIZES.lg, fontWeight: "bold", color: COLORS.text, marginTop: SPACING.md, marginBottom: SPACING.sm },
+  emptyText: { fontSize: FONT_SIZES.md, color: COLORS.textSecondary, textAlign: "center", marginBottom: SPACING.lg, paddingHorizontal: SPACING.xl },
+  emptyButton: { backgroundColor: GREEN_THEME.primary, paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md, borderRadius: BORDER_RADIUS.md },
+  emptyButtonText: { color: "white", fontWeight: "600", fontSize: FONT_SIZES.md },
+
+  counter: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: GREEN_THEME.light, borderRadius: 10, paddingHorizontal: SPACING.md, paddingVertical: 8, marginBottom: SPACING.md },
+  counterText: { fontSize: FONT_SIZES.sm, color: COLORS.textSecondary },
+  counterBold: { fontWeight: "700", color: GREEN_THEME.primary },
+
+  repaymentCard: { backgroundColor: COLORS.surface, borderRadius: BORDER_RADIUS.lg, padding: SPACING.md, marginBottom: SPACING.md, borderLeftWidth: 4, borderWidth: 1, borderColor: COLORS.border, shadowColor: COLORS.shadowLight, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 4, elevation: 2 },
+  cardHeader: { flexDirection: "row", alignItems: "center", marginBottom: SPACING.md },
+  memberAvatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: GREEN_THEME.light, alignItems: "center", justifyContent: "center", marginRight: SPACING.md },
+  memberInitials: { fontSize: FONT_SIZES.md, fontWeight: "bold", color: GREEN_THEME.primary },
+  memberInfo: { flex: 1 },
+  memberName: { fontSize: FONT_SIZES.md, fontWeight: "bold", color: COLORS.text, marginBottom: SPACING.xs },
+  memberNumber: { fontSize: FONT_SIZES.sm, color: COLORS.textSecondary },
+  amountBadge: { backgroundColor: GREEN_THEME.light, paddingHorizontal: SPACING.sm, paddingVertical: SPACING.xs, borderRadius: BORDER_RADIUS.md },
+  amountBadgeText: { fontSize: FONT_SIZES.sm, fontWeight: "bold", color: GREEN_THEME.primary },
+  cardDetails: { gap: SPACING.sm, marginBottom: SPACING.sm },
+  detailRow: { flexDirection: "row", justifyContent: "space-between", gap: SPACING.md },
+  detailItem: { flex: 1 },
+  detailLabel: { fontSize: FONT_SIZES.sm, color: COLORS.textSecondary, marginBottom: 2 },
+  detailValue: { fontSize: FONT_SIZES.sm, fontWeight: "600", color: COLORS.text },
+  notesContainer: { flexDirection: "row", alignItems: "center", backgroundColor: COLORS.background, padding: SPACING.sm, borderRadius: BORDER_RADIUS.md, gap: SPACING.sm },
+  notesText: { fontSize: FONT_SIZES.sm, color: COLORS.textSecondary, flex: 1 },
+
+  loadMoreButton: { marginTop: SPACING.lg, marginBottom: SPACING.md, borderRadius: BORDER_RADIUS.lg, overflow: "hidden" },
+  loadMoreGradient: { flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: SPACING.md, gap: SPACING.sm },
+  loadMoreText: { fontSize: FONT_SIZES.md, fontWeight: "600", color: "white" },
+
+  // Modal styles (inspirées des autres écrans)
+  modalOverlay: { flex: 1, justifyContent: "flex-end" },
+  modalContainer: { backgroundColor: COLORS.background, borderTopLeftRadius: BORDER_RADIUS.xl, borderTopRightRadius: BORDER_RADIUS.xl, height: "90%", overflow: "hidden" },
+  modalHeader: { paddingTop: SPACING.lg, paddingBottom: SPACING.md, paddingHorizontal: SPACING.lg },
+  modalHeaderRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: SPACING.md },
+  modalClose: { width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center" },
+  modalTitle: { fontSize: FONT_SIZES.lg, fontWeight: "bold", color: "white" },
+  stepIndicator: { alignItems: "center" },
+  stepBar: { flexDirection: "row", alignItems: "center", justifyContent: "center", marginBottom: SPACING.xs },
+  stepBarItem: { flexDirection: "row", alignItems: "center" },
+  stepDot: { width: 28, height: 28, borderRadius: 14, backgroundColor: "rgba(255,255,255,0.3)", alignItems: "center", justifyContent: "center" },
+  stepDotActive: { backgroundColor: "white" },
+  stepNum: { fontSize: 12, fontWeight: "700", color: "rgba(255,255,255,0.8)" },
+  stepLine: { width: 32, height: 2, backgroundColor: "rgba(255,255,255,0.3)", marginHorizontal: 4 },
+  stepLineActive: { backgroundColor: "white" },
+  stepLabel: { fontSize: FONT_SIZES.sm, color: "rgba(255,255,255,0.9)" },
+  modalBody: { flex: 1, paddingHorizontal: SPACING.lg, paddingTop: SPACING.lg },
+  modalSearchContainer: { flexDirection: "row", alignItems: "center", backgroundColor: COLORS.surface, borderRadius: BORDER_RADIUS.md, paddingHorizontal: SPACING.md, gap: SPACING.sm, borderWidth: 1, borderColor: COLORS.border, marginBottom: SPACING.sm },
+  modalSearchInput: { flex: 1, fontSize: FONT_SIZES.md, color: COLORS.text, paddingVertical: 12 },
+  modalResultCount: { fontSize: FONT_SIZES.sm, color: COLORS.textSecondary, marginBottom: SPACING.sm },
+  modalMemberItem: { flexDirection: "row", alignItems: "center", paddingVertical: SPACING.sm, paddingHorizontal: SPACING.md, backgroundColor: COLORS.surface, borderRadius: BORDER_RADIUS.md, marginBottom: SPACING.xs, borderWidth: 1, borderColor: COLORS.border, gap: SPACING.md },
+  modalMemberAvatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: GREEN_THEME.light, alignItems: "center", justifyContent: "center" },
+  modalMemberInitials: { fontSize: FONT_SIZES.md, fontWeight: "bold", color: GREEN_THEME.primary },
+  modalMemberName: { fontSize: FONT_SIZES.md, fontWeight: "600", color: COLORS.text },
+  modalMemberNumber: { fontSize: FONT_SIZES.sm, color: COLORS.textSecondary },
+  emptyModal: { alignItems: "center", paddingVertical: 40 },
+  emptyModalText: { fontSize: FONT_SIZES.md, color: COLORS.textLight, marginTop: SPACING.md, textAlign: "center" },
+  memberBanner: { flexDirection: "row", alignItems: "center", gap: SPACING.md, backgroundColor: GREEN_THEME.light, padding: SPACING.md, borderRadius: BORDER_RADIUS.lg, marginBottom: SPACING.md },
+  memberBannerAvatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: GREEN_THEME.primary, alignItems: "center", justifyContent: "center" },
+  memberBannerInitials: { fontSize: FONT_SIZES.lg, fontWeight: "bold", color: "white" },
+  memberBannerName: { fontSize: FONT_SIZES.md, fontWeight: "bold", color: COLORS.text },
+  memberBannerNumber: { fontSize: FONT_SIZES.sm, color: COLORS.textSecondary },
+  changeBtn: { paddingHorizontal: SPACING.md, paddingVertical: 6, backgroundColor: "white", borderRadius: BORDER_RADIUS.md, borderWidth: 1, borderColor: GREEN_THEME.primary },
+  changeBtnText: { color: GREEN_THEME.primary, fontWeight: "600", fontSize: FONT_SIZES.sm },
+  loanSummary: { backgroundColor: COLORS.surface, borderRadius: BORDER_RADIUS.lg, padding: SPACING.md, marginBottom: SPACING.md, borderWidth: 1, borderColor: COLORS.border },
+  loanSummaryTitle: { fontSize: FONT_SIZES.sm, fontWeight: "bold", color: COLORS.textSecondary, marginBottom: SPACING.sm, textTransform: "uppercase" },
+  loanSummaryRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: SPACING.xs, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  loanSummaryRowHighlight: { borderBottomWidth: 0, backgroundColor: GREEN_THEME.light, marginTop: SPACING.sm, padding: SPACING.sm, borderRadius: BORDER_RADIUS.md },
+  loanSummaryLabel: { fontSize: FONT_SIZES.sm, color: COLORS.textSecondary },
+  loanSummaryValue: { fontSize: FONT_SIZES.sm, fontWeight: "600", color: COLORS.text },
+  inputGroup: { marginBottom: SPACING.lg },
+  inputLabel: { fontSize: FONT_SIZES.md, fontWeight: "600", color: COLORS.text, marginBottom: SPACING.sm },
+  input: { backgroundColor: COLORS.surface, borderRadius: BORDER_RADIUS.md, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, fontSize: FONT_SIZES.md, color: COLORS.text, borderWidth: 1, borderColor: COLORS.border },
+  textArea: { height: 80, textAlignVertical: "top" },
+  inputHint: { fontSize: FONT_SIZES.sm, color: GREEN_THEME.primary, marginTop: SPACING.xs },
+  modalActions: { flexDirection: "row", gap: SPACING.md, marginTop: SPACING.lg, marginBottom: SPACING.lg },
+  modalButton: { flex: 1, paddingVertical: SPACING.md, borderRadius: BORDER_RADIUS.md, alignItems: "center", justifyContent: "center" },
+  backModalButton: { backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border },
+  backModalButtonText: { fontSize: FONT_SIZES.md, fontWeight: "600", color: COLORS.textSecondary },
+  submitModalButton: { backgroundColor: GREEN_THEME.primary },
+  submitModalButtonText: { fontSize: FONT_SIZES.md, fontWeight: "600", color: "white" },
+  // Styles pour le récapitulatif
+  recapCard: {
     backgroundColor: COLORS.surface,
     borderRadius: BORDER_RADIUS.lg,
-    paddingHorizontal: SPACING.md,
-    height: 48,
-    borderWidth: 2,
-    borderColor: 'transparent',
+    padding: SPACING.lg,
+    marginVertical: SPACING.md,
     elevation: 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
   },
-  searchInputFocused: {
-    borderColor: GREEN_THEME.primary,
-  },
-  searchInput: {
-    flex: 1,
-    marginLeft: SPACING.sm,
-    fontSize: FONT_SIZES.md,
-    color: COLORS.text,
-  },
-
-  // List
-  listContainer: {
-    flex: 1,
-  },
-  listContent: {
-    paddingHorizontal: SPACING.lg,
-    paddingBottom: SPACING.xl,
-  },
-  loadingContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: SPACING.xxl,
-  },
-  loadingText: {
-    marginTop: SPACING.md,
-    fontSize: FONT_SIZES.md,
-    color: COLORS.textSecondary,
-  },
-
-  // Empty state
-  emptyContainer: {
-    flex: 1,
-    margin: SPACING.lg,
-  },
-  emptyGradient: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: BORDER_RADIUS.xl,
-    padding: SPACING.xl,
-  },
-  emptyTitle: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: '600',
-    color: GREEN_THEME.primary,
-    marginTop: SPACING.md,
-    marginBottom: SPACING.sm,
-  },
-  emptySubtitle: {
-    fontSize: FONT_SIZES.md,
-    color: COLORS.textSecondary,
-    textAlign: 'center',
-    marginBottom: SPACING.lg,
-  },
-  emptyButton: {
-    backgroundColor: GREEN_THEME.primary,
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
-    borderRadius: BORDER_RADIUS.lg,
-  },
-  emptyButtonText: {
-    color: 'white',
-    fontWeight: '600',
-    fontSize: FONT_SIZES.md,
-  },
-
-  // Repayment Cards
-  repaymentCard: {
-    marginVertical: SPACING.sm,
-    borderRadius: BORDER_RADIUS.xl,
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-  },
-  cardGradient: {
-    borderRadius: BORDER_RADIUS.xl,
-    padding: SPACING.lg,
-  },
-  cardHeader: {
+  recapRow: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: SPACING.md,
-  },
-  memberInfo: {
-    flexDirection: 'row',
     alignItems: 'center',
-    flex: 1,
-  },
-  memberAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: GREEN_THEME.light,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: SPACING.md,
-  },
-  memberAvatarDisabled: {
-    backgroundColor: COLORS.border,
-  },
-  memberInitials: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: '700',
-    color: GREEN_THEME.primary,
-  },
-  memberInitialsDisabled: {
-    color: COLORS.textLight,
-  },
-  memberDetails: {
-    flex: 1,
-  },
-  memberName: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: '600',
-    color: COLORS.text,
-  },
-  memberNameDisabled: {
-    color: COLORS.textLight,
-  },
-  memberNumber: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textSecondary,
-  },
-  memberNumberDisabled: {
-    color: COLORS.textLight,
-  },
-  memberEmail: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textSecondary,
-  },
-  memberEmailDisabled: {
-    color: COLORS.textLight,
-  },
-  amountContainer: {
-    alignItems: 'flex-end',
-  },
-  amount: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: '700',
-    color: GREEN_THEME.primary,
-  },
-  date: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textSecondary,
-  },
-  cardDetails: {
-    marginBottom: SPACING.md,
-  },
-  detailRow: {
-    flexDirection: 'row',
-    marginBottom: SPACING.sm,
-  },
-  detailItem: {
-    flex: 1,
-  },
-  detailLabel: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textSecondary,
-    marginBottom: 2,
-  },
-  detailValue: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: '600',
-    color: COLORS.text,
-  },
-  notesContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: GREEN_THEME.light,
-    borderRadius: BORDER_RADIUS.md,
-    padding: SPACING.sm,
-    marginBottom: SPACING.md,
-  },
-  notesText: {
-    flex: 1,
-    marginLeft: SPACING.sm,
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.text,
-    fontStyle: 'italic',
-  },
-  statusIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: SPACING.sm,
-  },
-  statusText: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textSecondary,
-    fontWeight: '500',
-  },
-
-  // Modal
-  modalContainer: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.lg,
+    paddingVertical: SPACING.sm,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
   },
-  closeButton: {
+  recapDivider: {
+    height: 1,
+    backgroundColor: COLORS.border,
+    marginVertical: SPACING.sm,
+  },
+  recapLabel: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textSecondary,
+    flex: 1,
+  },
+  recapValue: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '500',
+    color: COLORS.text,
+    textAlign: 'right',
+    flex: 1,
+    marginLeft: SPACING.md,
+  },
+  backButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'white',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalTitle: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: '700',
-    color: GREEN_THEME.primary,
-    flex: 1,
-    textAlign: 'center',
-  },
-  stepIndicator: {
-    width: 40,
-    alignItems: 'center',
-  },
-  stepText: {
-    fontSize: FONT_SIZES.sm,
-    color: GREEN_THEME.primary,
-    fontWeight: '600',
-  },
-  modalContent: {
-    flex: 1,
-    paddingHorizontal: SPACING.lg,
-  },
-  modalStep: {
-    flex: 1,
-    paddingVertical: SPACING.lg,
-  },
-  modalStepTitle: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: '600',
-    color: COLORS.text,
-    marginBottom: SPACING.lg,
-    textAlign: 'center',
-  },
-
-  // Members list
-  membersList: {
-    flex: 1,
-    marginTop: SPACING.md,
-  },
-  memberCard: {
-    backgroundColor: COLORS.surface,
-    borderRadius: BORDER_RADIUS.lg,
-    marginBottom: SPACING.sm,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-  },
-  memberCardDisabled: {
-    opacity: 0.6,
-  },
-  memberCardContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: SPACING.md,
-  },
-  memberStatus: {
-    alignItems: 'flex-end',
-  },
-  hasLoanBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: GREEN_THEME.light,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: SPACING.xs,
-    borderRadius: BORDER_RADIUS.md,
-  },
-  hasLoanText: {
-    marginLeft: SPACING.xs,
-    fontSize: FONT_SIZES.sm,
-    color: GREEN_THEME.primary,
-    fontWeight: '500',
-  },
-  noLoanBadge: {
-    backgroundColor: COLORS.border,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: SPACING.xs,
-    borderRadius: BORDER_RADIUS.md,
-  },
-  noLoanText: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textLight,
-  },
-
-  // Loan info card
-  loanInfoCard: {
-    marginBottom: SPACING.lg,
-  },
-  loanInfoGradient: {
-    borderRadius: BORDER_RADIUS.lg,
-    padding: SPACING.md,
-  },
-  loanInfoHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    backgroundColor: "rgba(255,255,255,0.2)",
+    alignItems: "center",
+    justifyContent: "center",
     marginBottom: SPACING.md,
-  },
-  loanInfoTitle: {
-    marginLeft: SPACING.sm,
-    fontSize: FONT_SIZES.md,
-    fontWeight: '600',
-    color: GREEN_THEME.primary,
-  },
-  loanInfoDetails: {
-    backgroundColor: 'white',
-    borderRadius: BORDER_RADIUS.md,
-    padding: SPACING.md,
-  },
-  loanInfoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: SPACING.xs,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  loanInfoRowHighlight: {
-    backgroundColor: GREEN_THEME.light,
-    marginHorizontal: -SPACING.md,
-    paddingHorizontal: SPACING.md,
-    borderBottomWidth: 0,
-    borderRadius: BORDER_RADIUS.md,
-    marginTop: SPACING.sm,
-  },
-  loanInfoLabel: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textSecondary,
-  },
-  loanInfoValue: {
-    fontSize: FONT_SIZES.sm,
-    fontWeight: '600',
-    color: COLORS.text,
-  },
-  loanInfoLabelHighlight: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: '600',
-    color: GREEN_THEME.primary,
-  },
-  loanInfoValueHighlight: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: '700',
-    color: GREEN_THEME.primary,
-  },
-
-  // Form
-  formContainer: {
-    flex: 1,
-  },
-  inputGroup: {
-    marginBottom: SPACING.lg,
-  },
-  inputLabel: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: '600',
-    color: COLORS.text,
-    marginBottom: SPACING.sm,
-  },
-  modalInput: {
-    backgroundColor: COLORS.surface,
-    borderRadius: BORDER_RADIUS.lg,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.md,
-    fontSize: FONT_SIZES.md,
-    color: COLORS.text,
-    borderWidth: 2,
-    borderColor: COLORS.border,
-  },
-  modalInputMultiline: {
-    height: 80,
-    textAlignVertical: 'top',
-  },
-  inputHint: {
-    fontSize: FONT_SIZES.sm,
-    color: GREEN_THEME.primary,
-    marginTop: SPACING.xs,
-    fontWeight: '500',
-  },
-
-  // Buttons
-  modalButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: SPACING.lg,
-    
   },
   backButtonText: {
     marginLeft: SPACING.sm,
@@ -1228,37 +823,83 @@ const styles = StyleSheet.create({
     color: GREEN_THEME.primary,
     fontWeight: '600',
   },
-  submitButton: {
+  // Styles pour le récapitulatif avancé
+  recapTitle: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: 'bold',
+    color: COLORS.text,
+    marginBottom: SPACING.md,
+    textAlign: 'center',
+  },
+  recapSection: {
+    marginBottom: SPACING.lg,
+  },
+  recapSectionTitle: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+    marginBottom: SPACING.md,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  recapMemberBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: GREEN_THEME.primary,
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
+    backgroundColor: GREEN_THEME.light,
+    padding: SPACING.md,
     borderRadius: BORDER_RADIUS.lg,
-    elevation: 2,
-    
+    gap: SPACING.md,
   },
-  submitButtonDisabled: {
-    opacity: 0.6,
-  },
-  submitButtonText: {
-    marginLeft: SPACING.sm,
-    fontSize: FONT_SIZES.md,
-    color: 'white',
-    fontWeight: '600',
-  },
-
-  // Empty state in modal
-  emptyState: {
-    flex: 1,
+  recapMemberAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: GREEN_THEME.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: SPACING.xl,
   },
-  emptyText: {
+  recapMemberInitials: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: 'bold',
+    color: 'white',
+  },
+  recapMemberName: {
     fontSize: FONT_SIZES.md,
+    fontWeight: 'bold',
+    color: COLORS.text,
+  },
+  recapMemberNumber: {
+    fontSize: FONT_SIZES.sm,
     color: COLORS.textSecondary,
+  },
+  editBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'white',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: GREEN_THEME.primary,
+  },
+  recapDividerLine: {
+    height: 1,
+    backgroundColor: COLORS.border,
+    marginVertical: SPACING.md,
+  },
+  recapNotesSection: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: SPACING.md,
+    backgroundColor: COLORS.background,
+    padding: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
     marginTop: SPACING.md,
-    textAlign: 'center',
+  },
+  recapNotes: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textSecondary,
+    flex: 1,
+    lineHeight: 20,
   },
 });

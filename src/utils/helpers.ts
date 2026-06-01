@@ -28,3 +28,16 @@ export function getLoanStatusLabel(status: LoanStatus) {
       return "-";
   }
 }
+
+export function getInitials(name: string = "??"): string {
+  return name
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .substring(0, 2)
+    .toUpperCase();
+}
+
+export function normalizeArray(raw: any): any[] {
+  return Array.isArray(raw) ? raw : raw?.results ?? [];
+}

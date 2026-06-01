@@ -7,7 +7,7 @@ export const fetchMembers = async (accessToken: string, params?: Record<string, 
     params,
     headers: { Authorization: `Bearer ${accessToken}` }
   });
-  console.log("📡 RESPONSE COMPLETE:", data);
+  //console.log("📡 RESPONSE COMPLETE:", data);
   
   // 🔧 Gestion de la réponse paginée
   if (data && Array.isArray(data.results)) {

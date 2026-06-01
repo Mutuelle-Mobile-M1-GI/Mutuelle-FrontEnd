@@ -980,12 +980,8 @@ export default function InscriptionsScreen() {
     if (amount > restant) {
       Alert.alert(
         "Attention", 
-        `Le montant saisi (${amount.toLocaleString()} FCFA) dépasse le restant à payer (${restant.toLocaleString()} FCFA). Voulez-vous continuer ?`,
-        [
-          { text: "Annuler", style: "cancel" },
-          { text: "Continuer", onPress: submitPayment }
-        ]
-      );
+        `Le montant saisi (${amount.toLocaleString()} FCFA) dépasse le restant à payer (${restant.toLocaleString()} FCFA)`);
+        return;
     } else {
       submitPayment();
     }

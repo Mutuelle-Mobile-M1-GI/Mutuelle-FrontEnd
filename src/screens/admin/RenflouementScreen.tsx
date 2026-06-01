@@ -8,1398 +8,1105 @@ import {
   TextInput,
   Modal,
   ActivityIndicator,
-  FlatList,
   Alert,
   Dimensions,
-  ListRenderItem,
   Platform,
   KeyboardAvoidingView,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
-import { useRenflouements, useRenflouementStats, useCreateRenflouementPayment, usePayRenflouementWithSavings } from "../../hooks/useRenflouement";
+import {
+  useRenflouements,
+  useRenflouementStats,
+  useCreateRenflouementPayment,
+  useRenflouementsByMembre,
+  usePayRenflouementWithSavings,
+  useRenflouementPayments,
+} from "../../hooks/useRenflouement";
+import { useMembers } from "../../hooks/useMember";
 import { Renflouement, RenflouementPayment } from "../../types/renflouement.types";
+import { Member } from "../../types/member.types";
 import { COLORS, SPACING, BORDER_RADIUS, FONT_SIZES } from "../../constants/config";
 import { useAuthContext } from "../../context/AuthContext";
+import { useNavigation } from "@react-navigation/native";
+import { formatCurrency, formatDate } from "../../utils/formatters";
+import { getInitials, normalizeArray } from "../../utils/helpers";
+
 const { width } = Dimensions.get("window");
-// 🎯 Configuration de la pagination
 const ITEMS_PER_PAGE = 10;
+const MODAL_ITEMS_PER_PAGE = 8;
 
-// 🎯 Type pour le modal
-type ModalState = boolean | "payment" | "savings" | string;
+// ─── Thème ────────────────────────────────────────────────────────────────────
+const TEAL  = "#14B8A6";
+const TEAL2 = "#0D9488";
 
-// 🎯 Formatage monétaire sécurisé
-const formatCurrency = (amount: number | undefined | null): string => {
-  if (amount === undefined || amount === null || isNaN(amount)) return "0 FCFA";
-  return new Intl.NumberFormat('fr-FR', {
-    style: 'currency',
-    currency: 'XAF',
-    minimumFractionDigits: 0,
-  }).format(amount);
-};
-
-// 🎯 Composant StatCard
-interface StatCardProps {
-  title: string;
-  value: string;
-  icon: string;
-  color: string;
-  subtitle?: string;
-}
-
-const StatCard = ({ title, value, icon, color, subtitle }: StatCardProps) => (
-  <View style={[styles.statCard, { borderLeftColor: color }]}>
-    <View style={styles.statHeader}>
-      <View style={[styles.statIcon, { backgroundColor: `${color}20` }]}>
-        <Ionicons name={icon as any} size={24} color={color} />
-      </View>
-      <View style={styles.statTextContainer}>
-        <Text style={styles.statTitle}>{title}</Text>
-        <Text style={[styles.statValue, { color }]}>{value}</Text>
-        {subtitle && <Text style={styles.statSubtitle}>{subtitle}</Text>}
-      </View>
+// ─── StatCard ────────────────────────────────────────────────────────────────
+const StatCard = ({
+  title, value, icon, color, subtitle,
+}: { title: string; value: string; icon: string; color: string; subtitle?: string }) => (
+  <View style={[sc.card, { borderLeftColor: color }]}>
+    <View style={[sc.icon, { backgroundColor: color + "20" }]}>
+      <Ionicons name={icon as any} size={22} color={color} />
+    </View>
+    <View style={{ flex: 1 }}>
+      <Text style={sc.title}>{title}</Text>
+      <Text style={[sc.value, { color }]}>{value}</Text>
+      {subtitle && <Text style={sc.subtitle}>{subtitle}</Text>}
     </View>
   </View>
 );
 
-// 🎯 Composant RenflouementCard
-interface RenflouementCardProps {
-  item: Renflouement;
-  onPayment: (item: Renflouement) => void;
-  onDetails: (item: Renflouement) => void;
-  onPaymentWithSavings: (item: Renflouement) => void;  // ←
-}
+const sc = StyleSheet.create({
+  card:     { flexDirection: "row", alignItems: "center", backgroundColor: "white", borderRadius: 14, padding: SPACING.md, borderLeftWidth: 4, marginBottom: SPACING.sm, elevation: 1, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 3, gap: SPACING.md },
+  icon:     { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
+  title:    { fontSize: FONT_SIZES.sm, color: COLORS.textSecondary, marginBottom: 2 },
+  value:    { fontSize: FONT_SIZES.lg, fontWeight: "800" },
+  subtitle: { fontSize: FONT_SIZES.xs, color: COLORS.textSecondary, marginTop: 1 },
+});
 
-const RenflouementCard = ({ item, onPayment, onDetails, onPaymentWithSavings, readOnly }: RenflouementCardProps & { readOnly?: boolean }) => (
-  <View style={[
-    styles.renflouementCard,
-    { borderLeftColor: item.is_solde ? COLORS.success : COLORS.warning }
-  ]}>
-    {/* Header avec status badge */}
-    <View style={styles.cardHeader}>
-      <View style={styles.memberInfo}>
-        <Text style={styles.memberName}>
-          {item.membre_info?.nom_complet || "Nom indisponible"}
-        </Text>
-        <Text style={styles.memberNumber}>
-          {item.membre_info?.numero_membre || "N/A"}
-        </Text>
-      </View>
-      <View style={[
-        styles.statusBadge,
-        { backgroundColor: item.is_solde ? COLORS.success : COLORS.warning }
-      ]}>
-        <Text style={styles.statusText}>
-          {item.is_solde ? "Soldé" : "En cours"}
-        </Text>
-      </View>
-    </View>
+// ─── Carte paiement renflouement (liste principale) ───────────────────────────
+const RenflouementPaymentCard = ({ item }: { item: RenflouementPayment }) => {
+  const montantNum = parseFloat(item.montant);
+  const progress = Math.min(
+    100,
+    (item.renflouement_info.montant_paye / item.renflouement_info.montant_du) * 100
+  );
+  const isSolde = item.renflouement_info.montant_restant <= 0;
+  const color = isSolde ? COLORS.success : TEAL;
 
-    {/* Informations financières */}
-    <View style={styles.financialInfo}>
-      <View style={styles.financialRow}>
-        <Text style={styles.financialLabel}>Montant dû:</Text>
-        <Text style={styles.financialValue}>{formatCurrency(item.montant_du)}</Text>
-      </View>
-      <View style={styles.financialRow}>
-        <Text style={styles.financialLabel}>Déjà payé:</Text>
-        <Text style={[styles.financialValue, { color: COLORS.success }]}>
-          {formatCurrency(item.montant_paye)}
-        </Text>
-      </View>
-      <View style={styles.financialRow}>
-        <Text style={styles.financialLabel}>Reste à payer:</Text>
-        <Text style={[styles.financialValue, { 
-          color: (item.montant_restant || 0) > 0 ? COLORS.error : COLORS.success 
-        }]}>
-          {formatCurrency(item.montant_restant)}
-        </Text>
-      </View>
-    </View>
-
-    {/* Progress bar */}
-    <View style={styles.progressContainer}>
-      <View style={styles.progressTrack}>
-        <View style={[
-          styles.progressBar, 
-          { 
-            width: `${item.pourcentage_paye || 0}%`,
-            backgroundColor: item.is_solde ? COLORS.success : COLORS.warning
-          }
-        ]} />
-      </View>
-      <Text style={styles.progressText}>{item.pourcentage_paye || 0}% payé</Text>
-    </View>
-
-    {/* Détails cause et session */}
-    <View style={styles.detailsInfo}>
-      <View style={styles.detailRow}>
-        <Ionicons name="calendar" size={16} color={COLORS.textSecondary} />
-        <Text style={styles.detailText}>{item.session_nom || "Session N/A"}</Text>
-      </View>
-      <View style={styles.detailRow}>
-        <Ionicons name="information-circle" size={16} color={COLORS.textSecondary} />
-        <Text style={styles.detailText}>{item.cause || item.type_cause_display || "Cause N/A"}</Text>
-      </View>
-      <View style={styles.detailRow}>
-        <Ionicons name="time" size={16} color={COLORS.textSecondary} />
-        <Text style={styles.detailText}>
-          {item.date_creation ? new Date(item.date_creation).toLocaleDateString('fr-FR') : "Date N/A"}
-        </Text>
-      </View>
-    </View>
-
-    {/* Paiements récents */}
-    {item.paiements_details && item.paiements_details.length > 0 && (
-      <View style={styles.recentPayments}>
-        <Text style={styles.recentPaymentsTitle}>Paiements récents:</Text>
-        {item.paiements_details.slice(0, 2).map((payment) => (
-          <View key={payment.id} style={styles.paymentRow}>
-            <Text style={styles.paymentAmount}>
-              {formatCurrency(payment.montant)}
-            </Text>
-            <Text style={styles.paymentDate}>
-              {payment.date_paiement ? new Date(payment.date_paiement).toLocaleDateString('fr-FR') : "N/A"}
+  return (
+    <View style={rfc.card}>
+      <View style={[rfc.stripe, { backgroundColor: color }]} />
+      <View style={rfc.body}>
+        {/* Top row: Member info + Session */}
+        <View style={rfc.topRow}>
+          <LinearGradient colors={[TEAL, TEAL2]} style={rfc.avatar}>
+            <Text style={rfc.avatarText}>{getInitials(item.membre_nom ?? "")}</Text>
+          </LinearGradient>
+          <View style={{ flex: 1 }}>
+            <Text style={rfc.name}>{item.membre_nom}</Text>
+            <Text style={rfc.numero}>{item.membre_numero}</Text>
+            <Text style={[rfc.numero, { fontSize: FONT_SIZES.xs, marginTop: 2 }]}>
+              {item.session_info?.exercice_nom} - {item.session_info?.nom}
             </Text>
           </View>
-        ))}
+          <View style={[rfc.badge, { backgroundColor: color + "20" }]}>
+            <Text style={[rfc.badgeText, { color }]}>
+              {isSolde ? "Soldé" : "Partiel"}
+            </Text>
+          </View>
+        </View>
+
+        {/* Montants: Dû, Payé ce jour, Restant */}
+        <View style={rfc.amountsRow}>
+          <View style={rfc.amountItem}>
+            <Text style={rfc.amountLabel}>Dû</Text>
+            <Text style={[rfc.amountValue, { color: TEAL }]}>
+              {formatCurrency(item.renflouement_info.montant_du)}
+            </Text>
+          </View>
+          <View style={rfc.amountItem}>
+            <Text style={rfc.amountLabel}>Ce paiement</Text>
+            <Text style={[rfc.amountValue, { color: COLORS.success }]}>{formatCurrency(montantNum)}</Text>
+          </View>
+          <View style={rfc.amountItem}>
+            <Text style={rfc.amountLabel}>Restant</Text>
+            <Text style={[rfc.amountValue, { color: item.renflouement_info.montant_restant > 0 ? COLORS.error : COLORS.success }]}>
+              {formatCurrency(item.renflouement_info.montant_restant)}
+            </Text>
+          </View>
+        </View>
+
+        {/* Barre progression */}
+        <View style={rfc.progressWrap}>
+          <View style={rfc.progressBg}>
+            <View style={[rfc.progressFill, { width: `${progress}%` as any, backgroundColor: color }]} />
+          </View>
+          <Text style={rfc.progressLabel}>{progress.toFixed(0)}% payé</Text>
+        </View>
+
+        {/* Répartition */}
+        <View style={rfc.repartitionBox}>
+          <View style={rfc.repartitionItem}>
+            <View style={[rfc.repartitionDot, { backgroundColor: COLORS.primary }]} />
+            <View>
+              <Text style={rfc.repartitionLabel}>Caisse</Text>
+              <Text style={rfc.repartitionValue}>{item.repartition_detail.caisse_inscription}</Text>
+            </View>
+          </View>
+          <View style={rfc.repartitionItem}>
+            <View style={[rfc.repartitionDot, { backgroundColor: COLORS.warning }]} />
+            <View>
+              <Text style={rfc.repartitionLabel}>Fonds social</Text>
+              <Text style={rfc.repartitionValue}>{item.repartition_detail.fonds_social}</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Footer */}
+        <View style={rfc.footer}>
+          <View style={rfc.footerItem}>
+            <Ionicons name="calendar-outline" size={12} color={COLORS.textSecondary} />
+            <Text style={rfc.footerText}>{formatDate(item.date_paiement)}</Text>
+          </View>
+          {item.notes ? (
+            <View style={rfc.footerItem}>
+              <Ionicons name="document-text-outline" size={12} color={COLORS.textSecondary} />
+              <Text style={[rfc.footerText, { maxWidth: 150 }]} numberOfLines={1}>{item.notes}</Text>
+            </View>
+          ) : null}
+        </View>
       </View>
-    )}
-
-    {/* Actions */}
-    <View style={styles.cardActions}>
-      <TouchableOpacity
-        style={[styles.actionButton, styles.detailsButton]}
-        onPress={() => onDetails(item)}
-      >
-        <Ionicons name="eye" size={18} color={COLORS.primary} />
-        <Text style={[styles.actionButtonText, { color: COLORS.primary }]}>
-          Détails
-        </Text>
-      </TouchableOpacity>
-      
-      {!readOnly && (
-        <TouchableOpacity
-          style={[
-            styles.actionButton,
-            styles.paymentButton,
-            { opacity: item.is_solde ? 0.5 : 1 }
-          ]}
-          onPress={() => onPayment(item)}
-          disabled={item.is_solde}
-        >
-          <Ionicons name="card" size={18} color="white" />
-          <Text style={styles.paymentButtonText}>
-            {item.is_solde ? "Soldé" : "Paiement"}
-          </Text>
-        </TouchableOpacity>
-      )}
-
-      {!readOnly && (
-        <TouchableOpacity
-          style={[
-            styles.actionButton,
-            styles.savingsButton,
-            { opacity: item.is_solde ? 0.5 : 1 }
-          ]}
-          onPress={() => onPaymentWithSavings(item)}
-          disabled={item.is_solde}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="wallet-outline" size={18} color="white" />
-          <Text style={styles.savingsButtonText}>Payer avec épargne</Text>
-        </TouchableOpacity>
-      )}
     </View>
-  </View>
-);
+  );
+};
 
-// 🎯 Composant principal
-export default function RenflouementScreen() {
-  const { user } = useAuthContext();
-  const readOnly = !user?.can_write;
-  const [search, setSearch] = useState("");
-  const [showModal, setShowModal] = useState<ModalState>(false);
-  const [modalType, setModalType] = useState<"payment" | "savings" | null>(null);
-  const [currentRenflouement, setCurrentRenflouement] = useState<Renflouement | null>(null);
-  const [montant, setMontant] = useState("");
-  const [notes, setNotes] = useState("");
-  const [displayedItems, setDisplayedItems] = useState(ITEMS_PER_PAGE);
-  const [filterStatus, setFilterStatus] = useState<'all' | 'solde' | 'en-cours'>('all');
+const rfc = StyleSheet.create({
+  card:         { backgroundColor: "white", borderRadius: 16, overflow: "hidden", marginBottom: SPACING.md, elevation: 2, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.08, shadowRadius: 4, flexDirection: "row" },
+  stripe:       { width: 5 },
+  body:         { flex: 1, padding: SPACING.md },
+  topRow:       { flexDirection: "row", alignItems: "flex-start", marginBottom: SPACING.sm },
+  avatar:       { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", marginRight: SPACING.sm, marginTop: 3 },
+  avatarText:   { color: "white", fontWeight: "800", fontSize: FONT_SIZES.md },
+  name:         { fontSize: FONT_SIZES.md, fontWeight: "700", color: COLORS.text },
+  numero:       { fontSize: FONT_SIZES.sm, color: COLORS.textSecondary },
+  badge:        { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20 },
+  badgeText:    { fontSize: 11, fontWeight: "700" },
+  amountsRow:   { flexDirection: "row", justifyContent: "space-between", borderTopWidth: 1, borderTopColor: "#F5F5F5", paddingTop: SPACING.sm, marginBottom: SPACING.sm },
+  amountItem:   { alignItems: "center", flex: 1 },
+  amountLabel:  { fontSize: 10, color: COLORS.textSecondary, marginBottom: 2 },
+  amountValue:  { fontSize: FONT_SIZES.sm, fontWeight: "800" },
+  progressWrap: { marginBottom: SPACING.sm },
+  progressBg:   { height: 6, backgroundColor: "#F0F0F0", borderRadius: 3, marginBottom: 4 },
+  progressFill: { height: 6, borderRadius: 3 },
+  progressLabel:{ fontSize: 10, color: COLORS.textSecondary, textAlign: "right" },
+  repartitionBox:   { backgroundColor: "#F9FAFB", borderRadius: 12, padding: SPACING.sm, marginBottom: SPACING.sm, flexDirection: "row", gap: SPACING.md },
+  repartitionItem:  { flex: 1, flexDirection: "row", alignItems: "flex-start", gap: 6 },
+  repartitionDot:   { width: 10, height: 10, borderRadius: 5, marginTop: 2 },
+  repartitionLabel: { fontSize: 10, color: COLORS.textSecondary },
+  repartitionValue: { fontSize: 11, fontWeight: "700", color: COLORS.text, marginTop: 2 },
+  footer:       { flexDirection: "row", gap: SPACING.md, flexWrap: "wrap" },
+  footerItem:   { flexDirection: "row", alignItems: "center", gap: 3 },
+  footerText:   { fontSize: 10, color: COLORS.textSecondary },
+});
 
-  // Hooks
-  const { data: stats, isLoading: loadingStats } = useRenflouementStats();
-  const { data: renflouementsData, isLoading, isError, refetch } = useRenflouements();
+// ─── Formulaire multi-step ────────────────────────────────────────────────────
+interface MultiStepProps {
+  visible: boolean;
+  onClose: () => void;
+  onSuccess: () => void;
+}
+
+const STEP_LABELS: Record<1 | 2 | 3 | 4 , string> = {
+  1: "Choisir un membre",
+  2: "Sélectionner un renflouement",
+  3: "Saisir le montant",
+  4: "Confirmer",
+};
+
+const MultiStepModal = ({ visible, onClose, onSuccess }: MultiStepProps) => {
   const createPayment = useCreateRenflouementPayment();
+
+  const [step, setStep]                           = useState<1 | 2 | 3 | 4 >(1);
+  const [memberFilter, setMemberFilter]           = useState<"EN_REGLE" | "all">("EN_REGLE");
+  const [memberSearch, setMemberSearch]           = useState("");
+  const [memberPage, setMemberPage]               = useState(MODAL_ITEMS_PER_PAGE);
+  const [selectedMember, setSelectedMember]       = useState<Member | null>(null);
+  const [selectedRenflouement, setSelectedRenflouement] = useState<Renflouement | null>(null);
+  const [amount, setAmount]                       = useState("");
+  const [notes, setNotes]                         = useState("");
   const payWithSavings = usePayRenflouementWithSavings();
-
-  // 🔧 Protection des données avec types corrects
-  const renflouements: Renflouement[] = useMemo(() => {
-    if (Array.isArray(renflouementsData)) {
-      return renflouementsData;
-    }
-    if (renflouementsData && Array.isArray((renflouementsData as any).results)) {
-      return (renflouementsData as any).results;
-    }
-    return [];
-  }, [renflouementsData]);
-
-  // Filtrage sécurisé (membres uniquement)
-  const filteredRenflouements = useMemo(() => {
-    let filtered = renflouements;
-
-    // Filtrage par statut
-    if (filterStatus === 'solde') {
-      filtered = filtered.filter(item => item.is_solde);
-    } else if (filterStatus === 'en-cours') {
-      filtered = filtered.filter(item => !item.is_solde);
-    }
-
-    // Filtrage par recherche (membres uniquement)
-    if (!search.trim()) return filtered;
-    
-    return filtered.filter((item) => {
-      const searchFields = [
-        item?.membre_info?.nom_complet,
-        item?.membre_info?.numero_membre,
-        item?.membre_info?.email,
-      ].filter(Boolean).join(" ").toLowerCase();
-      
-      return searchFields.includes(search.toLowerCase());
-    });
-  }, [renflouements, search, filterStatus]);
-
-  // Pagination
-  const paginatedRenflouements = useMemo(() => {
-    return filteredRenflouements.slice(0, displayedItems);
-  }, [filteredRenflouements, displayedItems]);
-
-  const hasMore = displayedItems < filteredRenflouements.length;
-
-  const loadMore = () => {
-    setDisplayedItems(prev => Math.min(prev + ITEMS_PER_PAGE, filteredRenflouements.length));
-  };
-
-  // Reset pagination when search or filter changes
-  useMemo(() => {
-    setDisplayedItems(ITEMS_PER_PAGE);
-  }, [search, filterStatus]);
-
-  // Actions
-  const openPaymentModal = (renflouement: Renflouement) => {
-    setCurrentRenflouement(renflouement);
-    setMontant("");
-    setNotes("");
-    setModalType("payment");
-    setShowModal(true);
-  };
-
-  const openSavingsModal = (renflouement: Renflouement) => {
-    setCurrentRenflouement(renflouement);
-    // Pré-remplir avec le montant restant
-    setMontant(String(Math.ceil(Number(renflouement.montant_restant || 0))));
-    setNotes("");
-    setModalType("savings");
-    setShowModal(true);
-  };
-
-  const openDetailsModal = (renflouement: Renflouement) => {
-    setCurrentRenflouement(renflouement);
-    setShowModal(`details-${renflouement.id}`);
-  };
-
-  // 1. Fonction qui déclenche l'alerte de confirmation
-  const handleAddPayment = () => {
-  const montantNum = Number(montant);
   
-  // Validation stricte (Point 6 de ta checklist)
-  if (!montant || isNaN(montantNum) || montantNum <= 0) {
-    Alert.alert("Champs invalides", "Veuillez saisir un montant correct avant de valider.");
-    return;
-  }
+  // Membres
+  const { data: membersRaw, isLoading: loadingMembers } = useMembers(
+    memberFilter === "EN_REGLE" ? { statut: "EN_REGLE" } : {}
+  );
+  const members: Member[] = useMemo(() => normalizeArray(membersRaw), [membersRaw]);
 
-    const montantRestant = (currentRenflouement as any).montant_restant || 0;
+  // Renflouements du membre sélectionné
+  const {
+    data: membreRenflouements = [],
+    isLoading: loadingRenflouements,
+    isError: errorRenflouements,
+  } = useRenflouementsByMembre(selectedMember?.id ?? null);
 
-    // Vérifier si le montant dépasse le montant attendu
-    if (montantNum > montantRestant) {
-      Alert.alert(
-        "Confirmation de paiement",
-        `Montant à payer :\n${formatCurrency(montantNum)}\n\n` +
-        `Montant restant :\n${formatCurrency(montantRestant)}\n\n` +
-        `Dépassement :\n+${formatCurrency(montantNum - montantRestant)}\n\n` +
-        `Voulez-vous continuer ?`,
-        [
-          { text: "Annuler", style: "cancel" },
-          { text: "Confirmer le paiement", onPress: submitPayment }
-        ]
-      );
-    } else {
-      submitPayment();
-    }
+  // Renflouements non soldés uniquement (pour le step 3)
+  const nonSoldes = useMemo(
+    () => membreRenflouements.filter((r) => !r.is_solde),
+    [membreRenflouements]
+  );
+
+  const montantSaisi   = parseFloat(amount) || 0;
+  const montantRestant = selectedRenflouement?.montant_restant ?? 0;
+  const montantInvalide = montantSaisi <= 0 || (montantSaisi > montantRestant + 100) || !Number.isInteger(montantSaisi);
+  const reset = () => {
+    setStep(1);
+    setMemberSearch("");
+    setMemberPage(MODAL_ITEMS_PER_PAGE);
+    setSelectedMember(null);
+    setSelectedRenflouement(null);
+    setAmount("");
+    setNotes("");
+    setMemberFilter("EN_REGLE");
   };
 
-  const handlePaymentWithSavings = () => {
-    if (!currentRenflouement) return;
-
-    const montantNum = montant ? Number(montant) : undefined;
-    const montantRestant = currentRenflouement.montant_restant || 0;
-
-    // Validation stricte - le montant est obligatoire
-    if (!montant || montantNum === undefined || isNaN(montantNum) || montantNum <= 0) {
-      Alert.alert(
-        "Montant invalide",
-        "Veuillez saisir un montant valide supérieur à 0."
-      );
-      return;
+  const handleSavingsPayment = () => {
+    if (!selectedRenflouement || montantSaisi <= 0) return;
+    let finalMontant = montantSaisi;
+    if (finalMontant > montantRestant && finalMontant <= montantRestant + 100) {
+      finalMontant = montantRestant;
     }
+payWithSavings.mutate(
+  {
+    renflouementId: selectedRenflouement.id,
+    montant: finalMontant,
+    notes: notes.trim(),
+  },
+  {
+    onError: (error: any) => {
+      let errorMessage = "Impossible d'effectuer le paiement avec l'épargne.";
 
-    // Vérifier que le montant ne dépasse pas le restant
-    if (montantNum > montantRestant+500) { // On peut autoriser un petit dépassement de 500 FCFA pour arrondir
-      Alert.alert(
-        "Montant trop élevé",
-        `Le montant saisi (${formatCurrency(montantNum)}) dépasse le restant dû (${formatCurrency(montantRestant)}). Veuillez réduire le montant.`
-      );
-      return;
-    }
-
-    // Montant valide - demander confirmation
-    Alert.alert(
-      "Confirmation",
-      `Voulez-vous débiter ${formatCurrency(montantNum)} de votre épargne ?`,
-      [
-        { text: "Annuler", style: "cancel" },
-        {
-          text: "Confirmer",
-          onPress: () => {
-            submitPaymentWithSavings(montantNum);
+      // 1. Vérifier si la réponse existe
+      const responseData = error?.response?.data;
+      console.log(error?.response?.data);
+      if (responseData) {
+        // 2. Priorité à "error" (champ standard dans vos réponses)
+        if (responseData.error) {
+          errorMessage = responseData.error;
+        }
+        // 3. Sinon, chercher "details" ou "message"
+        else if (responseData.details) {
+          errorMessage = responseData.details;
+        }
+        else if (responseData.message) {
+          errorMessage = responseData.message;
+        }
+        // 4. Parcourir les champs de validation Django (ex: { "montant": ["Le montant doit être supérieur à 0"] })
+        else if (typeof responseData === 'object') {
+          const firstKey = Object.keys(responseData)[0];
+          if (firstKey && Array.isArray(responseData[firstKey])) {
+            errorMessage = responseData[firstKey][0];
+          } else if (firstKey && typeof responseData[firstKey] === 'string') {
+            errorMessage = responseData[firstKey];
           }
         }
-      ]
-    );
-  };
+      } else if (error?.message) {
+        errorMessage = error.message;
+      }
 
-  const submitPaymentWithSavings = (amount?: number) => {
-    if (!currentRenflouement) return;
+      Alert.alert("Erreur", errorMessage);
+    },
+  }
+);  };
 
-    const montantFinal = amount || (montant ? Number(montant) : undefined);
+  const handleClose = () => { reset(); onClose(); };
 
-    payWithSavings.mutate(
+  const handleSubmit = () => {
+    if (!selectedRenflouement || montantSaisi <= 0) return;
+    createPayment.mutate(
       {
-        renflouementId: currentRenflouement.id,
-        montant: montantFinal,
-        notes: notes.trim() || undefined,
+        renflouement: selectedRenflouement.id,
+        montant: montantSaisi,
+        notes: notes.trim(),
       },
       {
         onSuccess: () => {
-          setShowModal(false);
-          setModalType(null);
-          setMontant("");
-          setNotes("");
-          setCurrentRenflouement(null);
-          refetch();
-          Alert.alert(
-            "Succès",
-            "Paiement avec épargne effectué avec succès !"
-          );
+          reset();
+          onClose();
+          onSuccess();
+          Alert.alert("Succès", "Paiement de renflouement enregistré !");
         },
         onError: (err: any) => {
           Alert.alert(
             "Erreur",
             err?.response?.data?.error ||
-              "Impossible d'effectuer le paiement avec épargne."
+            err?.response?.data?.details ||
+            "Impossible d'enregistrer le paiement."
           );
         },
       }
     );
   };
-  const submitPayment = () => {
-    if (!currentRenflouement) return;
 
-    const montantNum = Number(montant);
+  // Membres filtrés + paginés
+  const filteredMembers = useMemo(() => {
+    const q = memberSearch.toLowerCase().trim();
+    if (!q) return members;
+    return members.filter((m) =>
+      (m.utilisateur?.nom_complet ?? "").toLowerCase().includes(q) ||
+      (m.numero_membre ?? "").toLowerCase().includes(q) ||
+      (m.utilisateur?.email ?? "").toLowerCase().includes(q)
+    );
+  }, [members, memberSearch]);
 
-    createPayment.mutate(
-      {
-        renflouement: currentRenflouement.id,
-        montant: montantNum,
-        notes: notes.trim(),
-      },
-      {
-        onSuccess: () => {
-          setShowModal(false);
-          setModalType(null);
-          setMontant("");
-          setNotes("");
-          setCurrentRenflouement(null);
-          refetch();
-          Alert.alert("Succès", "Paiement ajouté avec succès !");
-        },
-        onError: (err: any) => {
-          Alert.alert(
-            "Erreur",
-            err?.response?.data?.error || "Impossible d'ajouter le paiement."
-          );
-        },
-      }
+  const paginatedMembers = filteredMembers.slice(0, memberPage);
+  const hasMoreMembers   = memberPage < filteredMembers.length;
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent statusBarTranslucent>
+      <BlurView intensity={80} style={StyleSheet.absoluteFillObject} />
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      >
+        <View style={ms.overlay}>
+          <View style={ms.sheet}>
+
+            {/* ── Header ── */}
+            <LinearGradient colors={[TEAL, TEAL2]} style={ms.header}>
+              {/* Indicateur d'étapes */}
+              <View style={ms.stepBar}>
+                {([1, 2, 3, 4] as const).map((s) => (
+                  <View key={s} style={ms.stepBarItem}>
+                    <View style={[ms.stepDot, step >= s && ms.stepDotActive]}>
+                      {step > s
+                        ? <Ionicons name="checkmark" size={10} color={TEAL} />
+                        : <Text style={[ms.stepNum, step === s && { color: TEAL }]}>{s}</Text>}
+                    </View>
+                    {s < 4 && <View style={[ms.stepLine, step > s && ms.stepLineActive]} />}
+                  </View>
+                ))}
+              </View>
+              <View style={ms.headerRow}>
+                <TouchableOpacity onPress={handleClose} style={ms.closeBtn}>
+                  <Ionicons name="close" size={22} color="white" />
+                </TouchableOpacity>
+                <Text style={ms.headerTitle}>{STEP_LABELS[step]}</Text>
+                <View style={{ width: 36 }} />
+              </View>
+            </LinearGradient>
+
+            {/* ══ STEP 1 : Choisir un membre ══ */}
+            {step === 1 && (
+              <>
+                {/* Filtres EN_REGLE / Tous */}
+                <View style={ms.filterRow}>
+                  <TouchableOpacity
+                    style={[ms.filterChip, memberFilter === "EN_REGLE" && ms.filterChipActive]}
+                    onPress={() => { setMemberFilter("EN_REGLE"); setMemberPage(MODAL_ITEMS_PER_PAGE); }}
+                  >
+                    <Text style={[ms.filterChipText, memberFilter === "EN_REGLE" && { color: "white" }]}>En règle</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[ms.filterChip, memberFilter === "all" && ms.filterChipActive]}
+                    onPress={() => { setMemberFilter("all"); setMemberPage(MODAL_ITEMS_PER_PAGE); }}
+                  >
+                    <Text style={[ms.filterChipText, memberFilter === "all" && { color: "white" }]}>Tous</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Recherche */}
+                <View style={ms.searchBox}>
+                  <Ionicons name="search" size={18} color={COLORS.textSecondary} />
+                  <TextInput
+                    style={ms.searchInput}
+                    value={memberSearch}
+                    onChangeText={(v) => { setMemberSearch(v); setMemberPage(MODAL_ITEMS_PER_PAGE); }}
+                    placeholder="Rechercher par nom, numéro, email…"
+                    placeholderTextColor={COLORS.textLight}
+                    autoFocus
+                  />
+                  {memberSearch.length > 0 && (
+                    <TouchableOpacity onPress={() => setMemberSearch("")}>
+                      <Ionicons name="close-circle" size={18} color={COLORS.textSecondary} />
+                    </TouchableOpacity>
+                  )}
+                </View>
+                <Text style={ms.resultCount}>{filteredMembers.length} membre{filteredMembers.length !== 1 ? "s" : ""}</Text>
+
+                <ScrollView style={{ flex: 1 }} contentContainerStyle={ms.listPad} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+                  {loadingMembers ? (
+                    <View style={ms.center}><ActivityIndicator size="large" color={TEAL} /></View>
+                  ) : filteredMembers.length === 0 ? (
+                    <View style={ms.center}>
+                      <Ionicons name="people-outline" size={48} color={COLORS.textLight} />
+                      <Text style={ms.emptyText}>Aucun membre trouvé</Text>
+                    </View>
+                  ) : (
+                    <>
+                      {paginatedMembers.map((m) => (
+                        <TouchableOpacity
+                          key={m.id}
+                          style={ms.memberCard}
+                          onPress={() => { setSelectedMember(m); setStep(2); }}
+                          activeOpacity={0.8}
+                        >
+                          <LinearGradient colors={[TEAL, TEAL2]} style={ms.memberAvatar}>
+                            <Text style={ms.memberInitials}>{getInitials(m.utilisateur?.nom_complet ?? "")}</Text>
+                          </LinearGradient>
+                          <View style={{ flex: 1 }}>
+                            <Text style={ms.memberName}>{m.utilisateur?.nom_complet}</Text>
+                            <Text style={ms.memberNumero}>{m.numero_membre}</Text>
+                            <Text style={ms.memberEmail} numberOfLines={1}>{m.utilisateur?.email}</Text>
+                          </View>
+                          <View style={[ms.statusBadge, {
+                            backgroundColor: (m.statut === "EN_REGLE" ? COLORS.success : COLORS.warning) + "20"
+                          }]}>
+                            <Text style={[ms.statusText, {
+                              color: m.statut === "EN_REGLE" ? COLORS.success : COLORS.warning
+                            }]}>
+                              {m.statut === "EN_REGLE" ? "En règle" : m.statut ?? "—"}
+                            </Text>
+                          </View>
+                          <Ionicons name="chevron-forward" size={16} color={COLORS.textLight} />
+                        </TouchableOpacity>
+                      ))}
+                      {hasMoreMembers && (
+                        <TouchableOpacity style={ms.loadMore} onPress={() => setMemberPage((p) => p + MODAL_ITEMS_PER_PAGE)}>
+                          <Text style={ms.loadMoreText}>
+                            Voir plus ({filteredMembers.length - memberPage} restant{filteredMembers.length - memberPage > 1 ? "s" : ""})
+                          </Text>
+                          <Ionicons name="chevron-down" size={16} color={TEAL} />
+                        </TouchableOpacity>
+                      )}
+                    </>
+                  )}
+                  <View style={{ height: 20 }} />
+                </ScrollView>
+              </>
+            )}
+
+            {/* ══ STEP 2 : Renflouements du membre ══ */}
+
+            {/* ══ STEP 3 : Sélectionner un renflouement non soldé ══ */}
+            {step === 2 && selectedMember && (
+              <>
+                <LinearGradient colors={[TEAL + "18", TEAL2 + "0A"]} style={ms.banner}>
+                  <LinearGradient colors={[TEAL, TEAL2]} style={[ms.memberAvatar, { width: 40, height: 40, borderRadius: 20 }]}>
+                    <Text style={[ms.memberInitials, { fontSize: FONT_SIZES.sm }]}>
+                      {getInitials(selectedMember.utilisateur?.nom_complet ?? "")}
+                    </Text>
+                  </LinearGradient>
+                  <View style={{ flex: 1 }}>
+                    <Text style={ms.bannerName}>{selectedMember.utilisateur?.nom_complet}</Text>
+                    <Text style={ms.bannerSub}>{nonSoldes.length} renflouement{nonSoldes.length !== 1 ? "s" : ""} non soldé{nonSoldes.length !== 1 ? "s" : ""}</Text>
+                  </View>
+                </LinearGradient>
+
+                <Text style={[ms.resultCount, { paddingHorizontal: SPACING.lg }]}>
+                  Sélectionnez le renflouement à payer
+                </Text>
+
+                <ScrollView style={{ flex: 1 }} contentContainerStyle={ms.listPad} showsVerticalScrollIndicator={false}>
+                  {nonSoldes.map((r) => {
+                    const isSelected = selectedRenflouement?.id === r.id;
+                    return (
+                      <TouchableOpacity
+                        key={r.id}
+                        style={[ms.renflSelectCard, isSelected && ms.renflSelectCardActive]}
+                        onPress={() => setSelectedRenflouement(r)}
+                        activeOpacity={0.8}
+                      >
+                        <View style={{ flex: 1 }}>
+                          <Text style={ms.renflSelectCause}>
+                            {r.cause || r.type_cause_display || "Renflouement"}
+                          </Text>
+                          <Text style={ms.renflSelectDate}>{formatDate(r.date_creation)}</Text>
+                          <View style={ms.renflSelectAmounts}>
+                            <Text style={ms.renflSelectDu}>Dû : {formatCurrency(r.montant_du)}</Text>
+                            <Text style={[ms.renflSelectRestant, { color: COLORS.error }]}>
+                              Restant : {formatCurrency(r.montant_restant)}
+                            </Text>
+                          </View>
+                          {/* Mini barre progression */}
+                          <View style={ms.progressBg2}>
+                            <View style={[ms.progressFill2, {
+                              width: `${Math.min(100, r.pourcentage_paye || 0)}%` as any,
+                              backgroundColor: TEAL,
+                            }]} />
+                          </View>
+                        </View>
+                        <View style={ms.selectIndicator}>
+                          {isSelected
+                            ? <Ionicons name="checkmark-circle" size={24} color={TEAL} />
+                            : <View style={ms.selectCircle} />}
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                  <View style={{ height: 20 }} />
+                </ScrollView>
+
+                <View style={ms.navRow}>
+                  <TouchableOpacity style={ms.backBtn} onPress={() => { setSelectedRenflouement(null); setStep(1); }}>
+                    <Ionicons name="arrow-back" size={18} color={COLORS.textSecondary} />
+                    <Text style={ms.backBtnText}>Retour</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[ms.nextBtn, !selectedRenflouement && { opacity: 0.4 }]}
+                    onPress={() => setStep(3)}
+                    disabled={!selectedRenflouement}
+                  >
+                    <LinearGradient colors={[TEAL, TEAL2]} style={ms.nextBtnGrad}>
+                      <Text style={ms.nextBtnText}>Continuer</Text>
+                      <Ionicons name="arrow-forward" size={18} color="white" />
+                    </LinearGradient>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+
+            {/* ══ STEP 4 : Saisir le montant ══ */}
+            {step === 3 && selectedMember && selectedRenflouement && (
+              <ScrollView style={{ flex: 1 }} contentContainerStyle={ms.stepPad} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+                {/* Bannières membre + renflouement sélectionné */}
+                <LinearGradient colors={[TEAL + "18", TEAL2 + "0A"]} style={ms.banner}>
+                  <LinearGradient colors={[TEAL, TEAL2]} style={[ms.memberAvatar, { width: 40, height: 40, borderRadius: 20 }]}>
+                    <Text style={[ms.memberInitials, { fontSize: FONT_SIZES.sm }]}>
+                      {getInitials(selectedMember.utilisateur?.nom_complet ?? "")}
+                    </Text>
+                  </LinearGradient>
+                  <View style={{ flex: 1 }}>
+                    <Text style={ms.bannerName}>{selectedMember.utilisateur?.nom_complet}</Text>
+                    <Text style={ms.bannerSub} numberOfLines={1}>
+                      {selectedRenflouement.cause || selectedRenflouement.type_cause_display || "Renflouement"}
+                    </Text>
+                  </View>
+                  <TouchableOpacity onPress={() => setStep(3)} style={ms.changeBtn}>
+                    <Text style={ms.changeBtnText}>Changer</Text>
+                  </TouchableOpacity>
+                </LinearGradient>
+
+                {/* Infos renflouement */}
+                <View style={ms.infoGrid}>
+                  <InfoTile label="Montant dû"     value={formatCurrency(selectedRenflouement.montant_du)}      color={TEAL}           icon="cash" />
+                  <InfoTile label="Déjà payé"      value={formatCurrency(selectedRenflouement.montant_paye)}    color={COLORS.success} icon="checkmark-circle" />
+                  <InfoTile label="Restant à payer" value={formatCurrency(selectedRenflouement.montant_restant)} color={COLORS.error}   icon="time" />
+                  <InfoTile label="Avancement"     value={`${(selectedRenflouement.pourcentage_paye || 0).toFixed(0)}%`} color={COLORS.primary} icon="bar-chart" />
+                </View>
+
+                {/* Saisie montant */}
+                <Text style={ms.label}>
+                  Montant à payer <Text style={{ color: COLORS.error }}>*</Text>
+                </Text>
+                <View style={[ms.amountBox, montantInvalide && amount.length > 0 && { borderColor: COLORS.error + "80" }]}>
+                  <TextInput
+                    style={ms.amountInput}
+                    value={amount}
+                    onChangeText={(v) => setAmount(v.replace(/[^0-9]/g, ""))}
+                    placeholder="0"
+                    keyboardType="numeric"
+                    placeholderTextColor={COLORS.textLight}
+                    autoFocus
+                  />
+                  <Text style={ms.amountUnit}>FCFA</Text>
+                </View>
+
+                {/* Règles */}
+                {amount.length > 0 && (
+                  <>
+                    {montantSaisi <= 0 && (
+                      <View style={ms.warnBox}>
+                        <Ionicons name="alert-circle" size={16} color={COLORS.error} />
+                        <Text style={ms.warnText}>Le montant doit être supérieur à 0</Text>
+                      </View>
+                    )}
+                    {montantSaisi > 0 && !Number.isInteger(montantSaisi) && (
+                      <View style={ms.warnBox}>
+                        <Ionicons name="alert-circle" size={16} color={COLORS.error} />
+                        <Text style={ms.warnText}>Le montant doit être un nombre entier</Text>
+                      </View>
+                    )}
+                    {(montantSaisi > parseInt(String(montantRestant)) + 100) && (
+                      <View style={ms.warnBox}>
+                        <Ionicons name="alert-circle" size={16} color={COLORS.error} />
+                        <Text style={ms.warnText}>
+                          Dépasse le restant dû ({formatCurrency(montantRestant)})
+                        </Text>
+                      </View>
+                    )}
+                    {montantSaisi > 0 && montantSaisi <= parseInt(String(montantRestant)) && Number.isInteger(montantSaisi) && (
+                      <LinearGradient colors={[TEAL + "18", TEAL2 + "0A"]} style={ms.preview}>
+                        <View style={ms.previewRow}>
+                          <Text style={ms.previewLabel}>Paiement</Text>
+                          <Text style={[ms.previewValue, { color: TEAL }]}>{formatCurrency(montantSaisi)}</Text>
+                        </View>
+                        <View style={ms.previewRow}>
+                          <Text style={ms.previewLabel}>Restant après</Text>
+                          <Text style={[ms.previewValue, { color: montantRestant - montantSaisi === 0 ? COLORS.success : COLORS.warning }]}>
+                            {formatCurrency(montantRestant - montantSaisi)}
+                          </Text>
+                        </View>
+                        {montantRestant - montantSaisi === 0 && (
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 }}>
+                            <Ionicons name="checkmark-circle" size={16} color={COLORS.success} />
+                            <Text style={{ fontSize: FONT_SIZES.sm, color: COLORS.success, fontWeight: "700" }}>
+                              Ce paiement solde entièrement le renflouement
+                            </Text>
+                          </View>
+                        )}
+                      </LinearGradient>
+                    )}
+                  </>
+                )}
+
+                <Text style={[ms.label, { marginTop: SPACING.md }]}>Notes (optionnel)</Text>
+                <TextInput
+                  style={ms.notesInput}
+                  value={notes}
+                  onChangeText={setNotes}
+                  placeholder="Remarques sur ce paiement…"
+                  multiline
+                  numberOfLines={3}
+                  placeholderTextColor={COLORS.textLight}
+                />
+
+                <View style={ms.navRow}>
+                  <TouchableOpacity style={ms.backBtn} onPress={() => setStep(2)}>
+                    <Ionicons name="arrow-back" size={18} color={COLORS.textSecondary} />
+                    <Text style={ms.backBtnText}>Retour</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[ms.nextBtn, montantInvalide && { opacity: 0.4 }]}
+                    onPress={() => setStep(4)}
+                    disabled={montantInvalide}
+                  >
+                    <LinearGradient colors={[TEAL, TEAL2]} style={ms.nextBtnGrad}>
+                      <Text style={ms.nextBtnText}>Continuer</Text>
+                      <Ionicons name="arrow-forward" size={18} color="white" />
+                    </LinearGradient>
+                  </TouchableOpacity>
+                </View>
+                <View style={{ height: 20 }} />
+              </ScrollView>
+            )}
+
+            {/* ══ STEP 5 : Récapitulatif ══ */}
+            {step === 4 && selectedMember && selectedRenflouement && (
+              <ScrollView style={{ flex: 1 }} contentContainerStyle={ms.stepPad} showsVerticalScrollIndicator={false}>
+                <Text style={ms.resumeTitle}>Récapitulatif</Text>
+
+                <View style={ms.resumeCard}>
+                  <RRow icon="person"          label="Membre"           value={selectedMember.utilisateur?.nom_complet ?? "—"} />
+                  <RRow icon="card"            label="Numéro"           value={selectedMember.numero_membre} />
+                  <RRow icon="information-circle" label="Renflouement"  value={selectedRenflouement.cause || selectedRenflouement.type_cause_display || "—"} />
+                  <View style={ms.divider} />
+                  <RRow icon="cash"            label="Montant dû"       value={formatCurrency(selectedRenflouement.montant_du)} />
+                  <RRow icon="checkmark-circle" label="Déjà payé"       value={formatCurrency(selectedRenflouement.montant_paye)} />
+                  <RRow icon="arrow-up-circle" label="Ce paiement"      value={formatCurrency(montantSaisi)} valueColor={TEAL} bold />
+                  <RRow icon="time"            label="Restant après"    value={formatCurrency(montantRestant - montantSaisi)} valueColor={montantRestant - montantSaisi === 0 ? COLORS.success : COLORS.warning} />
+                  {notes.trim() && (
+                    <RRow icon="chatbubble-outline" label="Notes"       value={notes.trim()} />
+                  )}
+                </View>
+
+                {montantRestant - montantSaisi === 0 && (
+                  <View style={[ms.warnBox, { backgroundColor: COLORS.success + "15" }]}>
+                    <Ionicons name="checkmark-circle" size={16} color={COLORS.success} />
+                    <Text style={[ms.warnText, { color: COLORS.success }]}>Ce paiement solde entièrement ce renflouement</Text>
+                  </View>
+                )}
+
+                <View style={ms.navRow}>
+                  <TouchableOpacity style={ms.backBtn} onPress={() => setStep(3)}>
+                    <Ionicons name="arrow-back" size={18} color={COLORS.textSecondary} />
+                    <Text style={ms.backBtnText}>Modifier</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[ms.nextBtn, (createPayment.isPending || payWithSavings.isPending) && { opacity: 0.6 }]}
+                    onPress={handleSubmit}
+                    disabled={createPayment.isPending || payWithSavings.isPending}
+                  >
+                    <LinearGradient colors={[COLORS.primary, "#3A86FF"]} style={ms.nextBtnGrad}>
+                      {createPayment.isPending ? <ActivityIndicator size="small" color="white" /> : (
+                        <>
+                          <Ionicons name="cash" size={18} color="white" />
+                          <Text style={ms.nextBtnText}>Payer (caisse)</Text>
+                        </>
+                      )}
+                    </LinearGradient>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[ms.nextBtn, (createPayment.isPending || payWithSavings.isPending) && { opacity: 0.6 }]}
+                    onPress={handleSavingsPayment}
+                    disabled={createPayment.isPending || payWithSavings.isPending}
+                  >
+                    <LinearGradient colors={[TEAL, TEAL2]} style={ms.nextBtnGrad}>
+                      {payWithSavings.isPending ? <ActivityIndicator size="small" color="white" /> : (
+                        <>
+                          <Ionicons name="wallet-outline" size={18} color="white" />
+                          <Text style={ms.nextBtnText}>Payer (épargne)</Text>
+                        </>
+                      )}
+                    </LinearGradient>
+                  </TouchableOpacity>
+                </View>
+                <View style={{ height: 20 }} />
+              </ScrollView>
+            )}
+
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
   );
 };
 
-  const closeModal = () => {
-    setShowModal(false);
-    setModalType(null);
-    setCurrentRenflouement(null);
-    setMontant("");
-    setNotes("");
+// ── Sous-composants ──────────────────────────────────────────────────────────
+const InfoTile = ({ label, value, color, icon }: { label: string; value: string; color: string; icon: string }) => (
+  <View style={it.tile}>
+    <View style={[it.icon, { backgroundColor: color + "18" }]}>
+      <Ionicons name={icon as any} size={16} color={color} />
+    </View>
+    <Text style={it.label}>{label}</Text>
+    <Text style={[it.value, { color }]}>{value}</Text>
+  </View>
+);
+
+const it = StyleSheet.create({
+  tile:  { width: "48%", backgroundColor: "white", borderRadius: 12, padding: SPACING.sm, marginBottom: SPACING.sm, borderWidth: 1, borderColor: TEAL + "30", alignItems: "center" },
+  icon:  { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", marginBottom: 4 },
+  label: { fontSize: 10, color: COLORS.textSecondary, textAlign: "center", marginBottom: 2 },
+  value: { fontSize: FONT_SIZES.sm, fontWeight: "800", textAlign: "center" },
+});
+
+const RRow = ({ icon, label, value, valueColor, bold }: {
+  icon: string; label: string; value: string; valueColor?: string; bold?: boolean;
+}) => (
+  <View style={{ flexDirection: "row", alignItems: "flex-start", paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: "#F5F5F5" }}>
+    <Ionicons name={icon as any} size={16} color={COLORS.textSecondary} style={{ marginRight: 8, marginTop: 1 }} />
+    <Text style={{ flex: 1, fontSize: FONT_SIZES.sm, color: COLORS.textSecondary }}>{label}</Text>
+    <Text style={{ fontSize: FONT_SIZES.sm, color: valueColor || COLORS.text, fontWeight: bold ? "800" : "600", textAlign: "right", maxWidth: "55%" }}>{value}</Text>
+  </View>
+);
+
+// ─── Styles du modal ──────────────────────────────────────────────────────────
+const ms = StyleSheet.create({
+  overlay:            { flex: 1, justifyContent: "flex-end" },
+  sheet:              { backgroundColor: COLORS.background, borderTopLeftRadius: 28, borderTopRightRadius: 28, height: "92%", overflow: "hidden" },
+  header:             { paddingTop: SPACING.md, paddingBottom: SPACING.md, paddingHorizontal: SPACING.lg },
+  stepBar:            { flexDirection: "row", alignItems: "center", justifyContent: "center", marginBottom: SPACING.md },
+  stepBarItem:        { flexDirection: "row", alignItems: "center" },
+  stepDot:            { width: 24, height: 24, borderRadius: 12, backgroundColor: "rgba(255,255,255,0.3)", alignItems: "center", justifyContent: "center" },
+  stepDotActive:      { backgroundColor: "white" },
+  stepNum:            { fontSize: 10, fontWeight: "700", color: "rgba(255,255,255,0.8)" },
+  stepLine:           { width: 20, height: 2, backgroundColor: "rgba(255,255,255,0.3)", marginHorizontal: 2 },
+  stepLineActive:     { backgroundColor: "white" },
+  headerRow:          { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  closeBtn:           { width: 36, height: 36, borderRadius: 18, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center" },
+  headerTitle:        { fontSize: FONT_SIZES.lg, fontWeight: "800", color: "white", flex: 1, textAlign: "center" },
+  filterRow:          { flexDirection: "row", paddingHorizontal: SPACING.lg, paddingTop: SPACING.md, gap: SPACING.sm },
+  filterChip:         { paddingHorizontal: SPACING.md, paddingVertical: 7, borderRadius: 20, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border },
+  filterChipActive:   { backgroundColor: TEAL, borderColor: TEAL },
+  filterChipText:     { fontSize: FONT_SIZES.sm, fontWeight: "600", color: COLORS.textSecondary },
+  searchBox:          { flexDirection: "row", alignItems: "center", backgroundColor: COLORS.surface, margin: SPACING.lg, marginBottom: SPACING.sm, borderRadius: 14, paddingHorizontal: SPACING.md, gap: SPACING.sm, borderWidth: 1, borderColor: COLORS.border },
+  searchInput:        { flex: 1, fontSize: FONT_SIZES.md, color: COLORS.text, paddingVertical: 12 },
+  resultCount:        { fontSize: FONT_SIZES.sm, color: COLORS.textSecondary, paddingHorizontal: SPACING.lg, marginBottom: SPACING.sm },
+  listPad:            { paddingHorizontal: SPACING.lg, paddingBottom: 40 },
+  stepPad:            { paddingHorizontal: SPACING.lg, paddingBottom: 40, paddingTop: SPACING.sm },
+  center:             { alignItems: "center", paddingVertical: 40 },
+  emptyText:          { fontSize: FONT_SIZES.md, color: COLORS.textLight, marginTop: SPACING.md, textAlign: "center" },
+  memberCard:         { backgroundColor: "white", borderRadius: 14, padding: SPACING.md, flexDirection: "row", alignItems: "center", marginBottom: SPACING.sm, gap: SPACING.sm, borderWidth: 1, borderColor: TEAL + "30", elevation: 1 },
+  memberAvatar:       { width: 46, height: 46, borderRadius: 23, alignItems: "center", justifyContent: "center" },
+  memberInitials:     { color: "white", fontWeight: "800", fontSize: FONT_SIZES.md },
+  memberName:         { fontSize: FONT_SIZES.md, fontWeight: "700", color: COLORS.text },
+  memberNumero:       { fontSize: FONT_SIZES.sm, color: TEAL, fontWeight: "600" },
+  memberEmail:        { fontSize: FONT_SIZES.xs, color: COLORS.textSecondary },
+  statusBadge:        { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+  statusText:         { fontSize: 11, fontWeight: "700" },
+  loadMore:           { flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: SPACING.md, gap: 6 },
+  loadMoreText:       { fontSize: FONT_SIZES.sm, color: TEAL, fontWeight: "600" },
+  banner:             { flexDirection: "row", alignItems: "center", borderRadius: 14, padding: SPACING.md, marginHorizontal: SPACING.lg, marginTop: SPACING.md, marginBottom: SPACING.sm, gap: SPACING.sm },
+  bannerName:         { fontSize: FONT_SIZES.md, fontWeight: "700", color: COLORS.text },
+  bannerSub:          { fontSize: FONT_SIZES.sm, color: TEAL },
+  changeBtn:          { backgroundColor: "white", paddingHorizontal: SPACING.sm, paddingVertical: 4, borderRadius: 8, borderWidth: 1, borderColor: TEAL + "40" },
+  changeBtnText:      { fontSize: 12, color: TEAL, fontWeight: "600" },
+  summaryBox:         { flexDirection: "row", backgroundColor: "white", borderRadius: 14, padding: SPACING.md, marginBottom: SPACING.md, borderWidth: 1, borderColor: TEAL + "30" },
+  summaryItem:        { flex: 1, alignItems: "center" },
+  summaryLabel:       { fontSize: 10, color: COLORS.textSecondary, marginBottom: 2 },
+  summaryValue:       { fontSize: FONT_SIZES.lg, fontWeight: "800" },
+  renflCard:          { flexDirection: "row", alignItems: "center", backgroundColor: "white", borderRadius: 12, padding: SPACING.sm, marginBottom: SPACING.sm, borderWidth: 1, borderColor: COLORS.border, gap: SPACING.sm },
+  renflDot:           { width: 10, height: 10, borderRadius: 5 },
+  renflCause:         { fontSize: FONT_SIZES.sm, fontWeight: "700", color: COLORS.text },
+  renflDate:          { fontSize: FONT_SIZES.xs, color: COLORS.textSecondary },
+  renflMontant:       { fontSize: FONT_SIZES.sm, fontWeight: "800" },
+  renflTotal:         { fontSize: FONT_SIZES.xs, color: COLORS.textSecondary },
+  renflSelectCard:    { backgroundColor: "white", borderRadius: 14, padding: SPACING.md, marginBottom: SPACING.md, borderWidth: 2, borderColor: COLORS.border, flexDirection: "row", alignItems: "center", gap: SPACING.sm },
+  renflSelectCardActive: { borderColor: TEAL, backgroundColor: TEAL + "08" },
+renflSelectCause: {
+  fontSize: FONT_SIZES.md,
+  fontWeight: "700",
+  color: COLORS.text,
+  marginBottom: 2,
+  flexShrink: 1,
+},
+  renflSelectDate:    { fontSize: FONT_SIZES.xs, color: COLORS.textSecondary, marginBottom: 4 },
+  renflSelectAmounts: { flexDirection: "row", gap: SPACING.md, marginBottom: 4 },
+  renflSelectDu:      { fontSize: FONT_SIZES.sm, color: COLORS.textSecondary },
+  renflSelectRestant: { fontSize: FONT_SIZES.sm, fontWeight: "700" },
+  progressBg2:        { height: 4, backgroundColor: "#F0F0F0", borderRadius: 2 },
+  progressFill2:      { height: 4, borderRadius: 2 },
+  selectIndicator:    { width: 28, alignItems: "center" },
+  selectCircle:       { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: COLORS.border },
+  infoGrid:           { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", marginVertical: SPACING.md },
+  label:              { fontSize: FONT_SIZES.sm, fontWeight: "600", color: COLORS.text, marginBottom: SPACING.sm },
+  amountBox:          { flexDirection: "row", alignItems: "center", backgroundColor: "white", borderRadius: 16, borderWidth: 2, borderColor: TEAL + "40", paddingHorizontal: SPACING.md, marginBottom: SPACING.sm },
+  amountInput:        { flex: 1, fontSize: 28, fontWeight: "800", color: COLORS.text, paddingVertical: SPACING.md },
+  amountUnit:         { fontSize: FONT_SIZES.md, color: COLORS.textSecondary, fontWeight: "600" },
+  warnBox:            { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: COLORS.error + "10", borderRadius: 10, padding: SPACING.sm, marginBottom: SPACING.sm },
+  warnText:           { fontSize: FONT_SIZES.sm, color: COLORS.error, flex: 1 },
+  preview:            { borderRadius: 14, padding: SPACING.md, marginBottom: SPACING.md },
+  previewRow:         { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 },
+  previewLabel:       { fontSize: FONT_SIZES.sm, color: COLORS.textSecondary },
+  previewValue:       { fontSize: FONT_SIZES.md, fontWeight: "700" },
+  notesInput:         { backgroundColor: "white", borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.md, fontSize: FONT_SIZES.md, color: COLORS.text, height: 80, textAlignVertical: "top" },
+navRow: {
+  flexDirection: "row",
+  gap: SPACING.sm,
+  marginTop: SPACING.lg,
+  paddingHorizontal: SPACING.lg,
+},
+  backBtn:            { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: COLORS.surface, borderRadius: 14, paddingVertical: SPACING.md, borderWidth: 1, borderColor: COLORS.border },
+  backBtnText:        { fontSize: FONT_SIZES.md, fontWeight: "600", color: COLORS.textSecondary },
+  bottomBack:         { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: SPACING.md, borderTopWidth: 1, borderTopColor: COLORS.border },
+nextBtn: {
+  flex: 1, // au lieu de 2
+  borderRadius: 14,
+  overflow: "hidden",
+},
+  nextBtnGrad:        { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: SPACING.sm, paddingVertical: SPACING.md },
+  nextBtnText:        { fontSize: FONT_SIZES.md, fontWeight: "700", color: "white" },
+  resumeTitle:        { fontSize: FONT_SIZES.lg, fontWeight: "800", color: COLORS.text, marginTop: SPACING.sm, marginBottom: SPACING.md },
+  resumeCard:         { backgroundColor: "white", borderRadius: 18, padding: SPACING.lg, borderWidth: 1, borderColor: TEAL + "30", marginBottom: SPACING.lg },
+  divider:            { height: 1, backgroundColor: "#F0F0F0", marginVertical: SPACING.sm },
+});
+
+// ─── Écran principal ──────────────────────────────────────────────────────────
+export default function RenflouementScreen() {
+  const { user }    = useAuthContext();
+  const readOnly    = !user?.can_write;
+  const navigation  = useNavigation<any>();
+
+  const [showModal, setShowModal]   = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [search, setSearch]         = useState("");
+  const [filterStatus, setFilterStatus] = useState<"all" | "solde" | "partiel">("all");
+  const [displayedItems, setDisplayedItems] = useState(ITEMS_PER_PAGE);
+
+  // Données des paiements
+  const { data: paymentsData, isLoading, isError, refetch }             = useRenflouementPayments();
+  const payments: RenflouementPayment[] = useMemo(() => normalizeArray(paymentsData), [paymentsData]);
+
+  // Filtrage + recherche
+  const filteredPayments = useMemo(() => {
+    let list = payments;
+    if (filterStatus === "solde")    list = list.filter((p) => p.renflouement_info.montant_restant <= 0);
+    if (filterStatus === "partiel")  list = list.filter((p) => p.renflouement_info.montant_restant > 0);
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter((p) =>
+        (p.membre_nom ?? "").toLowerCase().includes(q) ||
+        (p.membre_numero ?? "").toLowerCase().includes(q) ||
+        (p.notes ?? "").toLowerCase().includes(q)
+      );
+    }
+    return list.sort((a, b) => new Date(b.date_paiement).getTime() - new Date(a.date_paiement).getTime());
+  }, [payments, filterStatus, search]);
+
+  const paginatedPayments = useMemo(() => filteredPayments.slice(0, displayedItems), [filteredPayments, displayedItems]);
+  const hasMore = displayedItems < filteredPayments.length;
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try { await refetch(); } catch {}
+    setRefreshing(false);
   };
 
-  // Render des paiements pour le modal détails
-  const renderPaymentItem: ListRenderItem<RenflouementPayment> = ({ item }) => (
-    <View style={styles.paymentDetailCard}>
-      <View style={styles.paymentDetailHeader}>
-        <Text style={styles.paymentDetailAmount}>
-          {formatCurrency(item.montant)}
-        </Text>
-        <Text style={styles.paymentDetailDate}>
-          {item.date_paiement ? new Date(item.date_paiement).toLocaleDateString('fr-FR') : "N/A"}
-        </Text>
-      </View>
-      <Text style={styles.paymentDetailSession}>
-        Session: {item.session_nom || "N/A"}
-      </Text>
-      {item.notes && (
-        <Text style={styles.paymentDetailNotes}>
-          Note: {item.notes}
-        </Text>
-      )}
-    </View>
-  );
+  const handleSuccess = () => refetch();
+
+  // Stats calculées à partir des paiements
+  const totalPayements = payments.reduce((s, p) => s + parseFloat(p.montant || "0"), 0);
+  const nbrSoldes = payments.filter((p) => p.renflouement_info.montant_restant <= 0).length;
+  const nbrPartiels = payments.filter((p) => p.renflouement_info.montant_restant > 0).length;
 
   return (
-    <View style={styles.container}>
-      {/* Header avec gradient */}
-      <LinearGradient
-        colors={[COLORS.primary, "#3A86FF"]}
-        style={styles.header}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-      >
-        <Text style={styles.headerTitle}>Gestion des Renflouements</Text>
-        <Text style={styles.headerSubtitle}>
-          Suivi des paiements de renflouement
-        </Text>
+    <View style={s.container}>
+      {/* ── Header ── */}
+      <LinearGradient colors={[TEAL, TEAL2]} style={s.header} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={s.backButton}>
+          <Ionicons name="arrow-back" size={24} color="white" />
+        </TouchableOpacity>
+        <View style={s.headerContent}>
+          <Ionicons name="card-outline" size={32} color="white" style={{ marginBottom: SPACING.sm }} />
+          <Text style={s.headerTitle}>Paiements de renflouements</Text>
+          <Text style={s.headerSubtitle}>Historique des contributions payées</Text>
+        </View>
+        {/* Pills résumé */}
+        <View style={s.pillsRow}>
+          <View style={s.pill}><Text style={s.pillVal}>{payments.length}</Text><Text style={s.pillLab}>Total paiements</Text></View>
+          <View style={s.pill}><Text style={s.pillVal}>{nbrSoldes}</Text><Text style={s.pillLab}>Soldés</Text></View>
+          <View style={s.pill}><Text style={s.pillVal}>{nbrPartiels}</Text><Text style={s.pillLab}>Partiels</Text></View>
+        </View>
       </LinearGradient>
 
-      <ScrollView 
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingBottom: 80 }}
+        refreshControl={
+          <View /> as any // replaced par RefreshControl si besoin
+        }
         showsVerticalScrollIndicator={false}
+        onScrollEndDrag={({ nativeEvent }) => {
+          if (nativeEvent.contentOffset.y < -60 && !refreshing) handleRefresh();
+        }}
       >
-        {/* Section statistiques */}
-        <View style={styles.statsSection}>
-          <Text style={styles.sectionTitle}>Statistiques globales</Text>
-          {loadingStats ? (
-            <ActivityIndicator size="large" color={COLORS.primary} style={styles.loader} />
-          ) : (
-            <View style={styles.statsGrid}>
-              <StatCard
-                title="Total dû"
-                value={formatCurrency(stats?.montants?.total_du)}
-                icon="wallet-outline"
-                color={COLORS.error}
-              />
-              <StatCard
-                title="Total payé"
-                value={formatCurrency(stats?.montants?.total_paye)}
-                icon="checkmark-circle"
-                color={COLORS.success}
-              />
-              <StatCard
-                title="Taux recouvrement"
-                value={`${stats?.pourcentages?.taux_recouvrement?.toFixed(1) || 0}%`}
-                icon="analytics"
-                color={COLORS.primary}
-              />
-            </View>
-          )}
+        {/* ── Stats détaillées ── */}
+        <View style={s.statsSection}>
+          <StatCard title="Total paiements"      value={formatCurrency(totalPayements)}      icon="cash-outline"     color={TEAL}          subtitle={`${payments.length} paiement${payments.length > 1 ? "s" : ""}`} />
+          <StatCard title="Renflouements soldés" value={`${nbrSoldes}`}                       icon="checkmark-circle" color={COLORS.success} subtitle={`${nbrSoldes} complètement payé${nbrSoldes > 1 ? "s" : ""}`} />
+          <StatCard title="Renflouements partiels" value={`${nbrPartiels}`}                   icon="time-outline"     color={COLORS.warning} subtitle={`${nbrPartiels} en cours de paiement`} />
         </View>
 
-        {/* Barre de recherche */}
-        <View style={styles.searchSection}>
-          <Text style={styles.sectionTitle}>
-            Renflouements ({filteredRenflouements.length})
-          </Text>
-          <View style={styles.searchContainer}>
-            <Ionicons name="search" size={20} color={COLORS.textSecondary} />
+        {/* ── Barre outils ── */}
+        <View style={s.toolbar}>
+          <View style={s.searchBox}>
+            <Ionicons name="search" size={18} color={COLORS.textSecondary} />
             <TextInput
-              style={styles.searchInput}
+              style={s.searchInput}
               value={search}
-              onChangeText={setSearch}
-              placeholder="Rechercher par nom, numéro, email..."
+              onChangeText={(v) => { setSearch(v); setDisplayedItems(ITEMS_PER_PAGE); }}
+              placeholder="Rechercher un membre…"
               placeholderTextColor={COLORS.textLight}
             />
             {search.length > 0 && (
               <TouchableOpacity onPress={() => setSearch("")}>
-                <Ionicons name="close-circle" size={20} color={COLORS.textSecondary} />
+                <Ionicons name="close-circle" size={18} color={COLORS.textSecondary} />
               </TouchableOpacity>
             )}
           </View>
-
-          {/* Filtres de statut */}
-          <View style={styles.filtersContainer}>
-            {[
-              { key: 'all', label: 'Tous', count: renflouements.length },
-              { key: 'solde', label: 'Soldés', count: renflouements.filter(r => r.is_solde).length },
-              { key: 'en-cours', label: 'En cours', count: renflouements.filter(r => !r.is_solde).length },
-            ].map(filter => (
-              <TouchableOpacity
-                key={filter.key}
-                style={[
-                  styles.filterButton,
-                  { backgroundColor: filterStatus === filter.key ? COLORS.primary : COLORS.surface }
-                ]}
-                onPress={() => setFilterStatus(filter.key as any)}
-              >
-                <Text style={[
-                  styles.filterText,
-                  { color: filterStatus === filter.key ? 'white' : COLORS.text }
-                ]}>
-                  {filter.label} ({filter.count})
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+          {!readOnly && (
+            <TouchableOpacity style={s.addBtn} onPress={() => setShowModal(true)}>
+              <LinearGradient colors={[TEAL, TEAL2]} style={s.addBtnGrad}>
+                <Ionicons name="add" size={18} color="white" />
+                <Text style={s.addBtnText}>Payer</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          )}
         </View>
 
-        {/* Compteur de résultats */}
-        {!isLoading && !isError && filteredRenflouements.length > 0 && (
-          <View style={styles.resultsCounter}>
-            <Ionicons name="list" size={18} color={COLORS.primary} />
-            <Text style={styles.resultsCounterText}>
-              Affichage de <Text style={styles.resultsCounterBold}>{paginatedRenflouements.length}</Text> sur{' '}
-              <Text style={styles.resultsCounterBold}>{filteredRenflouements.length}</Text> résultat{filteredRenflouements.length > 1 ? 's' : ''}
-            </Text>
-          </View>
-        )}
-
-        {/* Liste des renflouements */}
-        {isLoading ? (
-          <View style={styles.centerContainer}>
-            <ActivityIndicator size="large" color={COLORS.primary} />
-            <Text style={styles.loadingText}>Chargement des renflouements...</Text>
-          </View>
-        ) : isError ? (
-          <View style={styles.centerContainer}>
-            <Ionicons name="alert-circle" size={64} color={COLORS.error} />
-            <Text style={styles.errorTitle}>Erreur de chargement</Text>
-            <Text style={styles.errorText}>
-              Impossible de charger les renflouements.
-            </Text>
-            <TouchableOpacity style={styles.retryButton} onPress={() => refetch()}>
-              <Text style={styles.retryButtonText}>Réessayer</Text>
-            </TouchableOpacity>
-          </View>
-        ) : filteredRenflouements.length === 0 ? (
-          <View style={styles.centerContainer}>
-            <Ionicons name="document-outline" size={64} color={COLORS.textLight} />
-            <Text style={styles.emptyTitle}>Aucun renflouement</Text>
-            <Text style={styles.emptyText}>
-              {search ? "Aucun résultat pour votre recherche." : "Aucun renflouement enregistré."}
-            </Text>
-          </View>
-        ) : (
-          <>
-            <FlatList
-              data={paginatedRenflouements}
-              keyExtractor={(item) => item.id}
-              renderItem={({ item }) => (
-                <RenflouementCard
-                  item={item}
-                  onPayment={openPaymentModal}
-                  onDetails={openDetailsModal}
-                  onPaymentWithSavings={openSavingsModal}
-                  readOnly={readOnly}
-                />
-              )}
-              scrollEnabled={false}
-              ItemSeparatorComponent={() => <View style={{ height: SPACING.md }} />}
-            />
-
-            {/* Bouton "Voir plus" */}
-            {hasMore && (
-              <TouchableOpacity style={styles.loadMoreButton} onPress={loadMore}>
-                <LinearGradient
-                  colors={[COLORS.primary, "#3A86FF"]}
-                  style={styles.loadMoreGradient}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                >
-                  <Text style={styles.loadMoreText}>
-                    Voir plus ({filteredRenflouements.length - displayedItems} restant{filteredRenflouements.length - displayedItems > 1 ? 's' : ''})
-                  </Text>
-                  <Ionicons name="chevron-down" size={20} color="white" />
-                </LinearGradient>
+        {/* ── Filtres ── */}
+        <View style={s.filters}>
+          {(["all", "partiel", "solde"] as const).map((key) => {
+            const labels: Record<string, string> = { all: "Tous", partiel: "Partiels", solde: "Soldés" };
+            const active = filterStatus === key;
+            const dotColor = key === "partiel" ? COLORS.warning : key === "solde" ? COLORS.success : TEAL;
+            return (
+              <TouchableOpacity
+                key={key}
+                style={[s.filterChip, active && { backgroundColor: dotColor, borderColor: dotColor }]}
+                onPress={() => { setFilterStatus(key); setDisplayedItems(ITEMS_PER_PAGE); }}
+              >
+                <Text style={[s.filterChipText, active && { color: "white" }]}>{labels[key]}</Text>
               </TouchableOpacity>
-            )}
-          </>
-        )}
+            );
+          })}
+        </View>
 
-        <View style={{height: 70}}></View>
+        {/* ── Liste ── */}
+        <View style={s.listSection}>
+          {isLoading ? (
+            <View style={s.center}>
+              <ActivityIndicator size="large" color={TEAL} />
+              <Text style={s.loadingText}>Chargement…</Text>
+            </View>
+          ) : isError ? (
+            <View style={s.center}>
+              <Ionicons name="alert-circle-outline" size={60} color={COLORS.error} />
+              <Text style={[s.loadingText, { color: COLORS.error }]}>Erreur de chargement</Text>
+              <TouchableOpacity onPress={() => refetch()} style={s.retryBtn}>
+                <Text style={s.retryBtnText}>Réessayer</Text>
+              </TouchableOpacity>
+            </View>
+          ) : filteredPayments.length === 0 ? (
+            <View style={s.empty}>
+              <View style={s.emptyIcon}>
+                <Ionicons name="card-outline" size={48} color={COLORS.textLight} />
+              </View>
+              <Text style={s.emptyTitle}>Aucun paiement</Text>
+              <Text style={s.emptyText}>
+                {search ? "Aucun résultat pour cette recherche" : "Aucun paiement de renflouement enregistré"}
+              </Text>
+            </View>
+          ) : (
+            <>
+              <View style={s.counter}>
+                <Ionicons name="list" size={16} color={TEAL} />
+                <Text style={s.counterText}>
+                  <Text style={s.counterBold}>{paginatedPayments.length}</Text>
+                  {" "}sur{" "}
+                  <Text style={s.counterBold}>{filteredPayments.length}</Text>
+                  {" "}paiement{filteredPayments.length > 1 ? "s" : ""}
+                </Text>
+              </View>
+
+              {paginatedPayments.map((item) => (
+                <RenflouementPaymentCard key={item.id} item={item} />
+              ))}
+
+              {hasMore && (
+                <TouchableOpacity
+                  style={s.loadMore}
+                  onPress={() => setDisplayedItems((p) => p + ITEMS_PER_PAGE)}
+                >
+                  <LinearGradient colors={[TEAL, TEAL2]} style={s.loadMoreGrad}>
+                    <Text style={s.loadMoreText}>
+                      Voir plus ({filteredPayments.length - displayedItems} restant{filteredPayments.length - displayedItems > 1 ? "s" : ""})
+                    </Text>
+                    <Ionicons name="chevron-down" size={20} color="white" />
+                  </LinearGradient>
+                </TouchableOpacity>
+              )}
+            </>
+          )}
+        </View>
       </ScrollView>
 
-      {/* Modal Paiement / Paiement avec Épargne */}
-      <Modal 
-        visible={showModal === true && (modalType === "payment" || modalType === "savings")} 
-        animationType="slide" 
-        transparent
-        statusBarTranslucent
-      >
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)' }}>
-          <BlurView intensity={20} style={StyleSheet.absoluteFillObject} />
-          <KeyboardAvoidingView 
-            style={styles.modalOverlay}
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
-          >
-            <View style={styles.modalContainer}>
-              <LinearGradient
-                colors={[COLORS.primary, "#3A86FF"]}
-                style={styles.modalHeader}
-              >
-                <Text style={styles.modalTitle}>
-                  {modalType === "savings" ? "Paiement avec Épargne" : "Nouveau Paiement"}
-                </Text>
-                <TouchableOpacity onPress={closeModal}>
-                  <Ionicons name="close" size={24} color="white" />
-                </TouchableOpacity>
-              </LinearGradient>
-
-              <ScrollView 
-                style={styles.modalBody} 
-                showsVerticalScrollIndicator={false}
-                keyboardShouldPersistTaps="handled"
-              >
-                <View style={styles.memberInfoSection}>
-                  <Text style={styles.modalMemberName}>
-                    {currentRenflouement?.membre_info?.nom_complet}
-                  </Text>
-                  <Text style={styles.modalMemberNumber}>
-                    {currentRenflouement?.membre_info?.numero_membre}
-                  </Text>
-                </View>
-
-                <View style={styles.modalFinancialInfo}>
-                  <View style={styles.modalFinancialRow}>
-                    <Text style={styles.modalFinancialLabel}>Montant dû:</Text>
-                    <Text style={styles.modalFinancialValue}>
-                      {formatCurrency(currentRenflouement?.montant_du)}
-                    </Text>
-                  </View>
-                  <View style={styles.modalFinancialRow}>
-                    <Text style={styles.modalFinancialLabel}>Reste à payer:</Text>
-                    <Text style={[styles.modalFinancialValue, { color: COLORS.error }]}>
-                      {formatCurrency(currentRenflouement?.montant_restant)}
-                    </Text>
-                  </View>
-                </View>
-
-                {modalType === "savings" && (
-                  <View style={[styles.modalFinancialInfo, { backgroundColor: COLORS.warning + "10", borderColor: COLORS.warning }]}>
-                    <View style={{ flexDirection: "row", alignItems: "center", marginBottom: SPACING.md }}>
-                      <Ionicons name="wallet-outline" size={20} color={COLORS.warning} />
-                      <Text style={[styles.modalFinancialLabel, { marginLeft: SPACING.sm, fontWeight: "600", color: COLORS.warning }]}>
-                        Paiement depuis l'épargne
-                      </Text>
-                    </View>
-                    <Text style={[styles.modalFinancialLabel, { fontSize: FONT_SIZES.sm, color: COLORS.textSecondary }]}>
-                      Le montant sera débité directement de l'épargne personnelle du membre.
-                    </Text>
-                  </View>
-                )}
-
-                <View style={styles.inputSection}>
-                  <Text style={styles.inputLabel}>
-                    Montant du paiement *
-                  </Text>
-                  <TextInput
-                    style={styles.input}
-                    value={montant}
-                    onChangeText={setMontant}
-                    placeholder="Entrez le montant en FCFA"
-                    keyboardType="numeric"
-                    placeholderTextColor={COLORS.textLight}
-                    editable={!createPayment.isPending && !payWithSavings.isPending}
-                  />
-                </View>
-
-                <View style={styles.inputSection}>
-                  <Text style={styles.inputLabel}>Notes (optionnel)</Text>
-                  <TextInput
-                    style={[styles.input, styles.textArea]}
-                    value={notes}
-                    onChangeText={setNotes}
-                    placeholder="Ajouter une note..."
-                    multiline
-                    numberOfLines={3}
-                    textAlignVertical="top"
-                    placeholderTextColor={COLORS.textLight}
-                    editable={!createPayment.isPending && !payWithSavings.isPending}
-                  />
-                </View>
-              </ScrollView>
-
-              <View style={styles.modalActions}>
-                <TouchableOpacity
-                  style={[styles.modalButton, styles.cancelButton]}
-                  onPress={closeModal}
-                  disabled={createPayment.isPending || payWithSavings.isPending}
-                >
-                  <Text style={styles.cancelButtonText}>Annuler</Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity
-                  style={[
-                    styles.modalButton,
-                    modalType === "savings" ? styles.savingsConfirmButton : styles.confirmButton
-                  ]}
-                  onPress={
-                    modalType === "savings"
-                      ? handlePaymentWithSavings
-                      : handleAddPayment
-                  }
-                  disabled={createPayment.isPending || payWithSavings.isPending}
-                >
-                  {createPayment.isPending || payWithSavings.isPending ? (
-                    <ActivityIndicator size="small" color="white" />
-                  ) : (
-                    <Text style={styles.confirmButtonText}>
-                      {modalType === "savings" ? "Débiter l'épargne" : "Valider"}
-                    </Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-            </View>
-          </KeyboardAvoidingView>
-        </View>
-      </Modal>
-
-      {/* Modal Détails */}
-      <Modal
-        visible={
-          typeof showModal === "string" &&
-          showModal.startsWith("details-") &&
-          !!currentRenflouement
-        }
-        animationType="slide"
-        transparent
-        statusBarTranslucent
-      >
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)' }}>
-          <BlurView intensity={20} style={StyleSheet.absoluteFillObject} />
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContainer}>
-              <LinearGradient
-                colors={[COLORS.primary, "#3A86FF"]}
-                style={styles.modalHeader}
-              >
-                <Text style={styles.modalTitle}>Historique des Paiements</Text>
-                <TouchableOpacity onPress={closeModal}>
-                  <Ionicons name="close" size={24} color="white" />
-                </TouchableOpacity>
-              </LinearGradient>
-
-              <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
-                <View style={styles.memberInfoSection}>
-                  <Text style={styles.modalMemberName}>
-                    {currentRenflouement?.membre_info?.nom_complet}
-                  </Text>
-                  <Text style={styles.modalMemberNumber}>
-                    {currentRenflouement?.membre_info?.numero_membre}
-                  </Text>
-                </View>
-
-                <View style={styles.paymentsListContainer}>
-                  {currentRenflouement?.paiements_details && currentRenflouement.paiements_details.length > 0 ? (
-                    <FlatList
-                      data={currentRenflouement.paiements_details}
-                      keyExtractor={(item) => item.id}
-                      renderItem={renderPaymentItem}
-                      showsVerticalScrollIndicator={false}
-                      scrollEnabled={false}
-                      ItemSeparatorComponent={() => <View style={{ height: SPACING.sm }} />}
-                    />
-                  ) : (
-                    <View style={styles.emptyPayments}>
-                      <Ionicons name="receipt-outline" size={48} color={COLORS.textLight} />
-                      <Text style={styles.emptyPaymentsText}>
-                        Aucun paiement enregistré
-                      </Text>
-                    </View>
-                  )}
-                </View>
-              </ScrollView>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      {/* ── Modal multi-step ── */}
+      <MultiStepModal
+        visible={showModal}
+        onClose={() => setShowModal(false)}
+        onSuccess={handleSuccess}
+      />
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  header: {
-    paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.xl,
-    paddingBottom: SPACING.lg,
-  },
-  headerTitle: {
-    fontSize: FONT_SIZES.xxl,
-    fontWeight: "bold",
-    color: "white",
-    marginBottom: SPACING.xs,
-  },
-  headerSubtitle: {
-    fontSize: FONT_SIZES.md,
-    color: "rgba(255,255,255,0.8)",
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: SPACING.xl,
-  },
-
-  // Stats Section
-  statsSection: {
-    padding: SPACING.lg,
-  },
-  sectionTitle: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: "bold",
-    color: COLORS.text,
-    marginBottom: SPACING.md,
-  },
-  loader: {
-    marginVertical: SPACING.xl,
-  },
-  statsGrid: {
-    gap: SPACING.md,
-  },
-  statCard: {
-    backgroundColor: COLORS.surface,
-    borderRadius: BORDER_RADIUS.lg,
-    padding: SPACING.md,
-    borderLeftWidth: 4,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  statHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  statIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: SPACING.md,
-  },
-  statTextContainer: {
-    flex: 1,
-  },
-  statTitle: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textSecondary,
-    marginBottom: SPACING.xs,
-  },
-  statValue: {
-    fontSize: FONT_SIZES.xl,
-    fontWeight: "bold",
-    marginBottom: SPACING.xs,
-  },
-  statSubtitle: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textSecondary,
-  },
-
-  // Search Section
-  searchSection: {
-    paddingHorizontal: SPACING.lg,
-    marginBottom: SPACING.md,
-  },
-  searchContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: COLORS.surface,
-    borderRadius: BORDER_RADIUS.lg,
-    paddingHorizontal: SPACING.md,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    gap: SPACING.sm,
-    marginBottom: SPACING.md,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: FONT_SIZES.md,
-    color: COLORS.text,
-    paddingVertical: SPACING.md,
-  },
-
-  // Filters
-  filtersContainer: {
-    flexDirection: "row",
-    gap: SPACING.sm,
-    flexWrap: "wrap",
-  },
-  filterButton: {
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    borderRadius: BORDER_RADIUS.md,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  filterText: {
-    fontSize: FONT_SIZES.sm,
-    fontWeight: "600",
-  },
-
-  // Results Counter
-  resultsCounter: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.sm,
-    backgroundColor: COLORS.primary + "10",
-    marginHorizontal: SPACING.lg,
-    marginBottom: SPACING.md,
-    borderRadius: BORDER_RADIUS.md,
-    gap: SPACING.sm,
-  },
-  resultsCounterText: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textSecondary,
-  },
-  resultsCounterBold: {
-    fontWeight: "bold",
-    color: COLORS.primary,
-  },
-
-  // Renflouement Card
-  renflouementCard: {
-    backgroundColor: COLORS.surface,
-    borderRadius: BORDER_RADIUS.lg,
-    padding: SPACING.md,
-    marginHorizontal: SPACING.lg,
-    borderLeftWidth: 4,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  cardHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: SPACING.md,
-  },
-  memberInfo: {
-    flex: 1,
-  },
-  memberName: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: "bold",
-    color: COLORS.text,
-    marginBottom: SPACING.xs,
-  },
-  memberNumber: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.primary,
-    fontWeight: "500",
-  },
-  statusBadge: {
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: SPACING.xs,
-    borderRadius: BORDER_RADIUS.sm,
-  },
-  statusText: {
-    fontSize: FONT_SIZES.sm,
-    color: "white",
-    fontWeight: "600",
-  },
-  financialInfo: {
-    marginBottom: SPACING.md,
-  },
-  financialRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: SPACING.xs,
-  },
-  financialLabel: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textSecondary,
-  },
-  financialValue: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.text,
-    fontWeight: "600",
-  },
-  progressContainer: {
-    marginBottom: SPACING.md,
-  },
-  progressTrack: {
-    height: 6,
-    backgroundColor: COLORS.border,
-    borderRadius: 3,
-    overflow: "hidden",
-    marginBottom: SPACING.xs,
-  },
-  progressBar: {
-    height: "100%",
-    borderRadius: 3,
-  },
-  progressText: {
-    fontSize: FONT_SIZES.xs,
-    color: COLORS.textSecondary,
-    textAlign: "right",
-  },
-  detailsInfo: {
-    marginBottom: SPACING.md,
-    gap: SPACING.xs,
-  },
-  detailRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SPACING.sm,
-  },
-  detailText: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textSecondary,
-    flex: 1,
-  },
-  recentPayments: {
-    backgroundColor: COLORS.background,
-    padding: SPACING.sm,
-    borderRadius: BORDER_RADIUS.md,
-    marginBottom: SPACING.md,
-  },
-  recentPaymentsTitle: {
-    fontSize: FONT_SIZES.sm,
-    fontWeight: "600",
-    color: COLORS.text,
-    marginBottom: SPACING.xs,
-  },
-  paymentRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: SPACING.xs,
-  },
-  paymentAmount: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.success,
-    fontWeight: "600",
-  },
-  paymentDate: {
-    fontSize: FONT_SIZES.xs,
-    color: COLORS.textSecondary,
-  },
-  cardActions: {
-    flexDirection: "row",
-    gap: SPACING.sm,
-  },
-  actionButton: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: SPACING.md,
-    borderRadius: BORDER_RADIUS.md,
-    gap: SPACING.xs,
-  },
-  detailsButton: {
-    backgroundColor: COLORS.surface,
-    borderWidth: 1,
-    borderColor: COLORS.primary,
-  },
-  paymentButton: {
-    backgroundColor: COLORS.primary,
-  },
-  actionButtonText: {
-    fontSize: FONT_SIZES.sm,
-    fontWeight: "600",
-  },
-  paymentButtonText: {
-    fontSize: FONT_SIZES.sm,
-    fontWeight: "600",
-    color: "white",
-  },
-
-  // Load More Button
-  loadMoreButton: {
-    marginHorizontal: SPACING.lg,
-    marginTop: SPACING.lg,
-    borderRadius: BORDER_RADIUS.lg,
-    overflow: "hidden",
-    elevation: 3,
-    shadowColor: COLORS.shadowDark,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-  },
-  loadMoreGradient: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: SPACING.md,
-    gap: SPACING.sm,
-  },
-  loadMoreText: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: "600",
-    color: "white",
-  },
-
-  // Center States
-  centerContainer: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: SPACING.xxl,
-    paddingHorizontal: SPACING.lg,
-  },
-  loadingText: {
-    fontSize: FONT_SIZES.md,
-    color: COLORS.textSecondary,
-    marginTop: SPACING.md,
-  },
-  errorTitle: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: "bold",
-    color: COLORS.text,
-    marginTop: SPACING.md,
-    marginBottom: SPACING.sm,
-  },
-  errorText: {
-    fontSize: FONT_SIZES.md,
-    color: COLORS.textSecondary,
-    textAlign: "center",
-    marginBottom: SPACING.lg,
-  },
-  retryButton: {
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
-    borderRadius: BORDER_RADIUS.md,
-  },
-  retryButtonText: {
-    color: "white",
-    fontSize: FONT_SIZES.md,
-    fontWeight: "600",
-  },
-  emptyTitle: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: "bold",
-    color: COLORS.text,
-    marginTop: SPACING.md,
-    marginBottom: SPACING.sm,
-  },
-  emptyText: {
-    fontSize: FONT_SIZES.md,
-    color: COLORS.textSecondary,
-    textAlign: "center",
-  },
-
-  // Modal Styles
-  modalOverlay: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: SPACING.lg,
-  },
-  modalContainer: {
-    backgroundColor: COLORS.background,
-    borderRadius: BORDER_RADIUS.xl,
-    width: width - SPACING.lg * 2,
-    maxHeight: "85%",
-    overflow: "hidden",
-    shadowColor: COLORS.shadowDark,
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
-    elevation: 15,
-  },
-  modalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.lg,
-  },
-  modalTitle: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: "bold",
-    color: "white",
-  },
-  modalBody: {
-    padding: SPACING.lg,
-    maxHeight: 500,
-  },
-  memberInfoSection: {
-    backgroundColor: COLORS.surface,
-    padding: SPACING.md,
-    borderRadius: BORDER_RADIUS.md,
-    marginBottom: SPACING.lg,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  modalMemberName: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: "bold",
-    color: COLORS.text,
-    marginBottom: SPACING.xs,
-  },
-  modalMemberNumber: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.primary,
-    fontWeight: "500",
-  },
-  modalFinancialInfo: {
-    backgroundColor: COLORS.surface,
-    padding: SPACING.md,
-    borderRadius: BORDER_RADIUS.md,
-    marginBottom: SPACING.lg,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  modalFinancialRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: SPACING.sm,
-  },
-  modalFinancialLabel: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textSecondary,
-  },
-  modalFinancialValue: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: "bold",
-    color: COLORS.text,
-  },
-  inputSection: {
-    marginBottom: SPACING.lg,
-  },
-  inputLabel: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: "600",
-    color: COLORS.text,
-    marginBottom: SPACING.sm,
-  },
-  input: {
-    backgroundColor: COLORS.surface,
-    borderRadius: BORDER_RADIUS.md,
-    padding: SPACING.md,
-    fontSize: FONT_SIZES.md,
-    color: COLORS.text,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  textArea: {
-    height: 80,
-    textAlignVertical: "top",
-  },
-  modalActions: {
-    flexDirection: "row",
-    padding: SPACING.lg,
-    gap: SPACING.md,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
-  },
-  modalButton: {
-    flex: 1,
-    paddingVertical: SPACING.md,
-    borderRadius: BORDER_RADIUS.md,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  cancelButton: {
-    backgroundColor: COLORS.surface,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  cancelButtonText: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: "600",
-    color: COLORS.textSecondary,
-  },
-  confirmButton: {
-    backgroundColor: COLORS.primary,
-  },
-  savingsConfirmButton: {
-    backgroundColor: COLORS.warning,
-  },
-  confirmButtonText: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: "600",
-    color: "white",
-  },
-  paymentsListContainer: {
-    minHeight: 200,
-  },
-  paymentDetailCard: {
-    backgroundColor: COLORS.surface,
-    padding: SPACING.md,
-    borderRadius: BORDER_RADIUS.md,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  paymentDetailHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: SPACING.sm,
-  },
-  paymentDetailAmount: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: "bold",
-    color: COLORS.success,
-  },
-  paymentDetailDate: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textSecondary,
-  },
-  paymentDetailSession: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.text,
-    marginBottom: SPACING.xs,
-  },
-  paymentDetailNotes: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textSecondary,
-    fontStyle: "italic",
-  },
-  emptyPayments: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: SPACING.xl,
-  },
-  emptyPaymentsText: {
-    fontSize: FONT_SIZES.md,
-    color: COLORS.textSecondary,
-    marginTop: SPACING.md,
-  },
-  savingsButton: {
-    backgroundColor: COLORS.warning, // ou une couleur spécifique
-    flex: 1,
-  },
-  savingsButtonText: {
-    fontSize: FONT_SIZES.sm,
-    fontWeight: "600",
-    color: "white",
-    textAlign: "center",
-    flex: 1,
-  },
+// ─── Styles écran principal ───────────────────────────────────────────────────
+const s = StyleSheet.create({
+  container:      { flex: 1, backgroundColor: "#F0FDFA" },
+  header:         { paddingHorizontal: SPACING.lg, paddingTop: SPACING.xl + 10, paddingBottom: SPACING.lg },
+  backButton:     { width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center", marginBottom: SPACING.md },
+  headerContent:  { alignItems: "center", marginBottom: SPACING.lg },
+  headerTitle:    { fontSize: FONT_SIZES.xxl, fontWeight: "800", color: "white", marginBottom: 4 },
+  headerSubtitle: { fontSize: FONT_SIZES.sm, color: "rgba(255,255,255,0.8)" },
+  pillsRow:       { flexDirection: "row", gap: SPACING.sm },
+  pill:           { flex: 1, alignItems: "center", backgroundColor: "rgba(255,255,255,0.18)", borderRadius: 12, paddingVertical: SPACING.sm, paddingHorizontal: 4 },
+  pillVal:        { fontSize: FONT_SIZES.sm, fontWeight: "800", color: "white" },
+  pillLab:        { fontSize: 9, color: "rgba(255,255,255,0.8)", textAlign: "center" },
+  statsSection:   { marginHorizontal: SPACING.lg, marginTop: SPACING.lg },
+  toolbar:        { flexDirection: "row", paddingHorizontal: SPACING.lg, marginTop: SPACING.sm, gap: SPACING.md },
+  searchBox:      { flex: 1, flexDirection: "row", alignItems: "center", backgroundColor: "white", borderRadius: 12, paddingHorizontal: SPACING.md, gap: SPACING.sm, borderWidth: 1, borderColor: TEAL + "30" },
+  searchInput:    { flex: 1, fontSize: FONT_SIZES.md, color: COLORS.text, paddingVertical: 10 },
+  addBtn:         { borderRadius: 12, overflow: "hidden" },
+  addBtnGrad:     { flexDirection: "row", alignItems: "center", paddingHorizontal: SPACING.md, paddingVertical: 10, gap: 6 },
+  addBtnText:     { color: "white", fontSize: FONT_SIZES.sm, fontWeight: "700" },
+  filters:        { flexDirection: "row", paddingHorizontal: SPACING.lg, marginTop: SPACING.sm, gap: SPACING.sm },
+  filterChip:     { paddingHorizontal: SPACING.md, paddingVertical: 6, borderRadius: 20, backgroundColor: "white", borderWidth: 1, borderColor: TEAL + "30" },
+  filterChipText: { fontSize: FONT_SIZES.sm, fontWeight: "600", color: COLORS.textSecondary },
+  listSection:    { paddingHorizontal: SPACING.lg, marginTop: SPACING.md },
+  counter:        { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: TEAL + "12", borderRadius: 10, paddingHorizontal: SPACING.md, paddingVertical: 8, marginBottom: SPACING.md },
+  counterText:    { fontSize: FONT_SIZES.sm, color: COLORS.textSecondary },
+  counterBold:    { fontWeight: "700", color: TEAL },
+  center:         { alignItems: "center", justifyContent: "center", paddingVertical: 60 },
+  loadingText:    { fontSize: FONT_SIZES.md, color: COLORS.textSecondary, marginTop: SPACING.md },
+  retryBtn:       { marginTop: SPACING.md, backgroundColor: TEAL, paddingHorizontal: SPACING.xl, paddingVertical: SPACING.sm, borderRadius: 12 },
+  retryBtnText:   { color: "white", fontWeight: "700", fontSize: FONT_SIZES.md },
+  empty:          { alignItems: "center", paddingVertical: 60 },
+  emptyIcon:      { width: 90, height: 90, borderRadius: 45, backgroundColor: TEAL + "15", alignItems: "center", justifyContent: "center", marginBottom: SPACING.md },
+  emptyTitle:     { fontSize: FONT_SIZES.lg, fontWeight: "700", color: COLORS.text, marginBottom: SPACING.sm },
+  emptyText:      { fontSize: FONT_SIZES.md, color: COLORS.textSecondary, textAlign: "center", paddingHorizontal: SPACING.xl },
+  loadMore:       { marginTop: SPACING.md, marginBottom: SPACING.md, borderRadius: 14, overflow: "hidden" },
+  loadMoreGrad:   { flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: SPACING.md, gap: SPACING.sm },
+  loadMoreText:   { fontSize: FONT_SIZES.md, fontWeight: "600", color: "white" },
 });
