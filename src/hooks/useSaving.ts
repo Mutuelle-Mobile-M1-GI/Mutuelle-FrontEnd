@@ -80,6 +80,7 @@ export function useCreateSaving() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["savings"] });
       queryClient.invalidateQueries({ queryKey: ["savings-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["members"] });
       // ✅ Force le dashboard exercice à se rafraîchir
       queryClient.invalidateQueries({ queryKey: ["exercises"] });
       queryClient.invalidateQueries({ queryKey: ["current-exercise"] });

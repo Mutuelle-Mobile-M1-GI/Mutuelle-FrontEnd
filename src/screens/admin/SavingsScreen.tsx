@@ -36,6 +36,8 @@ const MODAL_MEMBERS_PER_PAGE = 8;
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface MemberSavings {
+  epargne_totale: number | null | undefined;
+  bilan_epargne: number | null | undefined;
   id: string;
   numero_membre: string;
   nom_complet: string;
@@ -253,28 +255,26 @@ export default function SavingsScreen() {
 
   // ── Liste finale des épargnes par membre (serveur + local) ─────────────────
   const finalMembersList = useMemo((): MemberSavings[] => {
-    const serverList = (serverStats?.tous_les_membres as any[]) || [];
-    return serverList
-      .map((sMember): MemberSavings => {
-        const localInfo = members.find((m) => m.id === sMember.id);
+    const serverMembers = (serverStats?.tous_les_membres as any[]) || [];
+    
+    return serverMembers
+      .map((serverMember): MemberSavings => {
+        const localMember = members.find((m) => m.id === serverMember.id);
+        
         return {
-          id: sMember.id,
-          numero_membre: sMember.numero,
-          nom_complet: sMember.nom,
-          email: localInfo?.utilisateur?.email || "",
-          statut: sMember.statut || "ACTIF",
-          total_epargne: sMember.montant,
-          total_depots: sMember.montant,
-          total_retraits:
-            localInfo?.donnees_financieres?.emprunt?.montant_restant_a_rembourser || 0,
-          nombre_transactions:
-            localInfo?.donnees_financieres?.epargne?.nombre_transactions || 0,
-          derniere_transaction:
-            localInfo?.donnees_financieres?.epargne?.derniere_transaction_date,
+          id: serverMember.id,
+          numero_membre: serverMember.numero,
+          nom_complet: serverMember.nom,
+          email: localMember?.utilisateur?.email || "",
+          statut: serverMember.statut || "EN_REGLE",
+          total_epargne: serverMember.montant,
+          total_depots: 0,
+          total_retraits: 0,
+          nombre_transactions: 0,
+          derniere_transaction: undefined,
         };
       })
       .filter((member) => {
-        // Ne garder que les membres actifs et qui ont termine leur inscription(is_actif !== false)
         const localInfo = members.find((m) => m.id === member.id);
         return (
             (localInfo?.is_actif !== false) &&
@@ -286,6 +286,17 @@ export default function SavingsScreen() {
   const membresAvecEpargne = useMemo(() => {
     return finalMembersList.filter((m) => (m.total_epargne ?? 0) > 0).length;
   }, [finalMembersList]);
+
+  // Calculs des statistiques correctes basées sur les données du serveur
+  const epargneStatsLocale = useMemo(() => {
+    // Le serveur envoie déjà epargne_totale et tresor_total calculés correctement
+    // epargne_totale = sum(epargne_base - retraits_epargne)
+    // tresor_total = epargne_totale - sum(retraits_pour_prets)
+    return {
+      epargne_totale: serverStats?.epargne_totale || 0,
+      tresor_total: serverStats?.tresor_total || 0,
+    };
+  }, [serverStats]);
 
   // ── Recherche / pagination principale ─────────────────────────────────────
   const searchedMembers = useMemo((): MemberSavings[] => {
@@ -1232,17 +1243,17 @@ export default function SavingsScreen() {
               <View style={styles.statsGrid}>
                 <StatCard
                   title="Épargne totale"
-                  value={formatCurrency(serverStats?.epargne_totale || 0)}
+                  value={formatCurrency(epargneStatsLocale.epargne_totale || 0)}
                   icon="wallet"
                   color="#B5179E"
                   subtitle={`${membresAvecEpargne} membre${membresAvecEpargne !== 1 ? 's' : ''} épargnant${membresAvecEpargne !== 1 ? 's' : ''}`
                             }/>
                 <StatCard
                   title="Trésor en Caisse"
-                  value={formatCurrency(serverStats?.tresor_total || 0)}
+                  value={formatCurrency(epargneStatsLocale.tresor_total || 0)}
                   icon="cash-outline"
                   color={
-                    (serverStats?.tresor_total ?? 0) < 0 ? COLORS.error : COLORS.success
+                    (epargneStatsLocale.tresor_total ?? 0) < 0 ? COLORS.error : COLORS.success
                   }
                   subtitle="Liquidités réelles"
                 />

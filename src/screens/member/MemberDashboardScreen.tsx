@@ -380,7 +380,7 @@ export default function MemberDashboardScreen() {
   
   const inscriptionProgress = member.donnees_financieres?.inscription.pourcentage_inscription;
   const solidarityProgress= (toNumber(member.donnees_financieres?.solidarite.montant_paye_session_courante)|0)*100/(toNumber(config?.montant_solidarite)|0);
-  const epargneTotal = member.donnees_financieres?.epargne.epargne_totale;
+  const epargneTotal = member.donnees_financieres?.epargne.bilan_epargne;
   const interets = member.donnees_financieres?.epargne.montant_interets_separe;
   const maxEmpruntable = member.donnees_financieres?.emprunt.montant_max_empruntable;
   const empruntEnCours = member.donnees_financieres?.emprunt.a_emprunt_en_cours;
