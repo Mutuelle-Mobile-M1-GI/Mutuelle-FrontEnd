@@ -749,40 +749,36 @@ const MultiStepModal = ({ visible, onClose, onSuccess }: MultiStepProps) => {
                   </View>
                 )}
 
-                <View style={ms.navRow}>
-                  <TouchableOpacity style={ms.backBtn} onPress={() => setStep(3)}>
-                    <Ionicons name="arrow-back" size={18} color={COLORS.textSecondary} />
-                    <Text style={ms.backBtnText}>Modifier</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[ms.nextBtn, (createPayment.isPending || payWithSavings.isPending) && { opacity: 0.6 }]}
-                    onPress={handleSubmit}
-                    disabled={createPayment.isPending || payWithSavings.isPending}
-                  >
-                    <LinearGradient colors={[COLORS.primary, "#3A86FF"]} style={ms.nextBtnGrad}>
-                      {createPayment.isPending ? <ActivityIndicator size="small" color="white" /> : (
-                        <>
-                          <Ionicons name="cash" size={18} color="white" />
-                          <Text style={ms.nextBtnText}>Payer (caisse)</Text>
-                        </>
+                  <View style={ms.navRow}>
+                    <TouchableOpacity style={ms.backBtn} onPress={() => setStep(3)}>
+                      <Ionicons name="arrow-back" size={18} color={COLORS.textSecondary} />
+                      <Text style={ms.backBtnText}>Modifier</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[ms.actionBtn, (createPayment.isPending || payWithSavings.isPending) && { opacity: 0.6 }]}
+                      onPress={handleSubmit}
+                      disabled={createPayment.isPending || payWithSavings.isPending}
+                    >
+                      {createPayment.isPending ? (
+                        <ActivityIndicator size="small" color="white" />
+                      ) : (
+                        <Text style={ms.actionBtnText}>Payer (comptant)</Text>
                       )}
-                    </LinearGradient>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[ms.nextBtn, (createPayment.isPending || payWithSavings.isPending) && { opacity: 0.6 }]}
-                    onPress={handleSavingsPayment}
-                    disabled={createPayment.isPending || payWithSavings.isPending}
-                  >
-                    <LinearGradient colors={[TEAL, TEAL2]} style={ms.nextBtnGrad}>
-                      {payWithSavings.isPending ? <ActivityIndicator size="small" color="white" /> : (
-                        <>
-                          <Ionicons name="wallet-outline" size={18} color="white" />
-                          <Text style={ms.nextBtnText}>Payer (épargne)</Text>
-                        </>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[ms.actionBtn, ms.savingsBtn, (createPayment.isPending || payWithSavings.isPending) && { opacity: 0.6 }]}
+                      onPress={handleSavingsPayment}
+                      disabled={createPayment.isPending || payWithSavings.isPending}
+                    >
+                      {payWithSavings.isPending ? (
+                        <ActivityIndicator size="small" color="white" />
+                      ) : (
+                        <Text style={ms.actionBtnText}>Payer (avec épargne)</Text>
                       )}
-                    </LinearGradient>
-                  </TouchableOpacity>
-                </View>
+                    </TouchableOpacity>
+                  </View>
                 <View style={{ height: 20 }} />
               </ScrollView>
             )}
@@ -902,14 +898,7 @@ renflSelectCause: {
   previewLabel:       { fontSize: FONT_SIZES.sm, color: COLORS.textSecondary },
   previewValue:       { fontSize: FONT_SIZES.md, fontWeight: "700" },
   notesInput:         { backgroundColor: "white", borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.md, fontSize: FONT_SIZES.md, color: COLORS.text, height: 80, textAlignVertical: "top" },
-navRow: {
-  flexDirection: "row",
-  gap: SPACING.sm,
-  marginTop: SPACING.lg,
-  paddingHorizontal: SPACING.lg,
-},
-  backBtn:            { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: COLORS.surface, borderRadius: 14, paddingVertical: SPACING.md, borderWidth: 1, borderColor: COLORS.border },
-  backBtnText:        { fontSize: FONT_SIZES.md, fontWeight: "600", color: COLORS.textSecondary },
+
   bottomBack:         { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: SPACING.md, borderTopWidth: 1, borderTopColor: COLORS.border },
 nextBtn: {
   flex: 1, // au lieu de 2
@@ -921,6 +910,46 @@ nextBtn: {
   resumeTitle:        { fontSize: FONT_SIZES.lg, fontWeight: "800", color: COLORS.text, marginTop: SPACING.sm, marginBottom: SPACING.md },
   resumeCard:         { backgroundColor: "white", borderRadius: 18, padding: SPACING.lg, borderWidth: 1, borderColor: TEAL + "30", marginBottom: SPACING.lg },
   divider:            { height: 1, backgroundColor: "#F0F0F0", marginVertical: SPACING.sm },
+  navRow: {
+  flexDirection: "row",
+  gap: SPACING.sm,
+  marginTop: SPACING.lg,
+  paddingHorizontal: SPACING.lg,
+  marginBottom: SPACING.md,
+},
+backBtn: {
+  flex: 1,                     // prend un tiers
+  borderRadius: BORDER_RADIUS.md,
+  backgroundColor: "white",
+  borderWidth: 1,
+  borderColor: COLORS.border,
+  alignItems: "center",
+  justifyContent: "center",
+  height: 48,
+},
+backBtnText: {
+  fontSize: FONT_SIZES.md,
+  fontWeight: "600",
+  color: COLORS.text,
+  textAlign: "center",
+},
+actionBtn: {
+  flex: 1,                     // prend un tiers
+  borderRadius: BORDER_RADIUS.md,
+  backgroundColor: COLORS.primary,
+  alignItems: "center",
+  justifyContent: "center",
+  height: 48,
+},
+savingsBtn: {
+  backgroundColor: TEAL,
+},
+actionBtnText: {
+  fontSize: FONT_SIZES.md,
+  fontWeight: "600",
+  color: "white",
+  textAlign: "center",
+},
 });
 
 // ─── Écran principal ──────────────────────────────────────────────────────────

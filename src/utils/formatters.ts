@@ -6,7 +6,7 @@ export function formatMoney(amount: number, currency = "FCFA") {
   }
 
 export function formatCurrency(amount: number | undefined | null): string {
-  if (amount === undefined || amount === null || isNaN(Number(amount))) return "0 FCFA";
+  if (amount === undefined || amount === null || isNaN(Number(amount)) || amount < 0) return "0 FCFA";
   return new Intl.NumberFormat("fr-FR", {
     style: "currency",
     currency: "XAF",
