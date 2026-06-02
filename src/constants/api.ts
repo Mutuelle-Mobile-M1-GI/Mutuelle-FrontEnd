@@ -3,7 +3,7 @@
 import { useEmpruntTiers } from "../hooks/useEmpruntTiers";
 import { createLoan } from "../services/loan.service";
 
-export const API_BASE_URL = "https://mutuelle-backend-m1-gi-2025-2026.onrender.com";
+export const API_BASE_URL = "https://mutuelle-backend-m1-gi-2025-2026.onrender.com/api";
 
 export const API_ENDPOINTS = {
   // Auth
