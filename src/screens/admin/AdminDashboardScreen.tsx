@@ -32,6 +32,7 @@ import { useOperationsHistory, Operation } from "../../hooks/useOperationsHistor
 import { useExercises, useSessions } from "../../hooks/useListData";
 import { useCaisseInscriptionCurrent } from "../../hooks/useInscription";
 import { useUpdateExercise, useDeleteExercise } from "../../hooks/useExercise";
+import NotificationButton from "../../components/NotificationButton";
 import { ExerciseEditModal } from "./ExerciseEditModal";
 import { SessionEditModal } from "./SessionEditModal";
 const { width } = Dimensions.get("window");
@@ -1108,6 +1109,8 @@ const navigation = useNavigation<any>();
     user?.email?.split("@")[0] ||
     "Utilisateur";
 
+  const showBureauNotifications = user?.role === "TRESORIER" || user?.role === "PRESIDENT";
+
   return (
     <>
       <StatusBar barStyle="dark-content" backgroundColor={COLORS.background} />
@@ -1121,19 +1124,7 @@ const navigation = useNavigation<any>();
           <Text style={styles.userRole}>{roleLabel}</Text>
         </View>
         <View style={styles.headerRight}>
-          {/* <TouchableOpacity
-            style={styles.headerButton}
-            onPress={() => navigation.navigate("Notifications")}
-          >
-            <Ionicons name="notifications-outline" size={24} color={COLORS.text} />
-            {(stats?.alertesCount || 0) > 0 && (
-              <View style={styles.notificationBadge}>
-                <Text style={styles.notificationBadgeText}>
-                  {(stats?.alertesCount || 0) > 9 ? "9+" : stats?.alertesCount}
-                </Text>
-              </View>
-            )}
-          </TouchableOpacity> */}
+          {showBureauNotifications && <NotificationButton />}
           <TouchableOpacity
             style={styles.headerButton}
             onPress={() => navigation.navigate("Profile")}

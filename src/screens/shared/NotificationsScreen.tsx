@@ -87,7 +87,7 @@ import { useLoans, useRepayments } from "../../hooks/useLoan";
 import { useSolidarityPayments } from "../../hooks/useSolidarity";
 import { useRenflouements } from "../../hooks/useRenflouement";
 import { useSavings } from "../../hooks/useSaving";
-import { useAssistancesByMember } from "../../hooks/useAssistance";
+import { useAssistances, useAssistancesByMember } from "../../hooks/useAssistance";
 import { useInscriptionPayments } from "../../hooks/useInscription";
 
 // Formatage d'argent basique
@@ -122,11 +122,39 @@ const formatNotificationDate = (dateStr: string) => {
 const NOTIF_CONFIG = {
   emprunt: "votre demande d'Emprunt",
   remboursement: "votre Remboursement",
-  solidarite: "votre cotisation de Solidarité",
+  solidarite: "votre paiement de Solidarité",
   renflouement: "votre paiement de Renflouement",
   epargne: "votre dépôt d'Épargne",
+  retraite: "votre retrait d'Épargne",
   assistance: "votre allocation d'Assistance",
   "paiement-inscription": "votre Paiement Inscription",
+};
+const NOTIF_CONFIG_admin = {
+  emprunt: "de demande d'Emprunt",
+  remboursement: " de Remboursement",
+  solidarite: "de paiement de Solidarité",
+  renflouement: "de paiement de Renflouement",
+  epargne: "de dépôt d'Épargne",
+  retraite: "de retrait d'Épargne",
+  assistance: "de allocation d'Assistance",
+  "paiement-inscription": "de Paiement Inscription",
+};
+
+const getMemberDisplayName = (item: any) => {
+  const candidates = [
+    item?.membre_info?.nom_complet,
+    item?.membre_nom,
+    item?.membre_nom_complet,
+    item?.emprunt_info?.membre_nom,
+    item?.emprunt_info?.membre_info?.nom_complet,
+    item?.membre?.nom_complet,
+    item?.membre?.utilisateur?.nom_complet,
+    item?.utilisateur?.nom_complet,
+    item?.nom_complet,
+  ];
+
+  const resolved = candidates.find((value) => typeof value === "string" && value.trim().length > 0);
+  return resolved || "Membre non défini";
 };
 
 export default function NotificationsScreen() {
@@ -134,74 +162,72 @@ export default function NotificationsScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useAuthContext();
 
-  // Appels des hooks de données
-  const { data: member, isLoading: loadingMember } = useMemberDetailByUser(user?.id);
-  const { data: loansRaw, isLoading: loadingLoans } = useLoans({ membre: member?.id });
-  const { data: repaymentsRaw, isLoading: loadingRepayments } = useRepayments({ membre: member?.id });
-  const { data: solidarityRaw, isLoading: loadingSolidarity } = useSolidarityPayments({ membre: member?.id });
-  const { data: renflouementRaw, isLoading: loadingRenfl } = useRenflouements({ membre: member?.id });
-  const { data: savingsRaw, isLoading: loadingSavings } = useSavings({ membre: member?.id });
-  const { data: assistancesRaw, isLoading: loadingAssistances } = useAssistancesByMember(member?.id || "");
+  const isMemberRole = user?.role === "MEMBRE" || user?.is_membre === true;
+  const isGlobalNotificationsView = ["TRESORIER", "PRESIDENT", "SECRETAIRE_GENERALE"].includes(user?.role || "");
+
+  const { data: member, isLoading: loadingMember } = useMemberDetailByUser(isMemberRole ? user?.id : undefined);
+  const memberParams = isMemberRole ? { membre: member?.id } : undefined;
+
+  const { data: loansRaw, isLoading: loadingLoans } = useLoans(memberParams);
+  const { data: repaymentsRaw, isLoading: loadingRepayments } = useRepayments(memberParams);
+  const { data: solidarityRaw, isLoading: loadingSolidarity } = useSolidarityPayments(memberParams);
+  const { data: renflouementRaw, isLoading: loadingRenfl } = useRenflouements(memberParams);
+  const { data: savingsRaw, isLoading: loadingSavings } = useSavings(memberParams);
+  const { data: assistancesByMemberRaw, isLoading: loadingAssistancesByMember } = useAssistancesByMember(isMemberRole ? member?.id || "" : "");
+  const { data: assistancesRaw, isLoading: loadingAssistances } = useAssistances();
   const { data: inscriptionPaymentsRaw, isLoading: loadingInscriptionPayments } = useInscriptionPayments();
 
-  // Agrégation et tri de la timeline (Logique calquée sur ton historique)
   const notifications = useMemo(() => {
     const items: any[] = [];
-    if (!member) return items;
+    if (isMemberRole && !member) return items;
 
-    // Emprunts
-    const loans = Array.isArray(loansRaw) ? loansRaw : loansRaw?.results ?? [];
+    const loans = Array.isArray(loansRaw) ? (loansRaw as any[]) : ((loansRaw as any)?.results ?? []);
     const loanIds = new Set(loans.map((loan: any) => loan.id));
     loans.forEach((loan: any) => {
-      items.push({ id: `notif-loan-${loan.id}`, type: "emprunt", date: loan.date_emprunt, amount: loan.montant_emprunte });
+      items.push({ id: `notif-loan-${loan.id}`, type: "emprunt", date: loan.date_emprunt, amount: loan.montant_emprunte, memberName: getMemberDisplayName(loan) });
     });
 
-    // Remboursements
-    const repayments = Array.isArray(repaymentsRaw) ? repaymentsRaw : repaymentsRaw?.results ?? [];
+    const repayments = Array.isArray(repaymentsRaw) ? (repaymentsRaw as any[]) : ((repaymentsRaw as any)?.results ?? []);
     repayments.forEach((rep: any) => {
       if (loanIds.has(rep.emprunt)) {
-        items.push({ id: `notif-rep-${rep.id}`, type: "remboursement", date: rep.date_remboursement, amount: rep.montant });
+        items.push({ id: `notif-rep-${rep.id}`, type: "remboursement", date: rep.date_remboursement, amount: rep.montant, memberName: getMemberDisplayName(rep) });
       }
     });
 
-    // Solidarités
-    const solidarites = Array.isArray(solidarityRaw) ? solidarityRaw : solidarityRaw?.results ?? [];
+    const solidarites = Array.isArray(solidarityRaw) ? (solidarityRaw as any[]) : ((solidarityRaw as any)?.results ?? []);
     solidarites.forEach((sol: any) => {
-      items.push({ id: `notif-sol-${sol.id}`, type: "solidarite", date: sol.date_paiement, amount: sol.montant });
+      items.push({ id: `notif-sol-${sol.id}`, type: "solidarite", date: sol.date_paiement, amount: sol.montant, memberName: getMemberDisplayName(sol) });
     });
 
-    // Renflouements
-    const renflouements = Array.isArray(renflouementRaw) ? renflouementRaw : renflouementRaw?.results ?? [];
+    const renflouements = Array.isArray(renflouementRaw) ? (renflouementRaw as any[]) : ((renflouementRaw as any)?.results ?? []);
     renflouements.forEach((renf: any) => {
       (renf.paiements_details || []).forEach((pay: any) => {
-        items.push({ id: `notif-renf-${pay.id}`, type: "renflouement", date: pay.date_paiement, amount: pay.montant });
+        items.push({ id: `notif-renf-${pay.id}`, type: "renflouement", date: pay.date_paiement, amount: pay.montant, memberName: getMemberDisplayName(pay) || getMemberDisplayName(renf) });
       });
     });
 
-    // Épargnes
-    const savings = Array.isArray(savingsRaw) ? savingsRaw : savingsRaw?.results ?? [];
+    const savings = Array.isArray(savingsRaw) ? (savingsRaw as any[]) : ((savingsRaw as any)?.results ?? []);
     savings.forEach((saving: any) => {
-      items.push({ id: `notif-sav-${saving.id}`, type: "epargne", date: saving.date_transaction || saving.date_creation, amount: saving.montant });
+      items.push({ id: `notif-sav-${saving.id}`, type: "epargne", date: saving.date_transaction || saving.date_creation, amount: saving.montant, memberName: getMemberDisplayName(saving) });
     });
 
-    // Assistances
-    const assistances = Array.isArray(assistancesRaw) ? assistancesRaw : assistancesRaw?.assistances ?? [];
-    assistances.forEach((assistance: any) => {
-      items.push({ id: `notif-asst-${assistance.id}`, type: "assistance", date: assistance.date_paiement || assistance.date_demande, amount: assistance.montant });
+    const assistances = Array.isArray(assistancesRaw) ? (assistancesRaw as any[]) : ((assistancesRaw as any)?.assistances ?? []);
+    const memberAssistances = Array.isArray(assistancesByMemberRaw) ? (assistancesByMemberRaw as any[]) : ((assistancesByMemberRaw as any)?.assistances ?? []);
+    const targetAssistances = isMemberRole ? memberAssistances : assistances;
+    targetAssistances.forEach((assistance: any) => {
+      items.push({ id: `notif-asst-${assistance.id}`, type: "assistance", date: assistance.date_paiement || assistance.date_demande, amount: assistance.montant, memberName: getMemberDisplayName(assistance) });
     });
 
-    // Inscriptions
-    const inscriptionPayments = Array.isArray(inscriptionPaymentsRaw) ? inscriptionPaymentsRaw : inscriptionPaymentsRaw?.results ?? [];
-    const memberInscriptionPayments = inscriptionPayments.filter((payment: any) => payment.membre === member?.id);
-    memberInscriptionPayments.forEach((payment: any) => {
-      items.push({ id: `notif-insc-${payment.id}`, type: "paiement-inscription", date: payment.date_paiement, amount: parseFloat(payment.montant) });
+    const inscriptionPayments = Array.isArray(inscriptionPaymentsRaw) ? (inscriptionPaymentsRaw as any[]) : ((inscriptionPaymentsRaw as any)?.results ?? []);
+    const targetInscriptionPayments = isMemberRole ? inscriptionPayments.filter((payment: any) => payment.membre === member?.id) : inscriptionPayments;
+    targetInscriptionPayments.forEach((payment: any) => {
+      items.push({ id: `notif-insc-${payment.id}`, type: "paiement-inscription", date: payment.date_paiement, amount: parseFloat(payment.montant), memberName: getMemberDisplayName(payment) });
     });
 
-    // Tri par date décroissante (plus récent en premier)
     return items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [loansRaw, repaymentsRaw, renflouementRaw, solidarityRaw, savingsRaw, assistancesRaw, inscriptionPaymentsRaw, member]);
+  }, [loansRaw, repaymentsRaw, renflouementRaw, solidarityRaw, savingsRaw, assistancesRaw, assistancesByMemberRaw, inscriptionPaymentsRaw, isMemberRole, member]);
 
-  const isLoading = loadingMember || loadingLoans || loadingRepayments || loadingSolidarity || loadingRenfl || loadingSavings || loadingAssistances || loadingInscriptionPayments;
+  const isLoading = loadingMember || loadingLoans || loadingRepayments || loadingSolidarity || loadingRenfl || loadingSavings || loadingAssistances || loadingAssistancesByMember || loadingInscriptionPayments;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -229,7 +255,9 @@ export default function NotificationsScreen() {
           <Ionicons name="notifications-outline" size={64} color={COLORS.textLight} />
           <Text style={styles.emptyTitle}>Aucune notification</Text>
           <Text style={styles.emptySubtext}>
-            Vous recevrez ici les notifications importantes de la mutuelle
+            {isGlobalNotificationsView
+              ? "Vous verrez ici les opérations enregistrées pour l’ensemble des membres."
+              : "Vous recevrez ici les notifications importantes de la mutuelle"}
           </Text>
         </View>
       ) : (
@@ -239,6 +267,7 @@ export default function NotificationsScreen() {
           contentContainerStyle={styles.listContainer}
           renderItem={({ item }) => {
             const labelType = NOTIF_CONFIG[item.type as keyof typeof NOTIF_CONFIG] || "votre opération";
+            const labelType1 = NOTIF_CONFIG_admin[item.type as keyof typeof NOTIF_CONFIG_admin] || "votre opération";
             return (
               <View style={styles.notifCard}>
                 <View style={styles.iconContainer}>
@@ -246,7 +275,31 @@ export default function NotificationsScreen() {
                 </View>
                 <View style={styles.notifContent}>
                   <Text style={styles.notifText}>
-                    Vous avez effectué <Text style={styles.boldText}>{labelType}</Text> d'un montant de <Text style={styles.boldText}>{formatMoney(item.amount)}</Text>.
+                    {isGlobalNotificationsView ? (
+                      <>
+                        {item.amount> 0 ? (
+                          <>
+                            <Text style={styles.boldText}>{item.memberName}</Text> a une nouvelle opération <Text style={styles.boldText}>{labelType1}</Text> d’un montant de <Text style={styles.boldText}>{formatMoney(item.amount)}</Text>.
+                          </>
+                        ) : (
+                          <>
+                            <Text style={styles.boldText}>{item.memberName}</Text> a une nouvelle opération <Text style={styles.boldText}>de retrait</Text> d’un montant de <Text style={styles.boldText}>{formatMoney(item.amount)}</Text>.
+                          </>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                      {item.amount > 0 ? (
+                        <>
+                          Vous avez effectué <Text style={styles.boldText}>{labelType}</Text> d’un montant de <Text style={styles.boldText}>{formatMoney(item.amount)}</Text>.
+                        </>
+                      ):(
+                        <>
+                        Vous avez effectué <Text style={styles.boldText}>{labelType}</Text> d’un montant de <Text style={styles.boldText}>{formatMoney(item.amount)}</Text>.
+                        </>
+                      )}
+                      </>
+                    )}
                   </Text>
                   <Text style={styles.notifDate}>{formatNotificationDate(item.date)}</Text>
                 </View>
