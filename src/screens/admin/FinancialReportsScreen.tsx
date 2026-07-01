@@ -378,6 +378,7 @@ const FilterChips = ({ selected, onChange }: { selected: string; onChange: (k: s
     { key: "epargne",              label: "Épargnes",       icon: "wallet"           },
     { key: "assistance",           label: "Assistances",    icon: "heart"            },
     { key: "paiement-inscription", label: "Inscriptions",   icon: "school"           },
+    //{key: "Retrait épargne", label: "Retraits", icon: "arrow-up-circle" },
   ];
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.filterScroll}>
@@ -465,7 +466,11 @@ const OperationCard = ({ item, onPress }: { item: TimelineItem; onPress: () => v
           {/* Contenu */}
           <View style={s.opContent}>
             <View style={s.opTopRow}>
-              <Text style={s.opTypeLabel}>{config.label}</Text>
+              {item.amount < 0 && item.status === "Retrait épargne" ? (
+                <Text style={s.opTypeLabel}>Retrait </Text>
+              ) : (
+                <Text style={s.opTypeLabel}>{config.label} </Text>
+              )}
               <Text style={s.opDate}>{formatDateSmart(item.date)}</Text>
             </View>
             <Text style={[s.opAmount, { color: config.textColor }]}>{formatMoney(item.amount)}</Text>
