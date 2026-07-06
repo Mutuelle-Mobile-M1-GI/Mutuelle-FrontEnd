@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { fetchRenflouements, fetchRenflouementPayments, fetchRenflouementStats, createRenflouementPayment, payRenflouementWithSavings } from "../services/renflouement.service";
+import { fetchRenflouements, fetchRenflouementPayments, fetchRenflouementStats, createRenflouementPayment, payRenflouementWithSavings, calculateRenflouements } from "../services/renflouement.service";
 import { Renflouement, RenflouementPayment } from "../types/renflouement.types";
 import { getStoredAccessToken } from "../services/auth.service";
 
@@ -11,6 +11,7 @@ export function useRenflouements(params?: Record<string, any>) {
       if (!token) throw new Error("Token manquant");
       return fetchRenflouements(token, params);
     },
+    staleTime: 0, // ✅ Toujours refetch lors d'une invalidation (important après clôture exercice)
   });
 }
 
@@ -35,6 +36,19 @@ export function useRenflouementStats() {
       if (!token) throw new Error("Token manquant");
       return fetchRenflouementStats(token);
     },
+  });
+}
+
+export function useCalculateRenflouements(params?: Record<string, any>) {
+  return useQuery<any>({
+    queryKey: ["renflouement-calculs", params],
+    queryFn: async () => {
+      const token = await getStoredAccessToken();
+      if (!token) throw new Error("Token manquant");
+      return calculateRenflouements(token, params);
+    },
+    // Les calculs peuvent changer lorsque l'exercice change
+    staleTime: 5 * 60 * 1000,
   });
 }
 

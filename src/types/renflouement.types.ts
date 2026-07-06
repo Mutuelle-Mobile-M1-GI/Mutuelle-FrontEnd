@@ -20,6 +20,8 @@ export interface Renflouement {
   cause: string;
   type_cause: RenflouementCauseType;
   type_cause_display: string;
+  exercice_renflouement?: string | null;
+  exercice_nom?: string | null;
   date_creation: string;
   date_derniere_modification: string;
   paiements_details: RenflouementPayment[];

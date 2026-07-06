@@ -76,6 +76,21 @@ export const updateExercise = async (
   return data;
 };
 
+// 🏁 Service pour clore un exercice
+export const closeExercise = async (
+  exerciseId: string,
+  accessToken: string
+): Promise<any> => {
+  const { data } = await axios.patch(
+    `${API_BASE_URL}${API_ENDPOINTS.closeExercise(exerciseId)}`,
+    {},
+    {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    }
+  );
+  return data;
+};
+
 // 🗑️ Service pour supprimer un exercice
 export const deleteExercise = async (
   exerciseId: string,

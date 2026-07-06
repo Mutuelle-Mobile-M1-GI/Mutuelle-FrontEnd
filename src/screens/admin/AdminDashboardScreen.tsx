@@ -22,9 +22,9 @@ import { BlurView } from "expo-blur";
 import { COLORS, SPACING, BORDER_RADIUS, FONT_SIZES } from "../../constants/config";
 import { useAuthContext } from "../../context/AuthContext";
 import { useAdminDashboard } from "../../hooks/useDashboard";
-import { useMutuelleConfig } from "../../hooks/useConfig";
+import { useMutuelleConfig, useCreateNewExercise, useUpsertTiers } from "../../hooks/useConfig";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
-import { useCurrentExercise, useCurrentSession } from "../../hooks/useExercise";
+import { useCurrentExercise, useCurrentSession, useCloseExercise } from "../../hooks/useExercise";
 import { useCloseSession } from "../../hooks/useSession";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCreateNewSession, useUpdateSession, useDeleteSession } from "../../hooks/useSession";
@@ -35,10 +35,20 @@ import { useUpdateExercise, useDeleteExercise } from "../../hooks/useExercise";
 import NotificationButton from "../../components/NotificationButton";
 import { ExerciseEditModal } from "./ExerciseEditModal";
 import { SessionEditModal } from "./SessionEditModal";
+import ExerciseModal from "../../components/ExerciseModal";
+import { useEmpruntTiers } from "../../hooks/useEmpruntTiers";
 const { width } = Dimensions.get("window");
 
 // 🎯 Configuration de la pagination
 const ITEMS_PER_PAGE = 10;
+
+const DEFAULT_EMPRUNT_TIERS = [
+  { min_amount: 0, max_amount: 500000, coefficient: 5, max_cap: 2000000 },
+  { min_amount: 500001, max_amount: 1000000, coefficient: 4, max_cap: null },
+  { min_amount: 1000001, max_amount: 1500000, coefficient: 3, max_cap: null },
+  { min_amount: 1500001, max_amount: 2000000, coefficient: 2, max_cap: null },
+  { min_amount: 2000001, max_amount: 2500000, coefficient: 1.5, max_cap: null },
+];
 
 // ─────────────────────────────────────────────
 // 🔧 UTILITAIRES
@@ -746,10 +756,14 @@ const navigation = useNavigation<any>();
   const { data: config } = useMutuelleConfig();
   const queryClient = useQueryClient();
   const createSessionMutation = useCreateNewSession();
+  const createExerciseMutation = useCreateNewExercise();
+  const { mutateAsync: upsertTiers } = useUpsertTiers();
+  const { data: tiersData } = useEmpruntTiers();
   
   // ✅ Mutations pour modifier et supprimer exercices
   const updateExerciseMutation = useUpdateExercise();
   const deleteExerciseMutation = useDeleteExercise();
+  const closeExerciseMutation = useCloseExercise();
   
   // ✅ Mutations pour modifier et supprimer sessions
   const updateSessionMutation = useUpdateSession();
@@ -762,6 +776,7 @@ const navigation = useNavigation<any>();
 
   const [refreshing, setRefreshing] = useState(false);
   const [showSessionModal, setShowSessionModal] = useState(false);
+  const [showExerciseModal, setShowExerciseModal] = useState(false);
 
   // Modal liste exercices
   const [showExerciceModal, setShowExerciceModal] = useState(false);
@@ -788,6 +803,7 @@ const navigation = useNavigation<any>();
   const [historiqueTitle, setHistoriqueTitle] = useState("Historique des opérations");
 
   const sessionLoading = createSessionMutation.isPending;
+  const exerciseCreateLoading = createExerciseMutation.isPending;
   const { data: currentExercise, isLoading: exerciseLoading, error: exerciseError } = useCurrentExercise();
   const { data: currentSession, isLoading: sessionLoading2, error: sessionError } = useCurrentSession();
   const { data: caisseInscription, error: caisseInscriptionError } = useCaisseInscriptionCurrent();
@@ -1043,7 +1059,7 @@ const navigation = useNavigation<any>();
   // 🏁 Handler pour clore la session actuelle
   const handleCloseSession = async () => {
     if (!currentSession?.id) return;
-    
+
     Alert.alert(
       "Confirmation",
       `Êtes-vous sûr de vouloir terminer la session "${currentSession.nom}" ?`,
@@ -1066,6 +1082,79 @@ const navigation = useNavigation<any>();
     );
   };
 
+  const tiersForNewExercise = React.useMemo(() => {
+    const results = tiersData?.results ?? [];
+    if (results.length === 0) return DEFAULT_EMPRUNT_TIERS;
+    return results.map((tier) => ({
+      min_amount: tier.min_amount,
+      max_amount: tier.max_amount,
+      coefficient: parseFloat(tier.coefficient),
+      max_cap: tier.max_cap,
+    }));
+  }, [tiersData]);
+
+  const handleCreateExercise = async (exerciseData: any) => {
+    try {
+      const newExercise = await createExerciseMutation.mutateAsync({
+        ...exerciseData,
+        emprunt_tiers: [],
+      });
+
+      const tiersWithExerciseId = tiersForNewExercise.map((tier) => ({
+        min_amount: tier.min_amount,
+        max_amount: tier.max_amount,
+        coefficient: tier.coefficient,
+        max_cap: tier.max_cap,
+        exercise: newExercise.id,
+      }));
+
+      await upsertTiers(tiersWithExerciseId);
+
+      Alert.alert(
+        "Succès",
+        "L'exercice et ses paramètres ont été configurés avec succès !",
+        [{ text: "OK" }]
+      );
+      setShowExerciseModal(false);
+    } catch (error: any) {
+      const errorMessage = formatErrorMessage(error, "Impossible de créer l'exercice");
+      Alert.alert("Erreur", errorMessage);
+    }
+  };
+
+  const handleCloseExercise = async () => {
+    if (!currentExercise?.id) return;
+
+    const sessionWarning = hasCurrentSession
+      ? `\n\nLa session "${currentSession.nom}" sera également clôturée.`
+      : "";
+
+    Alert.alert(
+      "Confirmation",
+      `Êtes-vous sûr de vouloir terminer l'exercice "${currentExercise.nom}" ?${sessionWarning}\n\nLes renflouements de fin d'exercice seront générés automatiquement.`,
+      [
+        { text: "Annuler", style: "cancel" },
+        {
+          text: "Terminer",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const result = await closeExerciseMutation.mutateAsync(currentExercise.id);
+              const nbRenflouements = result?.renflouements?.crees ?? 0;
+              Alert.alert(
+                "Succès",
+                `Exercice terminé avec succès !\n${nbRenflouements} renflouement(s) généré(s).`
+              );
+            } catch (error: any) {
+              const errorMessage = formatErrorMessage(error, "Impossible de terminer l'exercice");
+              Alert.alert("Erreur", errorMessage);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const stats = React.useMemo(() => {
     if (!dashboardData) return null;
     return {
@@ -1076,7 +1165,7 @@ const navigation = useNavigation<any>();
       empruntsEnCours: dashboardData.emprunts_en_cours?.nombre || 0,
       alertesCount: dashboardData.alertes?.length || 0,
     };
-  }, [dashboardData, caisseInscription, caisseInscriptionError]);
+  }, [dashboardData, caisseInscription, caisseInscriptionError, hasCaisseInscription]);
 
   if (isLoading) {
     return (
@@ -1366,6 +1455,31 @@ const navigation = useNavigation<any>();
               <Ionicons name="arrow-forward" size={20} color="white" />
             </LinearGradient>
           </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.newSessionButton, styles.exerciseActionButton]}
+            onPress={() => {
+              if (hasCurrentExercise) {
+                handleCloseExercise();
+              } else {
+                setShowExerciseModal(true);
+              }
+            }}
+            activeOpacity={0.9}
+          >
+            <LinearGradient
+              colors={hasCurrentExercise ? ["#CC0000", "#FF6666"] : ["#4361EE", "#3A86FF"]}
+              style={styles.newSessionGradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+            >
+              <Ionicons name={hasCurrentExercise ? "stop-circle" : "add-circle"} size={24} color="white" />
+              <Text style={styles.newSessionText}>
+                {hasCurrentExercise ? "Terminer l'exercice" : "Nouvel Exercice"}
+              </Text>
+              <Ionicons name="arrow-forward" size={20} color="white" />
+            </LinearGradient>
+          </TouchableOpacity>
         </View>
         )}
 
@@ -1399,6 +1513,13 @@ const navigation = useNavigation<any>();
             onClose={() => setShowSessionModal(false)}
             onSubmit={handleCreateSession}
             loading={sessionLoading}
+          />
+
+          <ExerciseModal
+            visible={showExerciseModal}
+            onClose={() => setShowExerciseModal(false)}
+            onSubmit={handleCreateExercise}
+            loading={exerciseCreateLoading}
           />
 
           {/* ✅ Modification d'exercice */}
@@ -1542,6 +1663,7 @@ const styles = StyleSheet.create({
 
   actionContainer: { paddingHorizontal: SPACING.lg, marginBottom: SPACING.xl },
   newSessionButton: { borderRadius: BORDER_RADIUS.xl, overflow: "hidden", shadowColor: COLORS.shadowDark, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 6 },
+  exerciseActionButton: { marginTop: SPACING.md },
   newSessionGradient: { flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: SPACING.lg, paddingHorizontal: SPACING.xl, gap: SPACING.sm },
   newSessionText: { fontSize: FONT_SIZES.lg, fontWeight: "bold", color: "white" },
 

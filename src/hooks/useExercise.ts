@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { fetchCurrentExercise, fetchCurrentSession, fetchExercises, updateExercise, deleteExercise } from "../services/exercice.service";
+import { fetchCurrentExercise, fetchCurrentSession, fetchExercises, updateExercise, deleteExercise, closeExercise } from "../services/exercice.service";
 import { getStoredAccessToken } from "../services/auth.service";
 
 // 🆕 Hook pour l'exercice en cours
@@ -73,6 +73,30 @@ export function useUpdateExercise() {
       queryClient.invalidateQueries({ queryKey: ["current-exercise"] });
       queryClient.invalidateQueries({ queryKey: ["admin-dashboard"] });
       queryClient.invalidateQueries({ queryKey: ["caisse-inscription-current"] });
+    },
+  });
+}
+
+// 🏁 Hook pour clore un exercice (génère les renflouements côté backend)
+export function useCloseExercise() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (exerciseId: string) => {
+      const token = await getStoredAccessToken();
+      if (!token) throw new Error("Token manquant");
+      return closeExercise(exerciseId, token);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["exercises"] });
+      await queryClient.invalidateQueries({ queryKey: ["current-exercise"] });
+      await queryClient.invalidateQueries({ queryKey: ["current-session"] });
+      await queryClient.invalidateQueries({ queryKey: ["admin-dashboard"] });
+      await queryClient.invalidateQueries({ queryKey: ["caisse-inscription-current"] });
+      await queryClient.invalidateQueries({ queryKey: ["sessions"] });
+      // ✅ exact:false pour couvrir toutes les variantes de queryKey avec paramètres
+      // (ex: ["renflouements", { type_cause: "RENFLOUEMENT_FIN_EXERCICE" }])
+      await queryClient.invalidateQueries({ queryKey: ["renflouements"], exact: false });
+      await queryClient.invalidateQueries({ queryKey: ["renflouement-stats"], exact: false });
     },
   });
 }

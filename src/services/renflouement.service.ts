@@ -3,12 +3,13 @@ import { API_BASE_URL, API_ENDPOINTS } from "../constants/api";
 import { Renflouement, RenflouementPayment } from "../types/renflouement.types";
 
 export const fetchRenflouements = async (accessToken: string, params?: Record<string, any>): Promise<Renflouement[]> => {
-  const { data } = await axios.get<Renflouement[] | { results: Renflouement[] }>(`${API_BASE_URL}${API_ENDPOINTS.renflouements}?membre_id=${params?.membre_id}`, {
-    params,
-    headers: { Authorization: `Bearer ${accessToken}` }
-  });
-  // Normaliser la réponse (peut être un tableau ou {results: [...]})
-  console.log(data);
+  const { data } = await axios.get<Renflouement[] | { results: Renflouement[] }>(
+    `${API_BASE_URL}${API_ENDPOINTS.renflouements}`,
+    {
+      params,
+      headers: { Authorization: `Bearer ${accessToken}` }
+    }
+  );
   return Array.isArray(data) ? data : data?.results ?? [];
 };
 
@@ -28,6 +29,15 @@ export const fetchRenflouementStats = async (accessToken: string): Promise<any> 
   const { data } = await axios.get(API_BASE_URL + API_ENDPOINTS.renflouementStats, {
     headers: { Authorization: `Bearer ${accessToken}` }
   });
+  return data;
+};
+
+export const calculateRenflouements = async (accessToken: string, payload?: Record<string, any>): Promise<any> => {
+  const { data } = await axios.post(
+    API_BASE_URL + API_ENDPOINTS.repartitionsCalculerRenflouements,
+    payload || {},
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
   return data;
 };
 

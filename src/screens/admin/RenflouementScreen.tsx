@@ -24,6 +24,7 @@ import {
   usePayRenflouementWithSavings,
   useRenflouementPayments,
 } from "../../hooks/useRenflouement";
+import { useCurrentExercise, useExercises } from "../../hooks/useExercise";
 import { useMembers } from "../../hooks/useMember";
 import { Renflouement, RenflouementPayment } from "../../types/renflouement.types";
 import { Member } from "../../types/member.types";
@@ -383,12 +384,28 @@ const MultiStepModal = ({ visible, onClose, onSuccess }: MultiStepProps) => {
   // Membres filtrés + paginés
   const filteredMembers = useMemo(() => {
     const q = memberSearch.toLowerCase().trim();
-    if (!q) return members;
-    return members.filter((m) =>
-      (m.utilisateur?.nom_complet ?? "").toLowerCase().includes(q) ||
-      (m.numero_membre ?? "").toLowerCase().includes(q) ||
-      (m.utilisateur?.email ?? "").toLowerCase().includes(q)
-    );
+    let list = members;
+
+    if (q) {
+      list = list.filter((m) =>
+        (m.utilisateur?.nom_complet ?? "").toLowerCase().includes(q) ||
+        (m.numero_membre ?? "").toLowerCase().includes(q) ||
+        (m.utilisateur?.email ?? "").toLowerCase().includes(q)
+      );
+    }
+
+    return [...list].sort((a, b) => {
+      const nameA = (a.utilisateur?.nom_complet ?? "").toLocaleLowerCase();
+      const nameB = (b.utilisateur?.nom_complet ?? "").toLocaleLowerCase();
+      const numA = (a.numero_membre ?? "").toLocaleLowerCase();
+      const numB = (b.numero_membre ?? "").toLocaleLowerCase();
+
+      if (nameA < nameB) return -1;
+      if (nameA > nameB) return 1;
+      if (numA < numB) return -1;
+      if (numA > numB) return 1;
+      return 0;
+    });
   }, [members, memberSearch]);
 
   const paginatedMembers = filteredMembers.slice(0, memberPage);
@@ -963,14 +980,70 @@ export default function RenflouementScreen() {
   const [search, setSearch]         = useState("");
   const [filterStatus, setFilterStatus] = useState<"all" | "solde" | "partiel">("all");
   const [displayedItems, setDisplayedItems] = useState(ITEMS_PER_PAGE);
+  const [showMoreStats, setShowMoreStats] = useState(false);
+  const [onlyCurrentExercise, setOnlyCurrentExercise] = useState(false);
 
   // Données des paiements
   const { data: paymentsData, isLoading, isError, refetch }             = useRenflouementPayments();
   const payments: RenflouementPayment[] = useMemo(() => normalizeArray(paymentsData), [paymentsData]);
 
+  const { data: currentExercise } = useCurrentExercise();
+  const { data: allExercisesRaw } = useExercises();
+  const { data: renflouementsFinRaw } = useRenflouements({ type_cause: "RENFLOUEMENT_FIN_EXERCICE" });
+
+  const allExercises = useMemo(
+    () =>
+      [...normalizeArray(allExercisesRaw)].sort(
+        (a, b) => new Date(b.date_debut).getTime() - new Date(a.date_debut).getTime()
+      ),
+    [allExercisesRaw]
+  );
+
+  const exercicePrecedent = useMemo(() => {
+    if (!allExercises.length) return null;
+
+    if (currentExercise) {
+      // Cas normal : il y a un exercice en cours → le précédent est celui juste avant dans le tri
+      const idx = allExercises.findIndex((e) => e.id === currentExercise.id);
+      if (idx >= 0 && idx + 1 < allExercises.length) {
+        return allExercises[idx + 1];
+      }
+      // Fallback : premier TERMINE différent de l'actuel
+      return allExercises.find((e) => e.id !== currentExercise.id && e.statut === "TERMINE") ?? null;
+    }
+
+    // ✅ Pas d'exercice EN_COURS (ex: juste après clôture sans en recréer un)
+    // allExercises est déjà trié par date_debut DESC → le premier TERMINE est le plus récent
+    return allExercises.find((e) => e.statut === "TERMINE") ?? null;
+  }, [allExercises, currentExercise]);
+
+  const renflouementsExercicePrecedent = useMemo(() => {
+    const list = normalizeArray(renflouementsFinRaw) as Renflouement[];
+    if (!exercicePrecedent) return list;
+    return list.filter((r) => r.exercice_renflouement === exercicePrecedent.id);
+  }, [renflouementsFinRaw, exercicePrecedent]);
+
+  const statsRenflouementPrecedent = useMemo(() => {
+    const montantTotalGenere = renflouementsExercicePrecedent.reduce(
+      (sum, r) => sum + parseFloat(String(r.montant_du ?? 0)),
+      0
+    );
+    const cumulImpaye = renflouementsExercicePrecedent.reduce(
+      (sum, r) => sum + parseFloat(String(r.montant_restant ?? Math.max(0, Number(r.montant_du) - Number(r.montant_paye)))),
+      0
+    );
+    const cumulPaye = renflouementsExercicePrecedent.reduce(
+      (sum, r) => sum + parseFloat(String(r.montant_paye ?? 0)),
+      0
+    );
+
+    return { montantTotalGenere, cumulImpaye, cumulPaye };
+  }, [renflouementsExercicePrecedent]);
+
   // Filtrage + recherche
   const filteredPayments = useMemo(() => {
     let list = payments;
+    if (onlyCurrentExercise && currentExercise) list = list.filter((p) => p.session_info?.exercice === currentExercise.id);
     if (filterStatus === "solde")    list = list.filter((p) => p.renflouement_info.montant_restant <= 0);
     if (filterStatus === "partiel")  list = list.filter((p) => p.renflouement_info.montant_restant > 0);
     if (search.trim()) {
@@ -981,8 +1054,19 @@ export default function RenflouementScreen() {
         (p.notes ?? "").toLowerCase().includes(q)
       );
     }
-    return list.sort((a, b) => new Date(b.date_paiement).getTime() - new Date(a.date_paiement).getTime());
-  }, [payments, filterStatus, search]);
+    return list.sort((a, b) => {
+      const nameA = (a.membre_nom ?? "").toLocaleLowerCase();
+      const nameB = (b.membre_nom ?? "").toLocaleLowerCase();
+      const numA = (a.membre_numero ?? "").toLocaleLowerCase();
+      const numB = (b.membre_numero ?? "").toLocaleLowerCase();
+
+      if (nameA < nameB) return -1;
+      if (nameA > nameB) return 1;
+      if (numA < numB) return -1;
+      if (numA > numB) return 1;
+      return 0;
+    });
+  }, [payments, filterStatus, search, onlyCurrentExercise, currentExercise]);
 
   const paginatedPayments = useMemo(() => filteredPayments.slice(0, displayedItems), [filteredPayments, displayedItems]);
   const hasMore = displayedItems < filteredPayments.length;
@@ -997,6 +1081,14 @@ export default function RenflouementScreen() {
 
   // Stats calculées à partir des paiements
   const totalPayements = payments.reduce((s, p) => s + parseFloat(p.montant || "0"), 0);
+  const currentExercisePayments = useMemo(() => {
+    if (!currentExercise) return [] as RenflouementPayment[];
+    return payments.filter((p) => p.session_info?.exercice === currentExercise.id);
+  }, [payments, currentExercise]);
+
+  const totalPayementsCurrentExercise = currentExercisePayments.reduce((s, p) => s + parseFloat(p.montant || "0"), 0);
+  const nbrSoldesCurrentExercise = currentExercisePayments.filter((p) => p.renflouement_info.montant_restant <= 0).length;
+  const nbrPartielsCurrentExercise = currentExercisePayments.filter((p) => p.renflouement_info.montant_restant > 0).length;
   const nbrSoldes = payments.filter((p) => p.renflouement_info.montant_restant <= 0).length;
   const nbrPartiels = payments.filter((p) => p.renflouement_info.montant_restant > 0).length;
 
@@ -1033,9 +1125,51 @@ export default function RenflouementScreen() {
       >
         {/* ── Stats détaillées ── */}
         <View style={s.statsSection}>
-          <StatCard title="Total paiements"      value={formatCurrency(totalPayements)}      icon="cash-outline"     color={TEAL}          subtitle={`${payments.length} paiement${payments.length > 1 ? "s" : ""}`} />
-          <StatCard title="Renflouements soldés" value={`${nbrSoldes}`}                       icon="checkmark-circle" color={COLORS.success} subtitle={`${nbrSoldes} complètement payé${nbrSoldes > 1 ? "s" : ""}`} />
-          <StatCard title="Renflouements partiels" value={`${nbrPartiels}`}                   icon="time-outline"     color={COLORS.warning} subtitle={`${nbrPartiels} en cours de paiement`} />
+          <StatCard
+            title="Total renflouements générés (exercice précédent)"
+            value={formatCurrency(statsRenflouementPrecedent.montantTotalGenere)}
+            icon="calculator"
+            color={TEAL}
+            subtitle={
+              exercicePrecedent
+                ? `${exercicePrecedent.nom} · ${renflouementsExercicePrecedent.length} membre(s) concerné(s)`
+                : "Aucun exercice précédent identifié"
+            }
+          />
+          <StatCard
+            title="Cumul renflouements impayés"
+            value={formatCurrency(statsRenflouementPrecedent.cumulImpaye)}
+            icon="alert-circle"
+            color={COLORS.error}
+            subtitle={
+              exercicePrecedent
+                ? `Reste à recouvrer sur ${exercicePrecedent.nom}`
+                : "Aucun solde impayé à afficher"
+            }
+          />
+          <StatCard
+            title="Total paiements enregistrés (exercice en cours)"
+            value={formatCurrency(totalPayementsCurrentExercise)}
+            icon="cash"
+            color={COLORS.success}
+            subtitle={currentExercise ? currentExercise.nom : "Aucun exercice en cours"}
+          />
+          
+          <StatCard title="Renflouements soldés (exercice en cours)" value={`${nbrSoldesCurrentExercise}`} icon="checkmark-done" color={COLORS.success} />
+          <StatCard title="Renflouements partiels (exercice en cours)" value={`${nbrPartielsCurrentExercise}`} icon="time" color={COLORS.warning} />
+
+          {/* Toggle pour afficher/masquer les stats supplémentaires */}
+          <TouchableOpacity onPress={() => setShowMoreStats((v) => !v)} style={{ marginTop: SPACING.sm }}>
+            <Text style={{ color: TEAL, fontWeight: "700" }}>{showMoreStats ? "Voir moins" : "Voir plus de statistiques"}</Text>
+          </TouchableOpacity>
+
+          {showMoreStats && (
+            <View style={{ marginTop: SPACING.sm }}>
+              <StatCard title="Total paiements"      value={formatCurrency(totalPayements)}      icon="cash-outline"     color={TEAL}/>
+              <StatCard title="Renflouements soldés" value={` ${nbrSoldes}`}                       icon="checkmark-circle" color={COLORS.success}/>
+              <StatCard title="Renflouements partiels" value={` ${nbrPartiels}`}                   icon="time-outline"     color={COLORS.warning} />
+            </View>
+          )}
         </View>
 
         {/* ── Barre outils ── */}
@@ -1069,18 +1203,32 @@ export default function RenflouementScreen() {
         <View style={s.filters}>
           {(["all", "partiel", "solde"] as const).map((key) => {
             const labels: Record<string, string> = { all: "Tous", partiel: "Partiels", solde: "Soldés" };
-            const active = filterStatus === key;
+            // When the 'onlyCurrentExercise' chip is active, the other chips should appear inactive
+            const active = filterStatus === key && !onlyCurrentExercise;
             const dotColor = key === "partiel" ? COLORS.warning : key === "solde" ? COLORS.success : TEAL;
             return (
               <TouchableOpacity
                 key={key}
                 style={[s.filterChip, active && { backgroundColor: dotColor, borderColor: dotColor }]}
-                onPress={() => { setFilterStatus(key); setDisplayedItems(ITEMS_PER_PAGE); }}
+                onPress={() => { setFilterStatus(key); setOnlyCurrentExercise(false); setDisplayedItems(ITEMS_PER_PAGE); }}
               >
                 <Text style={[s.filterChipText, active && { color: "white" }]}>{labels[key]}</Text>
               </TouchableOpacity>
             );
           })}
+          <TouchableOpacity
+            style={[s.filterChip, onlyCurrentExercise && { backgroundColor: TEAL, borderColor: TEAL }]}
+            onPress={() => {
+              setOnlyCurrentExercise((v) => {
+                const next = !v;
+                if (next) setFilterStatus("all"); // make selection exclusive
+                return next;
+              });
+              setDisplayedItems(ITEMS_PER_PAGE);
+            }}
+          >
+            <Text style={[s.filterChipText, onlyCurrentExercise && { color: "white" }]}>{onlyCurrentExercise ? "Exercice: actif" : "Exercice en cours"}</Text>
+          </TouchableOpacity>
         </View>
 
         {/* ── Liste ── */}
