@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   View,
   Text,
@@ -20,7 +20,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import { useSavings, useCreateSaving, useSavingsStats } from "../../hooks/useSaving";
-import { useCreateWithdrawal, useSavingsAvailable } from "../../hooks/useWithdrawal";
+import { useCreateWithdrawal, useWithdrawals } from "../../hooks/useWithdrawal";
 import { useMembers } from "../../hooks/useMember";
 import { useCurrentSession } from "../../hooks/useSession";
 import { COLORS, SPACING, BORDER_RADIUS, FONT_SIZES } from "../../constants/config";
@@ -50,6 +50,27 @@ interface MemberSavings {
   derniere_transaction?: string;
 }
 
+type TransactionFilter = "DEPOT" | "RETRAIT_EPARGNE" | "RETRAIT_PRET" | "INTERET";
+
+interface TransactionListItem {
+  id: string;
+  type: TransactionFilter;
+  label: string;
+  amount: number;
+  date: string;
+  notes?: string;
+  memberName?: string;
+  memberNumber?: string;
+  sessionName?: string;
+}
+
+const transactionFilterOptions = [
+  { value: "DEPOT", label: "Dépôt", color: COLORS.success, activeBg: `${COLORS.success}18` },
+  { value: "RETRAIT_EPARGNE", label: "Retrait épargne", color: "#DC2626", activeBg: "#FEE2E2" },
+  { value: "RETRAIT_PRET", label: "Retrait pour prêt", color: COLORS.warning, activeBg: `${COLORS.warning}20` },
+  { value: "INTERET", label: "Intérêt", color: COLORS.primary, activeBg: `${COLORS.primary}18` },
+] as const;
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const formatCurrency = (amount: number | undefined | null): string => {
@@ -68,6 +89,110 @@ const getInitials = (name: string) =>
     .join("")
     .substring(0, 2)
     .toUpperCase();
+
+const normalizeSavingTransactionType = (
+  rawType?: string,
+  displayLabel?: string
+): TransactionFilter => {
+  const normalizedRaw = (rawType || "").toLowerCase();
+  const normalizedLabel = (displayLabel || "").toLowerCase();
+
+  const contains = (value: string) => normalizedLabel.includes(value);
+
+  if (normalizedRaw === "depot" || contains("dépôt") || contains("depot") || contains("versement")) {
+    return "DEPOT";
+  }
+
+  if (
+    normalizedRaw === "interet" ||
+    normalizedRaw === "ajout_interet" ||
+    contains("intérêt") ||
+    contains("interet") ||
+    contains("ajout d'intérêt") ||
+    contains("ajout d'interet")
+  ) {
+    return "INTERET";
+  }
+
+  if (
+    normalizedRaw === "retrait_pret" ||
+    normalizedRaw === "retrait_pour_pret" ||
+    contains("retrait pour prêt") ||
+    contains("retrait pour pret") ||
+    contains("retrait prêt") ||
+    contains("retrait pret") ||
+    contains("prêt")
+  ) {
+    return "RETRAIT_PRET";
+  }
+
+  if (
+    normalizedRaw === "retrait_epargne" ||
+    normalizedRaw === "retrait_epargnes" ||
+    contains("retrait épargne") ||
+    contains("retrait epargne") ||
+    contains("retrait d'épargne")
+  ) {
+    return "RETRAIT_EPARGNE";
+  }
+
+  if (contains("retour") && contains("remboursement")) {
+    return "DEPOT";
+  }
+
+  return "DEPOT";
+};
+
+const extractApiErrorMessage = (error: any): string => {
+  const data = error?.response?.data;
+
+  if (!data) {
+    return error?.message || "Impossible d'enregistrer le retrait.";
+  }
+
+  if (typeof data === "string") {
+    return data;
+  }
+
+  if (typeof data === "object") {
+    const candidates = [
+      data.detail,
+      data.details,
+      data.error,
+      data.message,
+      data.non_field_errors,
+      data.errors,
+    ];
+
+    for (const candidate of candidates) {
+      if (typeof candidate === "string" && candidate.trim()) {
+        return candidate;
+      }
+
+      if (Array.isArray(candidate)) {
+        const firstString = candidate.find((item: any) => typeof item === "string" && item.trim());
+        if (firstString) return firstString;
+
+        const nestedString = candidate.find((item: any) => typeof item?.message === "string" && item.message.trim());
+        if (nestedString) return nestedString.message;
+      }
+
+      if (candidate && typeof candidate === "object") {
+        const nestedMessage =
+          candidate.message ||
+          candidate.detail ||
+          candidate.error ||
+          candidate[0];
+
+        if (typeof nestedMessage === "string" && nestedMessage.trim()) {
+          return nestedMessage;
+        }
+      }
+    }
+  }
+
+  return error?.message || "Impossible d'enregistrer le retrait.";
+};
 
 // ─── StatCard ─────────────────────────────────────────────────────────────────
 
@@ -190,6 +315,7 @@ export default function SavingsScreen() {
   const [search, setSearch] = useState("");
   const [displayedItems, setDisplayedItems] = useState(ITEMS_PER_PAGE);
   const [refreshing, setRefreshing] = useState(false);
+  const [selectedFilter, setSelectedFilter] = useState<TransactionFilter | null>(null);
 
   // Modal multi-step
   const [showAddModal, setShowAddModal] = useState(false);
@@ -225,6 +351,11 @@ export default function SavingsScreen() {
     refetch: refetchSavings,
   } = useSavings();
   const {
+    data: withdrawalsData,
+    isLoading: loadingWithdrawals,
+    refetch: refetchWithdrawals,
+  } = useWithdrawals(currentSession?.id ? { session: currentSession.id } : undefined);
+  const {
     data: serverStats,
     isLoading: loadingStats,
     refetch: refetchStats,
@@ -252,6 +383,13 @@ export default function SavingsScreen() {
       return (membersData as any).results;
     return [];
   }, [membersData]);
+
+  const withdrawals = useMemo(() => {
+    if (Array.isArray(withdrawalsData)) return withdrawalsData;
+    if (withdrawalsData && Array.isArray((withdrawalsData as any).results))
+      return (withdrawalsData as any).results;
+    return [];
+  }, [withdrawalsData]);
 
   // ── Liste finale des épargnes par membre (serveur + local) ─────────────────
   const finalMembersList = useMemo((): MemberSavings[] => {
@@ -318,22 +456,61 @@ export default function SavingsScreen() {
   );
   const hasMore = displayedItems < searchedMembers.length;
 
-  // ── Transactions filtrées + paginées (liste principale) ──────────────────
-  const filteredSavings = useMemo(() => {
-    if (!search.trim()) return savings;
-    const q = search.toLowerCase();
-    return savings.filter(
-      (tx) =>
-        (tx.membre_info?.nom_complet ?? "").toLowerCase().includes(q) ||
-        (tx.membre_info?.numero_membre ?? "").toLowerCase().includes(q)
-    );
-  }, [savings, search]);
+  useEffect(() => {
+    setDisplayedItems(ITEMS_PER_PAGE);
+  }, [search, selectedFilter]);
 
-  const paginatedSavings = useMemo(
-    () => filteredSavings.slice(0, displayedItems),
-    [filteredSavings, displayedItems]
+  const combinedTransactions = useMemo<TransactionListItem[]>(() => {
+    const savingItems: TransactionListItem[] = savings.map((tx) => ({
+      id: `saving-${tx.id}`,
+      type: normalizeSavingTransactionType(tx.type_transaction, tx.type_transaction_display || tx.type_transaction),
+      label: tx.type_transaction_display || tx.type_transaction,
+      amount: Number(tx.montant),
+      date: tx.date_transaction,
+      notes: tx.notes,
+      memberName: tx.membre_info?.nom_complet,
+      memberNumber: tx.membre_info?.numero_membre,
+      sessionName: tx.session_nom,
+    }));
+
+    const withdrawalItems: TransactionListItem[] = withdrawals.map((w) => ({
+      id: `withdrawal-${w.id}`,
+      type: "RETRAIT_EPARGNE",
+      label: "Retrait épargne",
+      amount: Number(w.montant),
+      date: w.date_retrait,
+      notes: w.motif || w.notes_admin,
+      memberName: (w as any).membre_info?.nom || (w as any).membre_info?.nom_complet,
+      memberNumber: (w as any).membre_info?.numero_membre,
+      sessionName: w.session_nom,
+    }));
+
+    return [...savingItems, ...withdrawalItems].sort(
+      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+    );
+  }, [savings, withdrawals]);
+
+  const filteredTransactions = useMemo(() => {
+    const q = search.trim().toLowerCase();
+
+    return combinedTransactions.filter((tx) => {
+      const matchesFilter = !selectedFilter || tx.type === selectedFilter;
+      const matchesSearch =
+        !q ||
+        tx.label.toLowerCase().includes(q) ||
+        (tx.memberName ?? "").toLowerCase().includes(q) ||
+        (tx.memberNumber ?? "").toLowerCase().includes(q) ||
+        (tx.notes ?? "").toLowerCase().includes(q);
+
+      return matchesFilter && matchesSearch;
+    });
+  }, [combinedTransactions, search, selectedFilter]);
+
+  const paginatedTransactions = useMemo(
+    () => filteredTransactions.slice(0, displayedItems),
+    [filteredTransactions, displayedItems]
   );
-  const hasSavingsMore = displayedItems < filteredSavings.length;
+  const hasTransactionsMore = displayedItems < filteredTransactions.length;
 
   // ── Membres filtrés pour le modal (step 1) ─────────────────────────────────
   const modalFilteredMembers = useMemo(() => {
@@ -386,13 +563,13 @@ export default function SavingsScreen() {
   }, [selectedMember, savings]);
 
   // ── Loading / error ────────────────────────────────────────────────────────
-  const isLoading = loadingSavings || loadingMembers || loadingSession || loadingStats;
+  const isLoading = loadingSavings || loadingMembers || loadingSession || loadingStats || loadingWithdrawals;
 
   // ── Actions ────────────────────────────────────────────────────────────────
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      await Promise.all([refetchSavings(), refetchStats()]);
+      await Promise.all([refetchSavings(), refetchWithdrawals(), refetchStats()]);
     } catch (e) {
       console.error(e);
     }
@@ -525,11 +702,7 @@ export default function SavingsScreen() {
           );
         },
         onError: (error: any) => {
-          const errorMessage = 
-            error?.response?.data?.error ||
-            error?.response?.data?.details ||
-            error?.response?.data?.message ||
-            "Impossible d'enregistrer le retrait.";
+          const errorMessage = extractApiErrorMessage(error);
           Alert.alert("Erreur", errorMessage);
         },
       }
@@ -1323,15 +1496,50 @@ export default function SavingsScreen() {
                 </View>
               )}
 
+              <View style={styles.filterSection}>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.filterScrollContent}
+                >
+                  {transactionFilterOptions.map((option) => {
+                    const isActive = selectedFilter === option.value;
+                    return (
+                      <TouchableOpacity
+                        key={option.value}
+                        style={[
+                          styles.filterButton,
+                          isActive && {
+                            backgroundColor: option.activeBg,
+                            borderColor: option.color,
+                          },
+                        ]}
+                        onPress={() => setSelectedFilter((current) => (current === option.value ? null : option.value))}
+                        activeOpacity={0.85}
+                      >
+                        <Text
+                          style={[
+                            styles.filterButtonText,
+                            isActive && { color: option.color, fontWeight: "700" },
+                          ]}
+                        >
+                          {option.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+
               {/* Compteur transactions */}
-              {!isLoading && filteredSavings.length > 0 && (
+              {!isLoading && selectedFilter && filteredTransactions.length > 0 && (
                 <View style={styles.counter}>
                   <Ionicons name="list" size={16} color={"#B5179E"} />
                   <Text style={styles.counterText}>
-                    <Text style={styles.counterBold}>{paginatedSavings.length}</Text>
+                    <Text style={styles.counterBold}>{paginatedTransactions.length}</Text>
                     {" "}sur{" "}
-                    <Text style={styles.counterBold}>{filteredSavings.length}</Text>
-                    {" "} Transaction{filteredSavings.length > 1 ? "s" : ""}
+                    <Text style={styles.counterBold}>{filteredTransactions.length}</Text>
+                    {" "} Transaction{filteredTransactions.length > 1 ? "s" : ""}
                   </Text>
                 </View>
               )}
@@ -1343,47 +1551,44 @@ export default function SavingsScreen() {
                 <ActivityIndicator size="large" color="#B5179E" />
                 <Text style={styles.loadingText}>Chargement des transactions...</Text>
               </View>
-            ) : savings.length === 0 ? (
-              <View style={styles.emptyContainer}>
-                <Ionicons name="wallet-outline" size={72} color={COLORS.textLight} />
-                <Text style={styles.emptyTitle}>Aucune épargne enregistrée</Text>
+            ) : !selectedFilter ? (
+              <View style={styles.filterIntroContainer}>
+                <Ionicons name="filter-outline" size={64} color={COLORS.textLight} />
+                <Text style={styles.emptyTitle}>Choisissez un type de transaction</Text>
                 <Text style={styles.emptyText}>
-                  Commencez par enregistrer le premier dépôt d'épargne d'un membre.
+                  Les transactions s’afficheront ici au clic sur un filtre.
                 </Text>
-                {!readOnly && (
-                  <TouchableOpacity
-                    style={styles.emptyCreateButton}
-                    onPress={() => openAddModal()}
-                    activeOpacity={0.85}
-                  >
-                    <LinearGradient
-                      colors={["#B5179E", "#F72585"]}
-                      style={styles.emptyCreateGradient}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                    >
-                      <Ionicons name="add-circle-outline" size={20} color="white" />
-                      <Text style={styles.emptyCreateText}>Enregistrer une épargne</Text>
-                    </LinearGradient>
-                  </TouchableOpacity>
-                )}
               </View>
-            ) : filteredSavings.length === 0 ? (
+            ) : filteredTransactions.length === 0 ? (
               <View style={styles.centerContainer}>
                 <Ionicons name="search-outline" size={64} color={COLORS.textLight} />
                 <Text style={styles.emptyTitle}>Aucun résultat</Text>
                 <Text style={styles.emptyText}>
-                  Aucune transaction ne correspond à « {search} ».
+                  Aucune transaction ne correspond à « {search || "ce filtre"} ».
                 </Text>
               </View>
             ) : (
               <View style={styles.listContainer}>
-                {paginatedSavings.map((tx) => {
-                  const isDepot   = tx.type_transaction === "DEPOT";
-                  const isInteret = tx.type_transaction === "INTERET";
-                  const color     = isDepot ? COLORS.success : isInteret ? COLORS.primary : COLORS.error;
-                  const icon      = isDepot ? "arrow-up-circle" : isInteret ? "trending-up" : "arrow-down-circle";
-                  const sign      = isDepot || isInteret ? "" : "";
+                {paginatedTransactions.map((tx) => {
+                  const isDepot = tx.type === "DEPOT";
+                  const isInteret = tx.type === "INTERET";
+                  const isWithdrawal = tx.type === "RETRAIT_EPARGNE";
+                  const isPret = tx.type === "RETRAIT_PRET";
+                  const color = isDepot
+                    ? COLORS.success
+                    : isInteret
+                    ? COLORS.primary
+                    : isWithdrawal
+                    ? "#DC2626"
+                    : COLORS.warning;
+                  const icon = isDepot
+                    ? "arrow-up-circle"
+                    : isInteret
+                    ? "trending-up"
+                    : isWithdrawal
+                    ? "arrow-down-circle"
+                    : "cash-outline";
+                  const amountPrefix = isWithdrawal || isPret ? "-" : "";
                   return (
                     <View
                       key={tx.id}
@@ -1394,27 +1599,25 @@ export default function SavingsScreen() {
                       </View>
                       <View style={styles.txBody}>
                         <View style={styles.txTopRow}>
-                          <Text style={styles.txType}>{tx.type_transaction_display || tx.type_transaction}</Text>
+                          <Text style={styles.txType}>{tx.label}</Text>
                           <Text style={styles.txDate}>
-                            {tx.date_transaction
-                              ? new Date(tx.date_transaction).toLocaleDateString("fr-FR")
-                              : "—"}
+                            {tx.date ? new Date(tx.date).toLocaleDateString("fr-FR") : "—"}
                           </Text>
                         </View>
                         <Text style={[styles.txAmount, { color }]}>
-                          {sign} {formatCurrency(Math.abs(Number(tx.montant)))}
+                          {amountPrefix}{formatCurrency(Math.abs(Number(tx.amount)))}
                         </Text>
-                        {(tx.membre_info?.nom_complet) && (
+                        {(tx.memberName) && (
                           <View style={styles.txMemberRow}>
                             <Ionicons name="person-circle-outline" size={13} color={COLORS.textSecondary} />
                             <Text style={styles.txMemberText}>
-                              {tx.membre_info.nom_complet}
-                              {tx.membre_info.numero_membre ? `  ·  ${tx.membre_info.numero_membre}` : ""}
+                              {tx.memberName}
+                              {tx.memberNumber ? `  ·  ${tx.memberNumber}` : ""}
                             </Text>
                           </View>
                         )}
-                        {tx.session_nom && (
-                          <Text style={styles.txSession}>{tx.session_nom}</Text>
+                        {tx.sessionName && (
+                          <Text style={styles.txSession}>{tx.sessionName}</Text>
                         )}
                         {tx.notes && (
                           <Text style={styles.txNotes} numberOfLines={1}>{tx.notes}</Text>
@@ -1424,10 +1627,10 @@ export default function SavingsScreen() {
                   );
                 })}
 
-                {hasSavingsMore && (
+                {hasTransactionsMore && (
                   <TouchableOpacity
                     style={styles.loadMoreButton}
-                    onPress={() => setDisplayedItems((p) => Math.min(p + ITEMS_PER_PAGE, filteredSavings.length))}
+                    onPress={() => setDisplayedItems((p) => Math.min(p + ITEMS_PER_PAGE, filteredTransactions.length))}
                   >
                     <LinearGradient
                       colors={["#B5179E", "#F72585"]}
@@ -1436,8 +1639,8 @@ export default function SavingsScreen() {
                       end={{ x: 1, y: 0 }}
                     >
                       <Text style={styles.loadMoreText}>
-                        Voir plus ({filteredSavings.length - displayedItems} restant
-                        {filteredSavings.length - displayedItems !== 1 ? "s" : ""})
+                        Voir plus ({filteredTransactions.length - displayedItems} restant
+                        {filteredTransactions.length - displayedItems !== 1 ? "s" : ""})
                       </Text>
                       <Ionicons name="chevron-down" size={20} color="white" />
                     </LinearGradient>
@@ -1672,6 +1875,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     marginTop: SPACING.xl,
   },
+  filterSection: {
+    marginTop: SPACING.md,
+  },
+  filterScrollContent: {
+    paddingRight: SPACING.md,
+  },
+  filterButton: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: 999,
+    borderWidth: 1,
+    marginRight: SPACING.sm,
+    backgroundColor: COLORS.surface,
+  },
+  filterButtonText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: "600",
+    color: COLORS.textSecondary,
+  },
   searchRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -1874,6 +2096,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
   },
   emptyContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: SPACING.xxl,
+    paddingHorizontal: SPACING.xl,
+  },
+  filterIntroContainer: {
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: SPACING.xxl,
