@@ -25,6 +25,28 @@ export const fetchRenflouementPayments = async (accessToken: string, params?: Re
   return Array.isArray(data) ? data : data?.results ?? [];
 };
 
+export const fetchRenflouementExerciceDetail = async (accessToken: string, exerciceId: string): Promise<any> => {
+  const { data } = await axios.get(
+    API_BASE_URL + API_ENDPOINTS.renflouementsExerciceDetail,
+    {
+      params: { exercice_id: exerciceId },
+      headers: { Authorization: `Bearer ${accessToken}` }
+    }
+  );
+  return data;
+};
+
+export const fetchRenflouementHistoryByMember = async (accessToken: string, memberId: string): Promise<any> => {
+  const { data } = await axios.get(
+    API_BASE_URL + API_ENDPOINTS.renflouementsParMembre,
+    {
+      params: { membre_id: memberId },
+      headers: { Authorization: `Bearer ${accessToken}` }
+    }
+  );
+  return data;
+};
+
 export const fetchRenflouementStats = async (accessToken: string): Promise<any> => {
   const { data } = await axios.get(API_BASE_URL + API_ENDPOINTS.renflouementStats, {
     headers: { Authorization: `Bearer ${accessToken}` }

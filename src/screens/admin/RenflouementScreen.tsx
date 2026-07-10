@@ -5,1336 +5,1354 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  TextInput,
+  RefreshControl,
+  StatusBar,
+  Dimensions,
   Modal,
+  TextInput,
+  FlatList,
   ActivityIndicator,
   Alert,
-  Dimensions,
-  Platform,
-  KeyboardAvoidingView,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { BlurView } from "expo-blur";
-import {
-  useRenflouements,
-  useRenflouementStats,
-  useCreateRenflouementPayment,
-  useRenflouementsByMembre,
-  usePayRenflouementWithSavings,
-  useRenflouementPayments,
-} from "../../hooks/useRenflouement";
-import { useCurrentExercise, useExercises } from "../../hooks/useExercise";
-import { useMembers } from "../../hooks/useMember";
-import { Renflouement, RenflouementPayment } from "../../types/renflouement.types";
-import { Member } from "../../types/member.types";
 import { COLORS, SPACING, BORDER_RADIUS, FONT_SIZES } from "../../constants/config";
 import { useAuthContext } from "../../context/AuthContext";
-import { useNavigation } from "@react-navigation/native";
+import { useQueryClient } from "@tanstack/react-query";
+import NotificationButton from "../../components/NotificationButton";
+import {
+  useRenfloulementExerciceDetail,
+  useRenfloulementHistoryByMember,
+  usePayRenflouementWithSavings,
+} from "../../hooks/useRenflouement";
+import { useExercises } from "../../hooks/useListData";
+import { useMembers } from "../../hooks/useMember";
 import { formatCurrency, formatDate } from "../../utils/formatters";
 import { getInitials, normalizeArray } from "../../utils/helpers";
 
 const { width } = Dimensions.get("window");
 const ITEMS_PER_PAGE = 10;
-const MODAL_ITEMS_PER_PAGE = 8;
-
-// ─── Thème ────────────────────────────────────────────────────────────────────
-const TEAL  = "#14B8A6";
+const TEAL = "#14B8A6";
 const TEAL2 = "#0D9488";
 
-// ─── StatCard ────────────────────────────────────────────────────────────────
+type TabView = "exercices" | "membres";
+
+// ─────────────────────────────────────────────
+// 📊 STAT CARD COMPACT
+// ─────────────────────────────────────────────
 const StatCard = ({
-  title, value, icon, color, subtitle,
-}: { title: string; value: string; icon: string; color: string; subtitle?: string }) => (
-  <View style={[sc.card, { borderLeftColor: color }]}>
-    <View style={[sc.icon, { backgroundColor: color + "20" }]}>
-      <Ionicons name={icon as any} size={22} color={color} />
+  title,
+  value,
+  icon,
+  color,
+}: {
+  title: string;
+  value: string;
+  icon: string;
+  color: string;
+}) => (
+  <View style={[styles.statCard, { borderLeftColor: color }]}>
+    <View style={[styles.statIcon, { backgroundColor: color + "15" }]}>
+      <Ionicons name={icon as any} size={14} color={color} />
     </View>
     <View style={{ flex: 1 }}>
-      <Text style={sc.title}>{title}</Text>
-      <Text style={[sc.value, { color }]}>{value}</Text>
-      {subtitle && <Text style={sc.subtitle}>{subtitle}</Text>}
+      <Text style={styles.statLabel}>{title}</Text>
+      <Text style={[styles.statValue, { color }]}>{value}</Text>
     </View>
   </View>
 );
 
-const sc = StyleSheet.create({
-  card:     { flexDirection: "row", alignItems: "center", backgroundColor: "white", borderRadius: 14, padding: SPACING.md, borderLeftWidth: 4, marginBottom: SPACING.sm, elevation: 1, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 3, gap: SPACING.md },
-  icon:     { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
-  title:    { fontSize: FONT_SIZES.sm, color: COLORS.textSecondary, marginBottom: 2 },
-  value:    { fontSize: FONT_SIZES.lg, fontWeight: "800" },
-  subtitle: { fontSize: FONT_SIZES.xs, color: COLORS.textSecondary, marginTop: 1 },
-});
-
-// ─── Carte paiement renflouement (liste principale) ───────────────────────────
-const RenflouementPaymentCard = ({ item }: { item: RenflouementPayment }) => {
-  const montantNum = parseFloat(item.montant);
-  const progress = Math.min(
-    100,
-    (item.renflouement_info.montant_paye / item.renflouement_info.montant_du) * 100
-  );
-  const isSolde = item.renflouement_info.montant_restant <= 0;
-  const color = isSolde ? COLORS.success : TEAL;
+// ─────────────────────────────────────────────
+// 🏢 CARD SIMPLE EXERCICE
+// ─────────────────────────────────────────────
+const ExerciceSimpleCard = ({
+  item,
+  onPress,
+}: {
+  item: any;
+  onPress: () => void;
+}) => {
+  const stats = item.renflouement_stats || {
+    montant_total_du: 0,
+    montant_total_paye: 0,
+    montant_total_restant: 0,
+  };
+  
+  const totalDu = stats.montant_total_du;
+  const totalPaye = stats.montant_total_paye;
+  const restant = stats.montant_total_restant || (totalDu - totalPaye);
 
   return (
-    <View style={rfc.card}>
-      <View style={[rfc.stripe, { backgroundColor: color }]} />
-      <View style={rfc.body}>
-        {/* Top row: Member info + Session */}
-        <View style={rfc.topRow}>
-          <LinearGradient colors={[TEAL, TEAL2]} style={rfc.avatar}>
-            <Text style={rfc.avatarText}>{getInitials(item.membre_nom ?? "")}</Text>
-          </LinearGradient>
-          <View style={{ flex: 1 }}>
-            <Text style={rfc.name}>{item.membre_nom}</Text>
-            <Text style={rfc.numero}>{item.membre_numero}</Text>
-            <Text style={[rfc.numero, { fontSize: FONT_SIZES.xs, marginTop: 2 }]}>
-              {item.session_info?.exercice_nom} - {item.session_info?.nom}
-            </Text>
-          </View>
-          <View style={[rfc.badge, { backgroundColor: color + "20" }]}>
-            <Text style={[rfc.badgeText, { color }]}>
-              {isSolde ? "Soldé" : "Partiel"}
-            </Text>
-          </View>
+    <TouchableOpacity style={styles.simpleCard} onPress={onPress} activeOpacity={0.7}>
+      <View style={styles.simpleCardHeader}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.simpleCardTitle}>{item.nom}</Text>
+          <Text style={styles.simpleCardDate}>
+            {new Date(item.date_debut).toLocaleDateString("fr-FR")}
+          </Text>
         </View>
-
-        {/* Montants: Dû, Payé ce jour, Restant */}
-        <View style={rfc.amountsRow}>
-          <View style={rfc.amountItem}>
-            <Text style={rfc.amountLabel}>Dû</Text>
-            <Text style={[rfc.amountValue, { color: TEAL }]}>
-              {formatCurrency(item.renflouement_info.montant_du)}
-            </Text>
-          </View>
-          <View style={rfc.amountItem}>
-            <Text style={rfc.amountLabel}>Ce paiement</Text>
-            <Text style={[rfc.amountValue, { color: COLORS.success }]}>{formatCurrency(montantNum)}</Text>
-          </View>
-          <View style={rfc.amountItem}>
-            <Text style={rfc.amountLabel}>Restant</Text>
-            <Text style={[rfc.amountValue, { color: item.renflouement_info.montant_restant > 0 ? COLORS.error : COLORS.success }]}>
-              {item.renflouement_info.montant_restant > 0 ? formatCurrency(item.renflouement_info.montant_restant) : "0,00"}
-            </Text>
-          </View>
-        </View>
-
-        {/* Barre progression */}
-        <View style={rfc.progressWrap}>
-          <View style={rfc.progressBg}>
-            <View style={[rfc.progressFill, { width: `${progress}%` as any, backgroundColor: color }]} />
-          </View>
-          <Text style={rfc.progressLabel}>{progress.toFixed(0)}% payé</Text>
-        </View>
-
-        {/* Répartition */}
-        <View style={rfc.repartitionBox}>
-          <View style={rfc.repartitionItem}>
-            <View style={[rfc.repartitionDot, { backgroundColor: COLORS.primary }]} />
-            <View>
-              <Text style={rfc.repartitionLabel}>Caisse</Text>
-              <Text style={rfc.repartitionValue}>{item.repartition_detail.caisse_inscription}</Text>
-            </View>
-          </View>
-          <View style={rfc.repartitionItem}>
-            <View style={[rfc.repartitionDot, { backgroundColor: COLORS.warning }]} />
-            <View>
-              <Text style={rfc.repartitionLabel}>Fonds social</Text>
-              <Text style={rfc.repartitionValue}>{item.repartition_detail.fonds_social}</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Footer */}
-        <View style={rfc.footer}>
-          <View style={rfc.footerItem}>
-            <Ionicons name="calendar-outline" size={12} color={COLORS.textSecondary} />
-            <Text style={rfc.footerText}>{formatDate(item.date_paiement)}</Text>
-          </View>
-          {item.notes ? (
-            <View style={rfc.footerItem}>
-              <Ionicons name="document-text-outline" size={12} color={COLORS.textSecondary} />
-              <Text style={[rfc.footerText, { maxWidth: 150 }]} numberOfLines={1}>{item.notes}</Text>
-            </View>
-          ) : null}
+        <View style={[styles.simpleBadge, { backgroundColor: item.statut === "TERMINE" ? "#F3F4F615" : "#4361EE15" }]}>
+          <Text style={[styles.simpleBadgeText, { color: item.statut === "TERMINE" ? "#666" : "#4361EE" }]}>
+            {item.statut}
+          </Text>
         </View>
       </View>
-    </View>
+
+      <View style={styles.simpleCardAmounts}>
+        <View style={styles.simpleAmount}>
+          <Text style={styles.simpleAmountLabel}>A collecter</Text>
+          <Text style={styles.simpleAmountValue}>{formatCurrency(totalDu)}</Text>
+        </View>
+        <View style={styles.simpleAmount}>
+          <Text style={styles.simpleAmountLabel}>Collecte</Text>
+          <Text style={[styles.simpleAmountValue, { color: COLORS.success }]}>
+            {formatCurrency(totalPaye)}
+          </Text>
+        </View>
+        <View style={styles.simpleAmount}>
+          <Text style={styles.simpleAmountLabel}>Restant</Text>
+          <Text style={[styles.simpleAmountValue, { color: restant > 0 ? COLORS.error : COLORS.success }]}>
+            {formatCurrency(restant)}
+          </Text>
+        </View>
+      </View>
+    </TouchableOpacity>
   );
 };
 
-const rfc = StyleSheet.create({
-  card:         { backgroundColor: "white", borderRadius: 16, overflow: "hidden", marginBottom: SPACING.md, elevation: 2, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.08, shadowRadius: 4, flexDirection: "row" },
-  stripe:       { width: 5 },
-  body:         { flex: 1, padding: SPACING.md },
-  topRow:       { flexDirection: "row", alignItems: "flex-start", marginBottom: SPACING.sm },
-  avatar:       { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", marginRight: SPACING.sm, marginTop: 3 },
-  avatarText:   { color: "white", fontWeight: "800", fontSize: FONT_SIZES.md },
-  name:         { fontSize: FONT_SIZES.md, fontWeight: "700", color: COLORS.text },
-  numero:       { fontSize: FONT_SIZES.sm, color: COLORS.textSecondary },
-  badge:        { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20 },
-  badgeText:    { fontSize: 11, fontWeight: "700" },
-  amountsRow:   { flexDirection: "row", justifyContent: "space-between", borderTopWidth: 1, borderTopColor: "#F5F5F5", paddingTop: SPACING.sm, marginBottom: SPACING.sm },
-  amountItem:   { alignItems: "center", flex: 1 },
-  amountLabel:  { fontSize: 10, color: COLORS.textSecondary, marginBottom: 2 },
-  amountValue:  { fontSize: FONT_SIZES.sm, fontWeight: "800" },
-  progressWrap: { marginBottom: SPACING.sm },
-  progressBg:   { height: 6, backgroundColor: "#F0F0F0", borderRadius: 3, marginBottom: 4 },
-  progressFill: { height: 6, borderRadius: 3 },
-  progressLabel:{ fontSize: 10, color: COLORS.textSecondary, textAlign: "right" },
-  repartitionBox:   { backgroundColor: "#F9FAFB", borderRadius: 12, padding: SPACING.sm, marginBottom: SPACING.sm, flexDirection: "row", gap: SPACING.md },
-  repartitionItem:  { flex: 1, flexDirection: "row", alignItems: "flex-start", gap: 6 },
-  repartitionDot:   { width: 10, height: 10, borderRadius: 5, marginTop: 2 },
-  repartitionLabel: { fontSize: 10, color: COLORS.textSecondary },
-  repartitionValue: { fontSize: 11, fontWeight: "700", color: COLORS.text, marginTop: 2 },
-  footer:       { flexDirection: "row", gap: SPACING.md, flexWrap: "wrap" },
-  footerItem:   { flexDirection: "row", alignItems: "center", gap: 3 },
-  footerText:   { fontSize: 10, color: COLORS.textSecondary },
-});
+// ─────────────────────────────────────────────
+// 👤 CARD SIMPLE MEMBRE
+// ─────────────────────────────────────────────
+const MemberSimpleCard = ({
+  item,
+  totalRenflouement,
+  onPress,
+}: {
+  item: any;
+  totalRenflouement: number;
+  onPress: () => void;
+}) => {
+  return (
+    <TouchableOpacity style={styles.simpleCard} onPress={onPress} activeOpacity={0.7}>
+      <View style={styles.memberCardTop}>
+        <LinearGradient colors={[TEAL, TEAL2]} style={styles.smallAvatar}>
+          <Text style={styles.smallInitials}>{getInitials(item.utilisateur?.nom_complet || "")}</Text>
+        </LinearGradient>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.simpleCardTitle}>{item.utilisateur?.nom_complet}</Text>
+          <Text style={styles.simpleCardDate}>{item.numero_membre}</Text>
+          <Text style={[styles.simpleCardDate, { color: item.statut === "EN_REGLE" ? COLORS.success : COLORS.warning }]}>
+            {item.statut}
+          </Text>
+        </View>
+      </View>
+      <View style={styles.memberCardFooter}>
+        <Text style={styles.memberTotalLabel}>Total renflouements :</Text>
+        <Text style={[styles.memberTotalValue, { color: TEAL }]}>
+          {formatCurrency(totalRenflouement)}
+        </Text>
+      </View>
+    </TouchableOpacity>
+  );
+};
 
-// ─── Formulaire multi-step ────────────────────────────────────────────────────
-interface MultiStepProps {
+// ─────────────────────────────────────────────
+// 📄 MODAL DETAIL EXERCICE
+// ─────────────────────────────────────────────
+interface DetailModalProps {
   visible: boolean;
+  title: string;
+  stats: any;
+  members: any[];
+  isLoading: boolean;
+  isMemberView?: boolean;
   onClose: () => void;
-  onSuccess: () => void;
+  onSelectMember: (member: any) => void;
 }
 
-const STEP_LABELS: Record<1 | 2 | 3 | 4 , string> = {
-  1: "Choisir un membre",
-  2: "Sélectionner un renflouement",
-  3: "Saisir le montant",
-  4: "Confirmer",
-};
-
-const MultiStepModal = ({ visible, onClose, onSuccess }: MultiStepProps) => {
-  const createPayment = useCreateRenflouementPayment();
-
-  const [step, setStep]                           = useState<1 | 2 | 3 | 4 >(1);
-  const [memberFilter, setMemberFilter]           = useState<"EN_REGLE" | "all">("EN_REGLE");
-  const [memberSearch, setMemberSearch]           = useState("");
-  const [memberPage, setMemberPage]               = useState(MODAL_ITEMS_PER_PAGE);
-  const [selectedMember, setSelectedMember]       = useState<Member | null>(null);
-  const [selectedRenflouement, setSelectedRenflouement] = useState<Renflouement | null>(null);
-  const [amount, setAmount]                       = useState("");
-  const [notes, setNotes]                         = useState("");
-  const payWithSavings = usePayRenflouementWithSavings();
-  
-  // Membres
-  const { data: membersRaw, isLoading: loadingMembers } = useMembers(
-    memberFilter === "EN_REGLE" ? { statut: "EN_REGLE" } : {}
-  );
-  const members: Member[] = useMemo(() => normalizeArray(membersRaw), [membersRaw]);
-
-  // Renflouements du membre sélectionné
-  const {
-    data: membreRenflouements = [],
-    isLoading: loadingRenflouements,
-    isError: errorRenflouements,
-  } = useRenflouementsByMembre(selectedMember?.id ?? null);
-
-  // Renflouements non soldés uniquement (pour le step 3)
-  const nonSoldes = useMemo(
-    () => membreRenflouements.filter((r) => !r.is_solde),
-    [membreRenflouements]
-  );
-
-  const montantSaisi   = parseFloat(amount) || 0;
-  const montantRestant = selectedRenflouement?.montant_restant ?? 0;
-  const montantInvalide = montantSaisi <= 0 || (montantSaisi > montantRestant + 100) || !Number.isInteger(montantSaisi);
-  const reset = () => {
-    setStep(1);
-    setMemberSearch("");
-    setMemberPage(MODAL_ITEMS_PER_PAGE);
-    setSelectedMember(null);
-    setSelectedRenflouement(null);
-    setAmount("");
-    setNotes("");
-    setMemberFilter("EN_REGLE");
-  };
-
-  const handleSavingsPayment = () => {
-    if (!selectedRenflouement || montantSaisi <= 0) return;
-    let finalMontant = montantSaisi;
-    if (finalMontant > montantRestant && finalMontant <= montantRestant + 100) {
-      finalMontant = montantRestant;
-    }
-
-    // Confirmation Alert
-    Alert.alert(
-      "Confirmer le paiement",
-      `Payer ${formatCurrency(finalMontant)} pour ${selectedMember?.utilisateur?.nom_complet}?\n\nReste à payer après: ${formatCurrency(montantRestant - finalMontant)}`,
-      [
-        { text: "Annuler", onPress: () => {}, style: "cancel" },
-        {
-          text: "Confirmer",
-          onPress: () => {
-            payWithSavings.mutate(
-              {
-                renflouementId: selectedRenflouement.id,
-                montant: finalMontant,
-                notes: notes.trim(),
-              },
-              {
-                onSuccess: () => {
-                  reset();
-                  onClose();
-                  onSuccess();
-                  Alert.alert(
-                    "✅ Succès",
-                    `Paiement de ${formatCurrency(finalMontant)} effectué avec succès depuis l'épargne !`,
-                    [{ text: "OK", style: "default" }]
-                  );
-                },
-                onError: (error: any) => {
-                  let errorMessage = "Impossible d'effectuer le paiement avec l'épargne.";
-                  const responseData = error?.response?.data;
-                  
-                  if (responseData) {
-                    if (responseData.error) {
-                      errorMessage = responseData.error;
-                    } else if (responseData.details) {
-                      errorMessage = responseData.details;
-                    } else if (responseData.message) {
-                      errorMessage = responseData.message;
-                    } else if (typeof responseData === 'object') {
-                      const firstKey = Object.keys(responseData)[0];
-                      if (firstKey && Array.isArray(responseData[firstKey])) {
-                        errorMessage = responseData[firstKey][0];
-                      } else if (firstKey && typeof responseData[firstKey] === 'string') {
-                        errorMessage = responseData[firstKey];
-                      }
-                    }
-                  } else if (error?.message) {
-                    errorMessage = error.message;
-                  }
-
-                  Alert.alert("Erreur", errorMessage, [{ text: "OK", style: "default" }]);
-                },
-              }
-            );
-          },
-          style: "default",
-        },
-      ]
-    );
-  };
-
-  const handleClose = () => { reset(); onClose(); };
-
-  const handleSubmit = () => {
-    if (!selectedRenflouement || montantSaisi <= 0) return;
-
-    // Confirmation Alert
-    Alert.alert(
-      "Confirmer le paiement",
-      `Payer ${formatCurrency(montantSaisi)} pour ${selectedMember?.utilisateur?.nom_complet}?\n\nReste à payer après: ${formatCurrency(montantRestant - montantSaisi)}`,
-      [
-        { text: "Annuler", onPress: () => {}, style: "cancel" },
-        {
-          text: "Confirmer",
-          onPress: () => {
-            createPayment.mutate(
-              {
-                renflouement: selectedRenflouement.id,
-                montant: montantSaisi,
-                notes: notes.trim(),
-              },
-              {
-                onSuccess: () => {
-                  reset();
-                  onClose();
-                  onSuccess();
-                  Alert.alert(
-                    "✅ Succès",
-                    `Paiement de ${formatCurrency(montantSaisi)} enregistré avec succès !`,
-                    [{ text: "OK", style: "default" }]
-                  );
-                },
-                onError: (err: any) => {
-                  let errorMessage = "Impossible d'enregistrer le paiement.";
-                  
-                  if (err?.response?.data?.error) {
-                    errorMessage = err.response.data.error;
-                  } else if (err?.response?.data?.details) {
-                    errorMessage = err.response.data.details;
-                  } else if (err?.response?.data?.message) {
-                    errorMessage = err.response.data.message;
-                  } else if (typeof err?.response?.data === 'object') {
-                    const firstKey = Object.keys(err.response.data)[0];
-                    if (firstKey && Array.isArray(err.response.data[firstKey])) {
-                      errorMessage = err.response.data[firstKey][0];
-                    } else if (firstKey && typeof err.response.data[firstKey] === 'string') {
-                      errorMessage = err.response.data[firstKey];
-                    }
-                  } else if (err?.message) {
-                    errorMessage = err.message;
-                  }
-
-                  Alert.alert("❌ Erreur", errorMessage, [{ text: "OK", style: "default" }]);
-                },
-              }
-            );
-          },
-          style: "default",
-        },
-      ]
-    );
-  };
-
-  // Membres filtrés + paginés
-  const filteredMembers = useMemo(() => {
-    const q = memberSearch.toLowerCase().trim();
-    let list = members;
-
-    if (q) {
-      list = list.filter((m) =>
-        (m.utilisateur?.nom_complet ?? "").toLowerCase().includes(q) ||
-        (m.numero_membre ?? "").toLowerCase().includes(q) ||
-        (m.utilisateur?.email ?? "").toLowerCase().includes(q)
-      );
-    }
-
-    return [...list].sort((a, b) => {
-      const nameA = (a.utilisateur?.nom_complet ?? "").toLocaleLowerCase();
-      const nameB = (b.utilisateur?.nom_complet ?? "").toLocaleLowerCase();
-      const numA = (a.numero_membre ?? "").toLocaleLowerCase();
-      const numB = (b.numero_membre ?? "").toLocaleLowerCase();
-
-      if (nameA < nameB) return -1;
-      if (nameA > nameB) return 1;
-      if (numA < numB) return -1;
-      if (numA > numB) return 1;
-      return 0;
-    });
-  }, [members, memberSearch]);
-
-  const paginatedMembers = filteredMembers.slice(0, memberPage);
-  const hasMoreMembers   = memberPage < filteredMembers.length;
-
-  return (
-    <Modal visible={visible} animationType="slide" transparent statusBarTranslucent>
-      <BlurView intensity={80} style={StyleSheet.absoluteFillObject} />
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-      >
-        <View style={ms.overlay}>
-          <View style={ms.sheet}>
-
-            {/* ── Header ── */}
-            <LinearGradient colors={[TEAL, TEAL2]} style={ms.header}>
-              {/* Indicateur d'étapes */}
-              <View style={ms.stepBar}>
-                {([1, 2, 3, 4] as const).map((s) => (
-                  <View key={s} style={ms.stepBarItem}>
-                    <View style={[ms.stepDot, step >= s && ms.stepDotActive]}>
-                      {step > s
-                        ? <Ionicons name="checkmark" size={10} color={TEAL} />
-                        : <Text style={[ms.stepNum, step === s && { color: TEAL }]}>{s}</Text>}
-                    </View>
-                    {s < 4 && <View style={[ms.stepLine, step > s && ms.stepLineActive]} />}
-                  </View>
-                ))}
-              </View>
-              <View style={ms.headerRow}>
-                <TouchableOpacity onPress={handleClose} style={ms.closeBtn}>
-                  <Ionicons name="close" size={22} color="white" />
-                </TouchableOpacity>
-                <Text style={ms.headerTitle}>{STEP_LABELS[step]}</Text>
-                <View style={{ width: 36 }} />
-              </View>
-            </LinearGradient>
-
-            {/* ══ STEP 1 : Choisir un membre ══ */}
-            {step === 1 && (
-              <>
-                {/* Filtres EN_REGLE / Tous */}
-                <View style={ms.filterRow}>
-                  <TouchableOpacity
-                    style={[ms.filterChip, memberFilter === "EN_REGLE" && ms.filterChipActive]}
-                    onPress={() => { setMemberFilter("EN_REGLE"); setMemberPage(MODAL_ITEMS_PER_PAGE); }}
-                  >
-                    <Text style={[ms.filterChipText, memberFilter === "EN_REGLE" && { color: "white" }]}>En règle</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[ms.filterChip, memberFilter === "all" && ms.filterChipActive]}
-                    onPress={() => { setMemberFilter("all"); setMemberPage(MODAL_ITEMS_PER_PAGE); }}
-                  >
-                    <Text style={[ms.filterChipText, memberFilter === "all" && { color: "white" }]}>Tous</Text>
-                  </TouchableOpacity>
-                </View>
-
-                {/* Recherche */}
-                <View style={ms.searchBox}>
-                  <Ionicons name="search" size={18} color={COLORS.textSecondary} />
-                  <TextInput
-                    style={ms.searchInput}
-                    value={memberSearch}
-                    onChangeText={(v) => { setMemberSearch(v); setMemberPage(MODAL_ITEMS_PER_PAGE); }}
-                    placeholder="Rechercher par nom, numéro, email…"
-                    placeholderTextColor={COLORS.textLight}
-                    autoFocus
-                  />
-                  {memberSearch.length > 0 && (
-                    <TouchableOpacity onPress={() => setMemberSearch("")}>
-                      <Ionicons name="close-circle" size={18} color={COLORS.textSecondary} />
-                    </TouchableOpacity>
-                  )}
-                </View>
-                <Text style={ms.resultCount}>{filteredMembers.length} membre{filteredMembers.length !== 1 ? "s" : ""}</Text>
-
-                <ScrollView style={{ flex: 1 }} contentContainerStyle={ms.listPad} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-                  {loadingMembers ? (
-                    <View style={ms.center}><ActivityIndicator size="large" color={TEAL} /></View>
-                  ) : filteredMembers.length === 0 ? (
-                    <View style={ms.center}>
-                      <Ionicons name="people-outline" size={48} color={COLORS.textLight} />
-                      <Text style={ms.emptyText}>Aucun membre trouvé</Text>
-                    </View>
-                  ) : (
-                    <>
-                      {paginatedMembers.map((m) => (
-                        <TouchableOpacity
-                          key={m.id}
-                          style={ms.memberCard}
-                          onPress={() => { setSelectedMember(m); setStep(2); }}
-                          activeOpacity={0.8}
-                        >
-                          <LinearGradient colors={[TEAL, TEAL2]} style={ms.memberAvatar}>
-                            <Text style={ms.memberInitials}>{getInitials(m.utilisateur?.nom_complet ?? "")}</Text>
-                          </LinearGradient>
-                          <View style={{ flex: 1 }}>
-                            <Text style={ms.memberName}>{m.utilisateur?.nom_complet}</Text>
-                            <Text style={ms.memberNumero}>{m.numero_membre}</Text>
-                            <Text style={ms.memberEmail} numberOfLines={1}>{m.utilisateur?.email}</Text>
-                          </View>
-                          <View style={[ms.statusBadge, {
-                            backgroundColor: (m.statut === "EN_REGLE" ? COLORS.success : COLORS.warning) + "20"
-                          }]}>
-                            <Text style={[ms.statusText, {
-                              color: m.statut === "EN_REGLE" ? COLORS.success : COLORS.warning
-                            }]}>
-                              {m.statut === "EN_REGLE" ? "En règle" : m.statut ?? "—"}
-                            </Text>
-                          </View>
-                          <Ionicons name="chevron-forward" size={16} color={COLORS.textLight} />
-                        </TouchableOpacity>
-                      ))}
-                      {hasMoreMembers && (
-                        <TouchableOpacity style={ms.loadMore} onPress={() => setMemberPage((p) => p + MODAL_ITEMS_PER_PAGE)}>
-                          <Text style={ms.loadMoreText}>
-                            Voir plus ({filteredMembers.length - memberPage} restant{filteredMembers.length - memberPage > 1 ? "s" : ""})
-                          </Text>
-                          <Ionicons name="chevron-down" size={16} color={TEAL} />
-                        </TouchableOpacity>
-                      )}
-                    </>
-                  )}
-                  <View style={{ height: 20 }} />
-                </ScrollView>
-              </>
-            )}
-
-            {/* ══ STEP 2 : Renflouements du membre ══ */}
-
-            {/* ══ STEP 3 : Sélectionner un renflouement non soldé ══ */}
-            {step === 2 && selectedMember && (
-              <>
-                <LinearGradient colors={[TEAL + "18", TEAL2 + "0A"]} style={ms.banner}>
-                  <LinearGradient colors={[TEAL, TEAL2]} style={[ms.memberAvatar, { width: 40, height: 40, borderRadius: 20 }]}>
-                    <Text style={[ms.memberInitials, { fontSize: FONT_SIZES.sm }]}>
-                      {getInitials(selectedMember.utilisateur?.nom_complet ?? "")}
-                    </Text>
-                  </LinearGradient>
-                  <View style={{ flex: 1 }}>
-                    <Text style={ms.bannerName}>{selectedMember.utilisateur?.nom_complet}</Text>
-                    <Text style={ms.bannerSub}>{nonSoldes.length} renflouement{nonSoldes.length !== 1 ? "s" : ""} non soldé{nonSoldes.length !== 1 ? "s" : ""}</Text>
-                  </View>
-                </LinearGradient>
-
-                <Text style={[ms.resultCount, { paddingHorizontal: SPACING.lg }]}>
-                  Sélectionnez le renflouement à payer
-                </Text>
-
-                <ScrollView style={{ flex: 1 }} contentContainerStyle={ms.listPad} showsVerticalScrollIndicator={false}>
-                  {nonSoldes.map((r) => {
-                    const isSelected = selectedRenflouement?.id === r.id;
-                    return (
-                      <TouchableOpacity
-                        key={r.id}
-                        style={[ms.renflSelectCard, isSelected && ms.renflSelectCardActive]}
-                        onPress={() => setSelectedRenflouement(r)}
-                        activeOpacity={0.8}
-                      >
-                        <View style={{ flex: 1 }}>
-                          <Text style={ms.renflSelectCause}>
-                            {r.cause || r.type_cause_display || "Renflouement"}
-                          </Text>
-                          <Text style={ms.renflSelectDate}>{formatDate(r.date_creation)}</Text>
-                          <View style={ms.renflSelectAmounts}>
-                            <Text style={ms.renflSelectDu}>Dû : {formatCurrency(r.montant_du)}</Text>
-                            <Text style={[ms.renflSelectRestant, { color: COLORS.error }]}>
-                              Restant : {formatCurrency(r.montant_restant)}
-                            </Text>
-                          </View>
-                          {/* Mini barre progression */}
-                          <View style={ms.progressBg2}>
-                            <View style={[ms.progressFill2, {
-                              width: `${Math.min(100, r.pourcentage_paye || 0)}%` as any,
-                              backgroundColor: TEAL,
-                            }]} />
-                          </View>
-                        </View>
-                        <View style={ms.selectIndicator}>
-                          {isSelected
-                            ? <Ionicons name="checkmark-circle" size={24} color={TEAL} />
-                            : <View style={ms.selectCircle} />}
-                        </View>
-                      </TouchableOpacity>
-                    );
-                  })}
-                  <View style={{ height: 20 }} />
-                </ScrollView>
-
-                <View style={ms.navRow}>
-                  <TouchableOpacity style={ms.backBtn} onPress={() => { setSelectedRenflouement(null); setStep(1); }}>
-                    <Ionicons name="arrow-back" size={18} color={COLORS.textSecondary} />
-                    <Text style={ms.backBtnText}>Retour</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[ms.nextBtn, !selectedRenflouement && { opacity: 0.4 }]}
-                    onPress={() => setStep(3)}
-                    disabled={!selectedRenflouement}
-                  >
-                    <LinearGradient colors={[TEAL, TEAL2]} style={ms.nextBtnGrad}>
-                      <Text style={ms.nextBtnText}>Continuer</Text>
-                      <Ionicons name="arrow-forward" size={18} color="white" />
-                    </LinearGradient>
-                  </TouchableOpacity>
-                </View>
-              </>
-            )}
-
-            {/* ══ STEP 4 : Saisir le montant ══ */}
-            {step === 3 && selectedMember && selectedRenflouement && (
-              <ScrollView style={{ flex: 1 }} contentContainerStyle={ms.stepPad} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-                {/* Bannières membre + renflouement sélectionné */}
-                <LinearGradient colors={[TEAL + "18", TEAL2 + "0A"]} style={ms.banner}>
-                  <LinearGradient colors={[TEAL, TEAL2]} style={[ms.memberAvatar, { width: 40, height: 40, borderRadius: 20 }]}>
-                    <Text style={[ms.memberInitials, { fontSize: FONT_SIZES.sm }]}>
-                      {getInitials(selectedMember.utilisateur?.nom_complet ?? "")}
-                    </Text>
-                  </LinearGradient>
-                  <View style={{ flex: 1 }}>
-                    <Text style={ms.bannerName}>{selectedMember.utilisateur?.nom_complet}</Text>
-                    <Text style={ms.bannerSub} numberOfLines={1}>
-                      {selectedRenflouement.cause || selectedRenflouement.type_cause_display || "Renflouement"}
-                    </Text>
-                  </View>
-                  <TouchableOpacity onPress={() => setStep(3)} style={ms.changeBtn}>
-                    <Text style={ms.changeBtnText}>Changer</Text>
-                  </TouchableOpacity>
-                </LinearGradient>
-
-                {/* Infos renflouement */}
-                <View style={ms.infoGrid}>
-                  <InfoTile label="Montant dû"     value={formatCurrency(selectedRenflouement.montant_du)}      color={TEAL}           icon="cash" />
-                  <InfoTile label="Déjà payé"      value={formatCurrency(selectedRenflouement.montant_paye)}    color={COLORS.success} icon="checkmark-circle" />
-                  <InfoTile label="Restant à payer" value={formatCurrency(selectedRenflouement.montant_restant)} color={COLORS.error}   icon="time" />
-                  <InfoTile label="Avancement"     value={`${(selectedRenflouement.pourcentage_paye || 0).toFixed(0)}%`} color={COLORS.primary} icon="bar-chart" />
-                </View>
-
-                {/* Saisie montant */}
-                <Text style={ms.label}>
-                  Montant à payer <Text style={{ color: COLORS.error }}>*</Text>
-                </Text>
-                <View style={[ms.amountBox, montantInvalide && amount.length > 0 && { borderColor: COLORS.error + "80" }]}>
-                  <TextInput
-                    style={ms.amountInput}
-                    value={amount}
-                    onChangeText={(v) => setAmount(v.replace(/[^0-9]/g, ""))}
-                    placeholder="0"
-                    keyboardType="numeric"
-                    placeholderTextColor={COLORS.textLight}
-                    autoFocus
-                  />
-                  <Text style={ms.amountUnit}>FCFA</Text>
-                </View>
-
-                {/* Règles */}
-                {amount.length > 0 && (
-                  <>
-                    {montantSaisi <= 0 && (
-                      <View style={ms.warnBox}>
-                        <Ionicons name="alert-circle" size={16} color={COLORS.error} />
-                        <Text style={ms.warnText}>Le montant doit être supérieur à 0</Text>
-                      </View>
-                    )}
-                    {montantSaisi > 0 && !Number.isInteger(montantSaisi) && (
-                      <View style={ms.warnBox}>
-                        <Ionicons name="alert-circle" size={16} color={COLORS.error} />
-                        <Text style={ms.warnText}>Le montant doit être un nombre entier</Text>
-                      </View>
-                    )}
-                    {(montantSaisi > parseInt(String(montantRestant)) + 100) && (
-                      <View style={ms.warnBox}>
-                        <Ionicons name="alert-circle" size={16} color={COLORS.error} />
-                        <Text style={ms.warnText}>
-                          Dépasse le restant dû ({formatCurrency(montantRestant)}) (marge de 100 FCFA seulement)
-                        </Text>
-                      </View>
-                    )}
-                    {montantSaisi > 0 && montantSaisi <= parseInt(String(montantRestant)) && Number.isInteger(montantSaisi) && (
-                      <LinearGradient colors={[TEAL + "18", TEAL2 + "0A"]} style={ms.preview}>
-                        <View style={ms.previewRow}>
-                          <Text style={ms.previewLabel}>Paiement</Text>
-                          <Text style={[ms.previewValue, { color: TEAL }]}>{formatCurrency(montantSaisi)}</Text>
-                        </View>
-                        <View style={ms.previewRow}>
-                          <Text style={ms.previewLabel}>Restant après</Text>
-                          <Text style={[ms.previewValue, { color: montantRestant - montantSaisi === 0 ? COLORS.success : COLORS.warning }]}>
-                            {formatCurrency(montantRestant - montantSaisi)}
-                          </Text>
-                        </View>
-                        {montantRestant - montantSaisi === 0 && (
-                          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 }}>
-                            <Ionicons name="checkmark-circle" size={16} color={COLORS.success} />
-                            <Text style={{ fontSize: FONT_SIZES.sm, color: COLORS.success, fontWeight: "700" }}>
-                              Ce paiement solde entièrement le renflouement
-                            </Text>
-                          </View>
-                        )}
-                      </LinearGradient>
-                    )}
-                  </>
-                )}
-
-                <Text style={[ms.label, { marginTop: SPACING.md }]}>Notes (optionnel)</Text>
-                <TextInput
-                  style={ms.notesInput}
-                  value={notes}
-                  onChangeText={setNotes}
-                  placeholder="Remarques sur ce paiement…"
-                  multiline
-                  numberOfLines={3}
-                  placeholderTextColor={COLORS.textLight}
-                />
-
-                <View style={ms.navRow}>
-                  <TouchableOpacity style={ms.backBtn} onPress={() => setStep(2)}>
-                    <Ionicons name="arrow-back" size={18} color={COLORS.textSecondary} />
-                    <Text style={ms.backBtnText}>Retour</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[ms.nextBtn, montantInvalide && { opacity: 0.4 }]}
-                    onPress={() => setStep(4)}
-                    disabled={montantInvalide}
-                  >
-                    <LinearGradient colors={[TEAL, TEAL2]} style={ms.nextBtnGrad}>
-                      <Text style={ms.nextBtnText}>Continuer</Text>
-                      <Ionicons name="arrow-forward" size={18} color="white" />
-                    </LinearGradient>
-                  </TouchableOpacity>
-                </View>
-                <View style={{ height: 20 }} />
-              </ScrollView>
-            )}
-
-            {/* ══ STEP 5 : Récapitulatif ══ */}
-            {step === 4 && selectedMember && selectedRenflouement && (
-              <ScrollView style={{ flex: 1 }} contentContainerStyle={ms.stepPad} showsVerticalScrollIndicator={false}>
-                <Text style={ms.resumeTitle}>Récapitulatif</Text>
-
-                <View style={ms.resumeCard}>
-                  <RRow icon="person"          label="Membre"           value={selectedMember.utilisateur?.nom_complet ?? "—"} />
-                  <RRow icon="card"            label="Numéro"           value={selectedMember.numero_membre} />
-                  <RRow icon="information-circle" label="Renflouement"  value={selectedRenflouement.cause || selectedRenflouement.type_cause_display || "—"} />
-                  <View style={ms.divider} />
-                  <RRow icon="cash"            label="Montant dû"       value={formatCurrency(selectedRenflouement.montant_du)} />
-                  <RRow icon="checkmark-circle" label="Déjà payé"       value={formatCurrency(selectedRenflouement.montant_paye)} />
-                  <RRow icon="arrow-up-circle" label="Ce paiement"      value={formatCurrency(montantSaisi)} valueColor={TEAL} bold />
-                  <RRow icon="time"            label="Restant après"    value={formatCurrency(montantRestant - montantSaisi)} valueColor={montantRestant - montantSaisi === 0 ? COLORS.success : COLORS.warning} />
-                  {notes.trim() && (
-                    <RRow icon="chatbubble-outline" label="Notes"       value={notes.trim()} />
-                  )}
-                </View>
-
-                {montantRestant - montantSaisi === 0 && (
-                  <View style={[ms.warnBox, { backgroundColor: COLORS.success + "15" }]}>
-                    <Ionicons name="checkmark-circle" size={16} color={COLORS.success} />
-                    <Text style={[ms.warnText, { color: COLORS.success }]}>Ce paiement solde entièrement ce renflouement</Text>
-                  </View>
-                )}
-
-                  <View style={ms.navRow}>
-                    <TouchableOpacity style={ms.backBtn} onPress={() => setStep(3)}>
-                      <Ionicons name="arrow-back" size={18} color={COLORS.textSecondary} />
-                      <Text style={ms.backBtnText}>Modifier</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={[ms.actionBtn, (createPayment.isPending || payWithSavings.isPending) && { opacity: 0.6 }]}
-                      onPress={handleSubmit}
-                      disabled={createPayment.isPending || payWithSavings.isPending}
-                    >
-                      {createPayment.isPending ? (
-                        <ActivityIndicator size="small" color="white" />
-                      ) : (
-                        <Text style={ms.actionBtnText}>Payer (comptant)</Text>
-                      )}
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={[ms.actionBtn, ms.savingsBtn, (createPayment.isPending || payWithSavings.isPending) && { opacity: 0.6 }]}
-                      onPress={handleSavingsPayment}
-                      disabled={createPayment.isPending || payWithSavings.isPending}
-                    >
-                      {payWithSavings.isPending ? (
-                        <ActivityIndicator size="small" color="white" />
-                      ) : (
-                        <Text style={ms.actionBtnText}>Payer (avec épargne)</Text>
-                      )}
-                    </TouchableOpacity>
-                  </View>
-                <View style={{ height: 20 }} />
-              </ScrollView>
-            )}
-
-          </View>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
-  );
-};
-
-// ── Sous-composants ──────────────────────────────────────────────────────────
-const InfoTile = ({ label, value, color, icon }: { label: string; value: string; color: string; icon: string }) => (
-  <View style={it.tile}>
-    <View style={[it.icon, { backgroundColor: color + "18" }]}>
-      <Ionicons name={icon as any} size={16} color={color} />
-    </View>
-    <Text style={it.label}>{label}</Text>
-    <Text style={[it.value, { color }]}>{value}</Text>
-  </View>
-);
-
-const it = StyleSheet.create({
-  tile:  { width: "48%", backgroundColor: "white", borderRadius: 12, padding: SPACING.sm, marginBottom: SPACING.sm, borderWidth: 1, borderColor: TEAL + "30", alignItems: "center" },
-  icon:  { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", marginBottom: 4 },
-  label: { fontSize: 10, color: COLORS.textSecondary, textAlign: "center", marginBottom: 2 },
-  value: { fontSize: FONT_SIZES.sm, fontWeight: "800", textAlign: "center" },
-});
-
-const RRow = ({ icon, label, value, valueColor, bold }: {
-  icon: string; label: string; value: string; valueColor?: string; bold?: boolean;
-}) => (
-  <View style={{ flexDirection: "row", alignItems: "flex-start", paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: "#F5F5F5" }}>
-    <Ionicons name={icon as any} size={16} color={COLORS.textSecondary} style={{ marginRight: 8, marginTop: 1 }} />
-    <Text style={{ flex: 1, fontSize: FONT_SIZES.sm, color: COLORS.textSecondary }}>{label}</Text>
-    <Text style={{ fontSize: FONT_SIZES.sm, color: valueColor || COLORS.text, fontWeight: bold ? "800" : "600", textAlign: "right", maxWidth: "55%" }}>{value}</Text>
-  </View>
-);
-
-// ─── Styles du modal ──────────────────────────────────────────────────────────
-const ms = StyleSheet.create({
-  overlay:            { flex: 1, justifyContent: "flex-end" },
-  sheet:              { backgroundColor: COLORS.background, borderTopLeftRadius: 28, borderTopRightRadius: 28, height: "92%", overflow: "hidden" },
-  header:             { paddingTop: SPACING.md, paddingBottom: SPACING.md, paddingHorizontal: SPACING.lg },
-  stepBar:            { flexDirection: "row", alignItems: "center", justifyContent: "center", marginBottom: SPACING.md },
-  stepBarItem:        { flexDirection: "row", alignItems: "center" },
-  stepDot:            { width: 24, height: 24, borderRadius: 12, backgroundColor: "rgba(255,255,255,0.3)", alignItems: "center", justifyContent: "center" },
-  stepDotActive:      { backgroundColor: "white" },
-  stepNum:            { fontSize: 10, fontWeight: "700", color: "rgba(255,255,255,0.8)" },
-  stepLine:           { width: 20, height: 2, backgroundColor: "rgba(255,255,255,0.3)", marginHorizontal: 2 },
-  stepLineActive:     { backgroundColor: "white" },
-  headerRow:          { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  closeBtn:           { width: 36, height: 36, borderRadius: 18, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center" },
-  headerTitle:        { fontSize: FONT_SIZES.lg, fontWeight: "800", color: "white", flex: 1, textAlign: "center" },
-  filterRow:          { flexDirection: "row", paddingHorizontal: SPACING.lg, paddingTop: SPACING.md, gap: SPACING.sm },
-  filterChip:         { paddingHorizontal: SPACING.md, paddingVertical: 7, borderRadius: 20, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border },
-  filterChipActive:   { backgroundColor: TEAL, borderColor: TEAL },
-  filterChipText:     { fontSize: FONT_SIZES.sm, fontWeight: "600", color: COLORS.textSecondary },
-  searchBox:          { flexDirection: "row", alignItems: "center", backgroundColor: COLORS.surface, margin: SPACING.lg, marginBottom: SPACING.sm, borderRadius: 14, paddingHorizontal: SPACING.md, gap: SPACING.sm, borderWidth: 1, borderColor: COLORS.border },
-  searchInput:        { flex: 1, fontSize: FONT_SIZES.md, color: COLORS.text, paddingVertical: 12 },
-  resultCount:        { fontSize: FONT_SIZES.sm, color: COLORS.textSecondary, paddingHorizontal: SPACING.lg, marginBottom: SPACING.sm },
-  listPad:            { paddingHorizontal: SPACING.lg, paddingBottom: 40 },
-  stepPad:            { paddingHorizontal: SPACING.lg, paddingBottom: 40, paddingTop: SPACING.sm },
-  center:             { alignItems: "center", paddingVertical: 40 },
-  emptyText:          { fontSize: FONT_SIZES.md, color: COLORS.textLight, marginTop: SPACING.md, textAlign: "center" },
-  memberCard:         { backgroundColor: "white", borderRadius: 14, padding: SPACING.md, flexDirection: "row", alignItems: "center", marginBottom: SPACING.sm, gap: SPACING.sm, borderWidth: 1, borderColor: TEAL + "30", elevation: 1 },
-  memberAvatar:       { width: 46, height: 46, borderRadius: 23, alignItems: "center", justifyContent: "center" },
-  memberInitials:     { color: "white", fontWeight: "800", fontSize: FONT_SIZES.md },
-  memberName:         { fontSize: FONT_SIZES.md, fontWeight: "700", color: COLORS.text },
-  memberNumero:       { fontSize: FONT_SIZES.sm, color: TEAL, fontWeight: "600" },
-  memberEmail:        { fontSize: FONT_SIZES.xs, color: COLORS.textSecondary },
-  statusBadge:        { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
-  statusText:         { fontSize: 11, fontWeight: "700" },
-  loadMore:           { flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: SPACING.md, gap: 6 },
-  loadMoreText:       { fontSize: FONT_SIZES.sm, color: TEAL, fontWeight: "600" },
-  banner:             { flexDirection: "row", alignItems: "center", borderRadius: 14, padding: SPACING.md, marginHorizontal: SPACING.lg, marginTop: SPACING.md, marginBottom: SPACING.sm, gap: SPACING.sm },
-  bannerName:         { fontSize: FONT_SIZES.md, fontWeight: "700", color: COLORS.text },
-  bannerSub:          { fontSize: FONT_SIZES.sm, color: TEAL },
-  changeBtn:          { backgroundColor: "white", paddingHorizontal: SPACING.sm, paddingVertical: 4, borderRadius: 8, borderWidth: 1, borderColor: TEAL + "40" },
-  changeBtnText:      { fontSize: 12, color: TEAL, fontWeight: "600" },
-  summaryBox:         { flexDirection: "row", backgroundColor: "white", borderRadius: 14, padding: SPACING.md, marginBottom: SPACING.md, borderWidth: 1, borderColor: TEAL + "30" },
-  summaryItem:        { flex: 1, alignItems: "center" },
-  summaryLabel:       { fontSize: 10, color: COLORS.textSecondary, marginBottom: 2 },
-  summaryValue:       { fontSize: FONT_SIZES.lg, fontWeight: "800" },
-  renflCard:          { flexDirection: "row", alignItems: "center", backgroundColor: "white", borderRadius: 12, padding: SPACING.sm, marginBottom: SPACING.sm, borderWidth: 1, borderColor: COLORS.border, gap: SPACING.sm },
-  renflDot:           { width: 10, height: 10, borderRadius: 5 },
-  renflCause:         { fontSize: FONT_SIZES.sm, fontWeight: "700", color: COLORS.text },
-  renflDate:          { fontSize: FONT_SIZES.xs, color: COLORS.textSecondary },
-  renflMontant:       { fontSize: FONT_SIZES.sm, fontWeight: "800" },
-  renflTotal:         { fontSize: FONT_SIZES.xs, color: COLORS.textSecondary },
-  renflSelectCard:    { backgroundColor: "white", borderRadius: 14, padding: SPACING.md, marginBottom: SPACING.md, borderWidth: 2, borderColor: COLORS.border, flexDirection: "row", alignItems: "center", gap: SPACING.sm },
-  renflSelectCardActive: { borderColor: TEAL, backgroundColor: TEAL + "08" },
-renflSelectCause: {
-  fontSize: FONT_SIZES.md,
-  fontWeight: "700",
-  color: COLORS.text,
-  marginBottom: 2,
-  flexShrink: 1,
-},
-  renflSelectDate:    { fontSize: FONT_SIZES.xs, color: COLORS.textSecondary, marginBottom: 4 },
-  renflSelectAmounts: { flexDirection: "row", gap: SPACING.md, marginBottom: 4 },
-  renflSelectDu:      { fontSize: FONT_SIZES.sm, color: COLORS.textSecondary },
-  renflSelectRestant: { fontSize: FONT_SIZES.sm, fontWeight: "700" },
-  progressBg2:        { height: 4, backgroundColor: "#F0F0F0", borderRadius: 2 },
-  progressFill2:      { height: 4, borderRadius: 2 },
-  selectIndicator:    { width: 28, alignItems: "center" },
-  selectCircle:       { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: COLORS.border },
-  infoGrid:           { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", marginVertical: SPACING.md },
-  label:              { fontSize: FONT_SIZES.sm, fontWeight: "600", color: COLORS.text, marginBottom: SPACING.sm },
-  amountBox:          { flexDirection: "row", alignItems: "center", backgroundColor: "white", borderRadius: 16, borderWidth: 2, borderColor: TEAL + "40", paddingHorizontal: SPACING.md, marginBottom: SPACING.sm },
-  amountInput:        { flex: 1, fontSize: 28, fontWeight: "800", color: COLORS.text, paddingVertical: SPACING.md },
-  amountUnit:         { fontSize: FONT_SIZES.md, color: COLORS.textSecondary, fontWeight: "600" },
-  warnBox:            { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: COLORS.error + "10", borderRadius: 10, padding: SPACING.sm, marginBottom: SPACING.sm },
-  warnText:           { fontSize: FONT_SIZES.sm, color: COLORS.error, flex: 1 },
-  preview:            { borderRadius: 14, padding: SPACING.md, marginBottom: SPACING.md },
-  previewRow:         { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 },
-  previewLabel:       { fontSize: FONT_SIZES.sm, color: COLORS.textSecondary },
-  previewValue:       { fontSize: FONT_SIZES.md, fontWeight: "700" },
-  notesInput:         { backgroundColor: "white", borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.md, fontSize: FONT_SIZES.md, color: COLORS.text, height: 80, textAlignVertical: "top" },
-
-  bottomBack:         { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: SPACING.md, borderTopWidth: 1, borderTopColor: COLORS.border },
-nextBtn: {
-  flex: 1, // au lieu de 2
-  borderRadius: 14,
-  overflow: "hidden",
-},
-  nextBtnGrad:        { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: SPACING.sm, paddingVertical: SPACING.md },
-  nextBtnText:        { fontSize: FONT_SIZES.md, fontWeight: "700", color: "white" },
-  resumeTitle:        { fontSize: FONT_SIZES.lg, fontWeight: "800", color: COLORS.text, marginTop: SPACING.sm, marginBottom: SPACING.md },
-  resumeCard:         { backgroundColor: "white", borderRadius: 18, padding: SPACING.lg, borderWidth: 1, borderColor: TEAL + "30", marginBottom: SPACING.lg },
-  divider:            { height: 1, backgroundColor: "#F0F0F0", marginVertical: SPACING.sm },
-  navRow: {
-  flexDirection: "row",
-  gap: SPACING.sm,
-  marginTop: SPACING.lg,
-  paddingHorizontal: SPACING.lg,
-  marginBottom: SPACING.md,
-},
-backBtn: {
-  flex: 1,                     // prend un tiers
-  borderRadius: BORDER_RADIUS.md,
-  backgroundColor: "white",
-  borderWidth: 1,
-  borderColor: COLORS.border,
-  alignItems: "center",
-  justifyContent: "center",
-  height: 48,
-},
-backBtnText: {
-  fontSize: FONT_SIZES.md,
-  fontWeight: "600",
-  color: COLORS.text,
-  textAlign: "center",
-},
-actionBtn: {
-  flex: 1,                     // prend un tiers
-  borderRadius: BORDER_RADIUS.md,
-  backgroundColor: COLORS.primary,
-  alignItems: "center",
-  justifyContent: "center",
-  height: 48,
-},
-savingsBtn: {
-  backgroundColor: TEAL,
-},
-actionBtnText: {
-  fontSize: FONT_SIZES.md,
-  fontWeight: "600",
-  color: "white",
-  textAlign: "center",
-},
-});
-
-// ─── Écran principal ──────────────────────────────────────────────────────────
-export default function RenflouementScreen() {
-  const { user }    = useAuthContext();
-  const readOnly    = !user?.can_write;
-  const navigation  = useNavigation<any>();
-
-  const [showModal, setShowModal]   = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const [search, setSearch]         = useState("");
-  const [filterStatus, setFilterStatus] = useState<"all" | "solde" | "partiel">("all");
+const DetailModal = ({
+  visible,
+  title,
+  stats,
+  members,
+  isLoading,
+  isMemberView = false,
+  onClose,
+  onSelectMember,
+}: DetailModalProps) => {
+  const [search, setSearch] = useState("");
   const [displayedItems, setDisplayedItems] = useState(ITEMS_PER_PAGE);
-  const [showMoreStats, setShowMoreStats] = useState(false);
-  const [onlyCurrentExercise, setOnlyCurrentExercise] = useState(false);
 
-  // Données des paiements
-  const { data: paymentsData, isLoading, isError, refetch }             = useRenflouementPayments();
-  const payments: RenflouementPayment[] = useMemo(() => normalizeArray(paymentsData), [paymentsData]);
+  const filteredMembers = useMemo(() => {
+    const q = search.toLowerCase().trim();
+    if (!q) return members;
+    return members.filter((m) =>
+      (m.membre?.nom_complet || m.utilisateur?.nom_complet || "").toLowerCase().includes(q) ||
+      (m.membre?.numero_membre || m.numero_membre || "").toLowerCase().includes(q)
+    );
+  }, [members, search]);
 
-  const { data: currentExercise } = useCurrentExercise();
-  const { data: allExercisesRaw } = useExercises();
-  const { data: renflouementsFinRaw } = useRenflouements({ type_cause: "RENFLOUEMENT_FIN_EXERCICE" });
-
-  const allExercises = useMemo(
-    () =>
-      [...normalizeArray(allExercisesRaw)].sort(
-        (a, b) => new Date(b.date_debut).getTime() - new Date(a.date_debut).getTime()
-      ),
-    [allExercisesRaw]
+  const paginatedMembers = useMemo(
+    () => filteredMembers.slice(0, displayedItems),
+    [filteredMembers, displayedItems]
   );
+  const hasMore = displayedItems < filteredMembers.length;
 
-  const exercicePrecedent = useMemo(() => {
-    if (!allExercises.length) return null;
-
-    if (currentExercise) {
-      // Cas normal : il y a un exercice en cours → le précédent est celui juste avant dans le tri
-      const idx = allExercises.findIndex((e) => e.id === currentExercise.id);
-      if (idx >= 0 && idx + 1 < allExercises.length) {
-        return allExercises[idx + 1];
-      }
-      // Fallback : premier TERMINE différent de l'actuel
-      return allExercises.find((e) => e.id !== currentExercise.id && e.statut === "TERMINE") ?? null;
+  React.useEffect(() => {
+    if (visible) {
+      setSearch("");
+      setDisplayedItems(ITEMS_PER_PAGE);
     }
-
-    // ✅ Pas d'exercice EN_COURS (ex: juste après clôture sans en recréer un)
-    // allExercises est déjà trié par date_debut DESC → le premier TERMINE est le plus récent
-    return allExercises.find((e) => e.statut === "TERMINE") ?? null;
-  }, [allExercises, currentExercise]);
-
-  const renflouementsExercicePrecedent = useMemo(() => {
-    const list = normalizeArray(renflouementsFinRaw) as Renflouement[];
-    if (!exercicePrecedent) return list;
-    return list.filter((r) => r.exercice_renflouement === exercicePrecedent.id);
-  }, [renflouementsFinRaw, exercicePrecedent]);
-
-  const statsRenflouementPrecedent = useMemo(() => {
-    const montantTotalGenere = renflouementsExercicePrecedent.reduce(
-      (sum, r) => sum + parseFloat(String(r.montant_du ?? 0)),
-      0
-    );
-    const cumulImpaye = renflouementsExercicePrecedent.reduce(
-      (sum, r) => sum + parseFloat(String(r.montant_restant ?? Math.max(0, Number(r.montant_du) - Number(r.montant_paye)))),
-      0
-    );
-    const cumulPaye = renflouementsExercicePrecedent.reduce(
-      (sum, r) => sum + parseFloat(String(r.montant_paye ?? 0)),
-      0
-    );
-
-    return { montantTotalGenere, cumulImpaye, cumulPaye };
-  }, [renflouementsExercicePrecedent]);
-
-  // Filtrage + recherche
-  const filteredPayments = useMemo(() => {
-    let list = payments;
-    if (onlyCurrentExercise && currentExercise) list = list.filter((p) => p.session_info?.exercice === currentExercise.id);
-    if (filterStatus === "solde")    list = list.filter((p) => p.renflouement_info.montant_restant <= 0);
-    if (filterStatus === "partiel")  list = list.filter((p) => p.renflouement_info.montant_restant > 0);
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      list = list.filter((p) =>
-        (p.membre_nom ?? "").toLowerCase().includes(q) ||
-        (p.membre_numero ?? "").toLowerCase().includes(q) ||
-        (p.notes ?? "").toLowerCase().includes(q)
-      );
-    }
-    return list.sort((a, b) => {
-      const nameA = (a.membre_nom ?? "").toLocaleLowerCase();
-      const nameB = (b.membre_nom ?? "").toLocaleLowerCase();
-      const numA = (a.membre_numero ?? "").toLocaleLowerCase();
-      const numB = (b.membre_numero ?? "").toLocaleLowerCase();
-
-      if (nameA < nameB) return -1;
-      if (nameA > nameB) return 1;
-      if (numA < numB) return -1;
-      if (numA > numB) return 1;
-      return 0;
-    });
-  }, [payments, filterStatus, search, onlyCurrentExercise, currentExercise]);
-
-  const paginatedPayments = useMemo(() => filteredPayments.slice(0, displayedItems), [filteredPayments, displayedItems]);
-  const hasMore = displayedItems < filteredPayments.length;
-
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    try { await refetch(); } catch {}
-    setRefreshing(false);
-  };
-
-  const handleSuccess = () => refetch();
-
-  // Stats calculées à partir des paiements
-  const totalPayements = payments.reduce((s, p) => s + parseFloat(p.montant || "0"), 0);
-  const currentExercisePayments = useMemo(() => {
-    if (!currentExercise) return [] as RenflouementPayment[];
-    return payments.filter((p) => p.session_info?.exercice === currentExercise.id);
-  }, [payments, currentExercise]);
-
-  const totalPayementsCurrentExercise = currentExercisePayments.reduce((s, p) => s + parseFloat(p.montant || "0"), 0);
-  const nbrSoldesCurrentExercise = currentExercisePayments.filter((p) => p.renflouement_info.montant_restant <= 0).length;
-  const nbrPartielsCurrentExercise = currentExercisePayments.filter((p) => p.renflouement_info.montant_restant > 0).length;
-  const nbrSoldes = payments.filter((p) => p.renflouement_info.montant_restant <= 0).length;
-  const nbrPartiels = payments.filter((p) => p.renflouement_info.montant_restant > 0).length;
+  }, [visible]);
 
   return (
-    <View style={s.container}>
-      {/* ── Header ── */}
-      <LinearGradient colors={[TEAL, TEAL2]} style={s.header} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={s.backButton}>
-          <Ionicons name="arrow-back" size={24} color="white" />
-        </TouchableOpacity>
-        <View style={s.headerContent}>
-          <Ionicons name="card-outline" size={32} color="white" style={{ marginBottom: SPACING.sm }} />
-          <Text style={s.headerTitle}>Paiements de renflouements</Text>
-          <Text style={s.headerSubtitle}>Historique des contributions payées</Text>
-        </View>
-        {/* Pills résumé */}
-        {/* <View style={s.pillsRow}>
-          <View style={s.pill}><Text style={s.pillVal}>{payments.length}</Text><Text style={s.pillLab}>Total paiements</Text></View>
-          <View style={s.pill}><Text style={s.pillVal}>{nbrSoldes}</Text><Text style={s.pillLab}>Soldés</Text></View>
-          <View style={s.pill}><Text style={s.pillVal}>{nbrPartiels}</Text><Text style={s.pillLab}>Partiels</Text></View>
-        </View> */}
-      </LinearGradient>
-
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={{ paddingBottom: 80 }}
-        refreshControl={
-          <View /> as any // replaced par RefreshControl si besoin
-        }
-        showsVerticalScrollIndicator={false}
-        onScrollEndDrag={({ nativeEvent }) => {
-          if (nativeEvent.contentOffset.y < -60 && !refreshing) handleRefresh();
-        }}
-      >
-        {/* ── Stats détaillées ── */}
-        <View style={s.statsSection}>
-          <StatCard
-            title="Total renflouements générés (exercice précédent)"
-            value={formatCurrency(statsRenflouementPrecedent.montantTotalGenere)}
-            icon="calculator"
-            color={TEAL}
-            subtitle={
-              exercicePrecedent
-                ? `${exercicePrecedent.nom} · ${renflouementsExercicePrecedent.length} membre(s) concerné(s)`
-                : "Aucun exercice précédent identifié"
-            }
-          />
-          <StatCard
-            title="Cumul renflouements impayés"
-            value={formatCurrency(statsRenflouementPrecedent.cumulImpaye)}
-            icon="alert-circle"
-            color={COLORS.error}
-            subtitle={
-              exercicePrecedent
-                ? `Reste à recouvrer sur ${exercicePrecedent.nom}`
-                : "Aucun solde impayé à afficher"
-            }
-          />
-          <StatCard
-            title="Total paiements enregistrés (exercice en cours)"
-            value={formatCurrency(totalPayementsCurrentExercise)}
-            icon="cash"
-            color={COLORS.success}
-            subtitle={currentExercise ? currentExercise.nom : "Aucun exercice en cours"}
-          />
-          
-          <StatCard title="Renflouements soldés (exercice en cours)" value={`${nbrSoldesCurrentExercise}`} icon="checkmark-done" color={COLORS.success} />
-          <StatCard title="Renflouements partiels (exercice en cours)" value={`${nbrPartielsCurrentExercise}`} icon="time" color={COLORS.warning} />
-
-          {/* Toggle pour afficher/masquer les stats supplémentaires */}
-          <TouchableOpacity onPress={() => setShowMoreStats((v) => !v)} style={{ marginTop: SPACING.sm }}>
-            <Text style={{ color: TEAL, fontWeight: "700" }}>{showMoreStats ? "Voir moins" : "Voir plus de statistiques"}</Text>
+    <Modal visible={visible} animationType="slide" statusBarTranslucent>
+      <View style={styles.container}>
+        <View style={styles.modalHeader}>
+          <TouchableOpacity style={styles.backBtn} onPress={onClose}>
+            <Ionicons name="arrow-back" size={20} color={COLORS.primary} />
+            <Text style={styles.backBtnText}>Retour</Text>
           </TouchableOpacity>
-
-          {showMoreStats && (
-            <View style={{ marginTop: SPACING.sm }}>
-              <StatCard title="Total paiements"      value={formatCurrency(totalPayements)}      icon="cash-outline"     color={TEAL}/>
-              <StatCard title="Renflouements soldés" value={` ${nbrSoldes}`}                       icon="checkmark-circle" color={COLORS.success}/>
-              <StatCard title="Renflouements partiels" value={` ${nbrPartiels}`}                   icon="time-outline"     color={COLORS.warning} />
-            </View>
-          )}
+          <View>
+            <Text style={styles.modalTitle}>{title}</Text>
+          </View>
         </View>
 
-        {/* ── Barre outils ── */}
-        <View style={s.toolbar}>
-          <View style={s.searchBox}>
-            <Ionicons name="search" size={18} color={COLORS.textSecondary} />
-            <TextInput
-              style={s.searchInput}
-              value={search}
-              onChangeText={(v) => { setSearch(v); setDisplayedItems(ITEMS_PER_PAGE); }}
-              placeholder="Rechercher un membre…"
-              placeholderTextColor={COLORS.textLight}
-            />
-            {search.length > 0 && (
-              <TouchableOpacity onPress={() => setSearch("")}>
-                <Ionicons name="close-circle" size={18} color={COLORS.textSecondary} />
-              </TouchableOpacity>
-            )}
+        {/* Stats vertical */}
+        {stats && (
+          <View style={styles.statsVertical}>
+            <View style={styles.statsVerticalGrid}>
+              <StatCard
+                title="A collecter"
+                value={formatCurrency(stats.montant_total_du || 0)}
+                icon="cash"
+                color={TEAL}
+              />
+              <StatCard
+                title="Collecte"
+                value={formatCurrency(stats.montant_total_paye || 0)}
+                icon="checkmark-circle"
+                color={COLORS.success}
+              />
+              <StatCard
+                title="Restant"
+                value={formatCurrency((stats.montant_total_du || 0) - (stats.montant_total_paye || 0))}
+                icon="time"
+                color={COLORS.error}
+              />
+              <StatCard
+                title="Taux"
+                value={`${((stats.montant_total_paye || 0) / (stats.montant_total_du || 1) * 100).toFixed(0)}%`}
+                icon="trending-up"
+                color={COLORS.primary}
+              />
+            </View>
           </View>
-          {!readOnly && (
-            <TouchableOpacity style={s.addBtn} onPress={() => setShowModal(true)}>
-              <LinearGradient colors={[TEAL, TEAL2]} style={s.addBtnGrad}>
-                <Ionicons name="add" size={18} color="white" />
-                <Text style={s.addBtnText}>Payer</Text>
-              </LinearGradient>
+        )}
+
+        {/* Recherche */}
+        <View style={styles.searchBox}>
+          <Ionicons name="search" size={18} color={COLORS.textSecondary} />
+          <TextInput
+            style={styles.searchInput}
+            value={search}
+            onChangeText={setSearch}
+            placeholder={isMemberView ? "Rechercher un exercice..." : "Rechercher un membre..."}
+            placeholderTextColor={COLORS.textLight}
+          />
+          {search.length > 0 && (
+            <TouchableOpacity onPress={() => setSearch("")}>
+              <Ionicons name="close-circle" size={18} color={COLORS.textSecondary} />
             </TouchableOpacity>
           )}
         </View>
 
-        {/* ── Filtres ── */}
-        <View style={s.filters}>
-          {(["all", "partiel", "solde"] as const).map((key) => {
-            const labels: Record<string, string> = { all: "Tous", partiel: "Partiels", solde: "Soldés" };
-            // When the 'onlyCurrentExercise' chip is active, the other chips should appear inactive
-            const active = filterStatus === key && !onlyCurrentExercise;
-            const dotColor = key === "partiel" ? COLORS.warning : key === "solde" ? COLORS.success : TEAL;
-            return (
-              <TouchableOpacity
-                key={key}
-                style={[s.filterChip, active && { backgroundColor: dotColor, borderColor: dotColor }]}
-                onPress={() => { setFilterStatus(key); setOnlyCurrentExercise(false); setDisplayedItems(ITEMS_PER_PAGE); }}
-              >
-                <Text style={[s.filterChipText, active && { color: "white" }]}>{labels[key]}</Text>
-              </TouchableOpacity>
-            );
-          })}
-          <TouchableOpacity
-            style={[s.filterChip, onlyCurrentExercise && { backgroundColor: TEAL, borderColor: TEAL }]}
-            onPress={() => {
-              setOnlyCurrentExercise((v) => {
-                const next = !v;
-                if (next) setFilterStatus("all"); // make selection exclusive
-                return next;
-              });
-              setDisplayedItems(ITEMS_PER_PAGE);
-            }}
-          >
-            <Text style={[s.filterChipText, onlyCurrentExercise && { color: "white" }]}>{onlyCurrentExercise ? "Exercice: actif" : "Exercice en cours"}</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* ── Liste ── */}
-        <View style={s.listSection}>
-          {isLoading ? (
-            <View style={s.center}>
-              <ActivityIndicator size="large" color={TEAL} />
-              <Text style={s.loadingText}>Chargement…</Text>
-            </View>
-          ) : isError ? (
-            <View style={s.center}>
-              <Ionicons name="alert-circle-outline" size={60} color={COLORS.error} />
-              <Text style={[s.loadingText, { color: COLORS.error }]}>Erreur de chargement</Text>
-              <TouchableOpacity onPress={() => refetch()} style={s.retryBtn}>
-                <Text style={s.retryBtnText}>Réessayer</Text>
-              </TouchableOpacity>
-            </View>
-          ) : filteredPayments.length === 0 ? (
-            <View style={s.empty}>
-              <View style={s.emptyIcon}>
-                <Ionicons name="card-outline" size={48} color={COLORS.textLight} />
-              </View>
-              <Text style={s.emptyTitle}>Aucun paiement</Text>
-              <Text style={s.emptyText}>
-                {search ? "Aucun résultat pour cette recherche" : "Aucun paiement de renflouement enregistré"}
-              </Text>
-            </View>
-          ) : (
-            <>
-              <View style={s.counter}>
-                <Ionicons name="list" size={16} color={TEAL} />
-                <Text style={s.counterText}>
-                  <Text style={s.counterBold}>{paginatedPayments.length}</Text>
-                  {" "}sur{" "}
-                  <Text style={s.counterBold}>{filteredPayments.length}</Text>
-                  {" "}paiement{filteredPayments.length > 1 ? "s" : ""}
-                </Text>
-              </View>
-
-              {paginatedPayments.map((item) => (
-                <RenflouementPaymentCard key={item.id} item={item} />
-              ))}
-
-              {hasMore && (
+        {isLoading ? (
+          <View style={styles.centerFlex}>
+            <ActivityIndicator size="large" color={TEAL} />
+          </View>
+        ) : members.length === 0 ? (
+          <View style={styles.centerFlex}>
+            <Text style={styles.emptyText}>Aucun membre</Text>
+          </View>
+        ) : (
+          <FlatList
+            data={paginatedMembers}
+            keyExtractor={(item, idx) => String(item.membre?.id || item.id || idx)}
+            contentContainerStyle={styles.listContent}
+            renderItem={({ item }) => (
+              isMemberView ? (
+                <ExerciceDetailCard item={item} onPress={() => onSelectMember(item)} />
+              ) : (
+                <MemberDetailCard item={item} onPress={() => onSelectMember(item)} />
+              )
+            )}
+            ListFooterComponent={
+              hasMore ? (
                 <TouchableOpacity
-                  style={s.loadMore}
+                  style={styles.loadMoreBtn}
                   onPress={() => setDisplayedItems((p) => p + ITEMS_PER_PAGE)}
                 >
-                  <LinearGradient colors={[TEAL, TEAL2]} style={s.loadMoreGrad}>
-                    <Text style={s.loadMoreText}>
-                      Voir plus ({filteredPayments.length - displayedItems} restant{filteredPayments.length - displayedItems > 1 ? "s" : ""})
+                  <LinearGradient colors={[TEAL, TEAL2]} style={styles.loadMoreGrad}>
+                    <Text style={styles.loadMoreText}>
+                      Voir plus ({filteredMembers.length - displayedItems} restant)
                     </Text>
-                    <Ionicons name="chevron-down" size={20} color="white" />
+                    <Ionicons name="chevron-down" size={18} color="white" />
                   </LinearGradient>
                 </TouchableOpacity>
-              )}
-            </>
-          )}
-        </View>
-      </ScrollView>
+              ) : null
+            }
+          />
+        )}
+      </View>
+    </Modal>
+  );
+};
 
-      {/* ── Modal multi-step ── */}
-      <MultiStepModal
-        visible={showModal}
-        onClose={() => setShowModal(false)}
-        onSuccess={handleSuccess}
+// ─────────────────────────────────────────────
+// 📝 CARD DETAIL EXERCICE (dans modal exercice)
+// ─────────────────────────────────────────────
+const MemberDetailCard = ({
+  item,
+  onPress,
+}: {
+  item: any;
+  onPress: () => void;
+}) => {
+  const montantDu = item.montants?.montant_du || item.renflouement_info?.montant_du || 0;
+  const montantPaye = item.montants?.montant_paye || item.renflouement_info?.montant_paye || 0;
+  const restant = montantDu - montantPaye;
+  const progress = montantDu > 0 ? (montantPaye / montantDu) * 100 : 0;
+  const color = restant <= 0 ? COLORS.success : TEAL;
+
+  const name = item.membre?.nom_complet || item.nom_complet || item.utilisateur?.nom_complet || "";
+  const numero = item.membre?.numero_membre || item.numero_membre || "";
+
+  return (
+    <TouchableOpacity style={styles.detailCard} onPress={onPress} activeOpacity={0.8}>
+      <View style={[styles.detailStripe, { backgroundColor: color }]} />
+      <View style={styles.detailBody}>
+        <View style={styles.detailTop}>
+          <LinearGradient colors={[TEAL, TEAL2]} style={styles.detailAvatar}>
+            <Text style={styles.detailInitials}>{getInitials(name)}</Text>
+          </LinearGradient>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.detailName}>{name}</Text>
+            <Text style={styles.detailNumero}>{numero}</Text>
+          </View>
+          <Text style={[styles.detailPercent, { color }]}>
+            {restant <= 0 ? "✅" : `${progress.toFixed(0)}%`}
+          </Text>
+        </View>
+
+        <View style={styles.detailAmounts}>
+          <View style={styles.detailAmount}>
+            <Text style={styles.detailLabel}>Dû</Text>
+            <Text style={[styles.detailValue, { color: TEAL }]}>{formatCurrency(montantDu)}</Text>
+          </View>
+          <View style={styles.detailAmount}>
+            <Text style={styles.detailLabel}>Payé</Text>
+            <Text style={[styles.detailValue, { color: COLORS.success }]}>{formatCurrency(montantPaye)}</Text>
+          </View>
+          <View style={styles.detailAmount}>
+            <Text style={styles.detailLabel}>Restant</Text>
+            <Text style={[styles.detailValue, { color }]}>{formatCurrency(restant)}</Text>
+          </View>
+        </View>
+
+        <View style={styles.detailProgress}>
+          <View style={styles.progressBg}>
+            <View style={[styles.progressFill, { width: `${Math.min(100, progress)}%`, backgroundColor: color }]} />
+          </View>
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+};
+
+// ─────────────────────────────────────────────
+// 👤 CARD DETAIL MEMBRE (dans modal membre)
+// ─────────────────────────────────────────────
+const ExerciceDetailCard = ({
+  item,
+  onPress,
+}: {
+  item: any;
+  onPress: () => void;
+}) => {
+  const montantDu = item.montant_du || 0;
+  const montantPaye = item.montant_paye || 0;
+  const restant = montantDu - montantPaye;
+  const progress = montantDu > 0 ? (montantPaye / montantDu) * 100 : 0;
+  const color = restant <= 0 ? COLORS.success : TEAL;
+
+  const cause = item.cause || item.type_cause_display || "Renflouement";
+
+  return (
+    <TouchableOpacity style={styles.detailCard} onPress={onPress} activeOpacity={0.8}>
+      <View style={[styles.detailStripe, { backgroundColor: color }]} />
+      <View style={styles.detailBody}>
+        <View style={styles.detailTop}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.detailName}>{cause}</Text>
+            <Text style={styles.detailNumero}>{formatDate(item.date_creation)}</Text>
+          </View>
+          <Text style={[styles.detailPercent, { color }]}>
+            {restant <= 0 ? "✅" : `${progress.toFixed(0)}%`}
+          </Text>
+        </View>
+
+        <View style={styles.detailAmounts}>
+          <View style={styles.detailAmount}>
+            <Text style={styles.detailLabel}>Dû</Text>
+            <Text style={[styles.detailValue, { color: TEAL }]}>{formatCurrency(montantDu)}</Text>
+          </View>
+          <View style={styles.detailAmount}>
+            <Text style={styles.detailLabel}>Payé</Text>
+            <Text style={[styles.detailValue, { color: COLORS.success }]}>{formatCurrency(montantPaye)}</Text>
+          </View>
+          <View style={styles.detailAmount}>
+            <Text style={styles.detailLabel}>Restant</Text>
+            <Text style={[styles.detailValue, { color }]}>{formatCurrency(restant)}</Text>
+          </View>
+        </View>
+
+        <View style={styles.detailProgress}>
+          <View style={styles.progressBg}>
+            <View style={[styles.progressFill, { width: `${Math.min(100, progress)}%`, backgroundColor: color }]} />
+          </View>
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+};
+
+// ─────────────────────────────────────────────
+// 🏠 ÉCRAN PRINCIPAL
+// ─────────────────────────────────────────────
+export default function RenflouementScreen() {
+  const { user } = useAuthContext();
+  const queryClient = useQueryClient();
+
+  // États
+  const [tab, setTab] = useState<TabView>("exercices");
+  const [refreshing, setRefreshing] = useState(false);
+  const [displayedItems, setDisplayedItems] = useState(ITEMS_PER_PAGE);
+  const [search, setSearch] = useState("");
+  
+  // Modals
+  const [showDetailModal, setShowDetailModal] = useState(false);
+  const [selectedExercice, setSelectedExercice] = useState<any>(null);
+  const [selectedMember, setSelectedMember] = useState<any>(null);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [paymentData, setPaymentData] = useState<{ member?: any; renflouement?: any }>({});
+  const [paymentAmount, setPaymentAmount] = useState("");
+  const [paymentNotes, setPaymentNotes] = useState("");
+  const payRenflouement = usePayRenflouementWithSavings();
+
+  // Données
+  const { data: exercicesRaw, isLoading: loadingExercices } = useExercises();
+  const { data: membersRaw, isLoading: loadingMembers } = useMembers();
+
+  const exercices = useMemo(() => normalizeArray(exercicesRaw), [exercicesRaw]);
+  const members = useMemo(() => normalizeArray(membersRaw), [membersRaw]);
+
+  // Utiliser les exercices directement avec les stats incluses
+  const exercicesWithStats = exercices;
+
+  // Récupérer tous les renflouements d'un exercice (pour le detail modal)
+  const { data: detailExerciceRaw, isLoading: loadingDetail } = useRenfloulementExerciceDetail(
+    selectedExercice?.id && tab === "exercices" ? selectedExercice.id : null
+  );
+  const detailExercice = useMemo(
+    () => Array.isArray(detailExerciceRaw?.par_membre) ? detailExerciceRaw.par_membre : [],
+    [detailExerciceRaw]
+  );
+
+  // Renflouements membre sélectionné
+  const { data: renflouementHistoryRaw, isLoading: loadingMembreRenflouement } = useRenfloulementHistoryByMember(
+    selectedMember?.id && tab === "membres" ? selectedMember.id : null
+  );
+  const renflouementsMembre = useMemo(
+    () => Array.isArray(renflouementHistoryRaw?.renflouements_par_exercice)
+      ? renflouementHistoryRaw.renflouements_par_exercice
+      : [],
+    [renflouementHistoryRaw]
+  );
+
+  // Stats exercice - utiliser directement depuis l'objet exercice
+  const statsExercice = useMemo(() => {
+    if (selectedExercice?.renflouement_stats) {
+      return selectedExercice.renflouement_stats;
+    }
+    return { montant_total_du: 0, montant_total_paye: 0, montant_total_restant: 0 };
+  }, [selectedExercice]);
+
+  // Stats membre (cumul)
+  const statsMembre = useMemo(() => {
+    if (renflouementHistoryRaw?.cumuls_totaux) {
+      return {
+        montant_total_du: renflouementHistoryRaw.cumuls_totaux.total_du || 0,
+        montant_total_paye: renflouementHistoryRaw.cumuls_totaux.total_paye || 0,
+        montant_total_restant: renflouementHistoryRaw.cumuls_totaux.montant_restant || 0,
+      };
+    }
+
+    let totalDu = 0;
+    let totalPaye = 0;
+    renflouementsMembre.forEach((item: any) => {
+      totalDu += item.montant_du || item.totals?.montant_du || 0;
+      totalPaye += item.montant_paye || item.totals?.montant_paye || 0;
+    });
+    return {
+      montant_total_du: totalDu,
+      montant_total_paye: totalPaye,
+      montant_total_restant: totalDu - totalPaye,
+    };
+  }, [renflouementHistoryRaw, renflouementsMembre]);
+
+  // Conversion detailExercice au format expected
+  const membersForDetailModal = useMemo(() => {
+    return detailExercice.map((item: any) => ({
+      membre: item.membre || item.membre_info || {
+        nom_complet: item.membre_nom,
+        numero_membre: item.membre_numero,
+        statut: item.membre_statut,
+        id: item.membre_id,
+      },
+      montants: {
+        montant_du: item.renflouement?.montant_du || item.totals?.montant_du || 0,
+        montant_paye: item.renflouement?.montant_paye || item.totals?.montant_paye || 0,
+      },
+      renflouement: item.renflouement,
+      paiements: item.paiements || item.paiements_details || [],
+    }));
+  }, [detailExercice]);
+
+  // Filtrés (tab exercices ou membres)
+  const filteredExercices = useMemo(() => {
+    const q = search.toLowerCase().trim();
+    if (!q) return exercicesWithStats || [];
+    return exercicesWithStats?.filter((e) => e.nom.toLowerCase().includes(q)) || [];
+  }, [exercicesWithStats, search]);
+
+  const filteredMembers = useMemo(() => {
+    const q = search.toLowerCase().trim();
+    if (!q) return members;
+    return members.filter(
+      (m) =>
+        (m.utilisateur?.nom_complet || "").toLowerCase().includes(q) ||
+        (m.numero_membre || "").toLowerCase().includes(q)
+    );
+  }, [members, search]);
+
+  // Calcul total renflouement par membre - initialiser simplement, fetcher sur demande
+  const memberRenflouementTotals = useMemo(() => {
+    const map = new Map<string, number>();
+    members.forEach((m) => {
+      const totalDu =
+        m.renflouement?.total_renflouement_du ||
+        m.renflouement?.montant_du ||
+        m.total_renflouement_du ||
+        m.total_du ||
+        0;
+      map.set(m.id, totalDu);
+    });
+    return map;
+  }, [members]);
+
+  const paginatedItems = useMemo(() => {
+    const list = tab === "exercices" ? filteredExercices : filteredMembers;
+    return list.slice(0, displayedItems);
+  }, [tab, filteredExercices, filteredMembers, displayedItems]);
+
+  const hasMore = useMemo(() => {
+    const list = tab === "exercices" ? filteredExercices : filteredMembers;
+    return displayedItems < list.length;
+  }, [tab, filteredExercices, filteredMembers, displayedItems]);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await Promise.all([
+      queryClient.refetchQueries({ queryKey: ["exercises"] }),
+      queryClient.refetchQueries({ queryKey: ["members"] }),
+    ]);
+    setRefreshing(false);
+  };
+
+  const handleExerciceSelect = (exe: any) => {
+    setSelectedExercice(exe);
+    setSelectedMember(null);
+    setShowDetailModal(true);
+  };
+
+  const handleMemberSelect = (mem: any) => {
+    setSelectedMember(mem);
+    setSelectedExercice(null);
+    setShowDetailModal(true);
+  };
+
+  const closePaymentModal = () => {
+    setShowPaymentModal(false);
+    setPaymentData({});
+    setPaymentAmount("");
+    setPaymentNotes("");
+  };
+
+  const openPaymentModal = (item: any) => {
+    const renflouement = item.renflouement || item;
+    const member = item.membre || item.exercice || item.membre_info || item;
+    const montantDu = item.montants?.montant_du || renflouement?.montant_du || item.montant_du || 0;
+    const montantPaye = item.montants?.montant_paye || renflouement?.montant_paye || item.montant_paye || 0;
+    const restant = Math.max(0, montantDu - montantPaye);
+
+    setPaymentData({ member, renflouement });
+    setPaymentAmount(String(restant));
+    setPaymentNotes("");
+    setShowPaymentModal(true);
+  };
+
+  const handleSubmitPayment = () => {
+    const montant = Number(paymentAmount);
+    const renflouementId = paymentData.renflouement?.id;
+    const montantDu = paymentData.renflouement?.montant_du || 0;
+    const montantPaye = paymentData.renflouement?.montant_paye || 0;
+    const montantRestant = Math.max(0, montantDu - montantPaye);
+
+    if (!renflouementId) {
+      Alert.alert("Erreur", "Impossible de trouver le renflouement à payer.");
+      return;
+    }
+
+    if (!paymentAmount.trim() || isNaN(montant) || montant <= 0) {
+      Alert.alert("Erreur", "Veuillez saisir un montant valide.");
+      return;
+    }
+
+    if (montant > montantRestant) {
+      Alert.alert(
+        "Erreur",
+        `Le montant saisi (${formatCurrency(montant)}) dépasse le montant restant à payer (${formatCurrency(montantRestant)}).`
+      );
+      return;
+    }
+
+    payRenflouement.mutate(
+      {
+        renflouementId,
+        montant,
+        notes: paymentNotes.trim() || undefined,
+      },
+      {
+        onSuccess: () => {
+          closePaymentModal();
+          queryClient.invalidateQueries({ queryKey: ["renflouement-exercice-detail"] });
+          queryClient.invalidateQueries({ queryKey: ["renflouement-history-member"] });
+          Alert.alert("Succès", "Paiement de renflouement enregistré.");
+        },
+        onError: (error: any) => {
+          const errMsg =
+            error?.response?.data?.detail ||
+            error?.response?.data?.message ||
+            error?.message ||
+            "Impossible d'enregistrer le paiement.";
+          Alert.alert("Erreur", errMsg);
+        },
+      }
+    );
+  };
+
+  return (
+    <View style={[styles.screenContainer, { paddingTop: StatusBar.currentHeight }]}>
+      <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
+
+      {/* Top Bar */}
+      <View style={styles.topBar}>
+        <View>
+          <Text style={styles.screenTitle}>Renflouements</Text>
+          <Text style={styles.screenSubtitle}>Gestion par exercice ou membre</Text>
+        </View>
+        <NotificationButton />
+      </View>
+
+      {/* Navigation Tabs */}
+      <View style={styles.tabContainer}>
+        <TouchableOpacity
+          style={[styles.tab, tab === "exercices" && styles.tabActive]}
+          onPress={() => {
+            setTab("exercices");
+            setSearch("");
+            setDisplayedItems(ITEMS_PER_PAGE);
+          }}
+        >
+          <Ionicons name="folder-outline" size={18} color={tab === "exercices" ? TEAL : COLORS.textSecondary} />
+          <Text style={[styles.tabText, tab === "exercices" && styles.tabTextActive]}>Par exercices</Text>
+        </TouchableOpacity>
+
+        <View style={styles.tabDivider} />
+
+        <TouchableOpacity
+          style={[styles.tab, tab === "membres" && styles.tabActive]}
+          onPress={() => {
+            setTab("membres");
+            setSearch("");
+            setDisplayedItems(ITEMS_PER_PAGE);
+          }}
+        >
+          <Ionicons name="people-outline" size={18} color={tab === "membres" ? TEAL : COLORS.textSecondary} />
+          <Text style={[styles.tabText, tab === "membres" && styles.tabTextActive]}>Par membres</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Recherche */}
+      <View style={styles.searchBox}>
+        <Ionicons name="search" size={18} color={COLORS.textSecondary} />
+        <TextInput
+          style={styles.searchInput}
+          value={search}
+          onChangeText={setSearch}
+          placeholder={tab === "exercices" ? "Rechercher un exercice..." : "Rechercher un membre..."}
+          placeholderTextColor={COLORS.textLight}
+        />
+        {search.length > 0 && (
+          <TouchableOpacity onPress={() => setSearch("")}>
+            <Ionicons name="close-circle" size={18} color={COLORS.textSecondary} />
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* Liste */}
+      {tab === "exercices" ? (
+        // TAB EXERCICES
+        loadingExercices ? (
+          <View style={styles.centerFlex}>
+            <ActivityIndicator size="large" color={TEAL} />
+          </View>
+        ) : exercicesWithStats.length === 0 ? (
+          <View style={styles.centerFlex}>
+            <Text style={styles.emptyText}>Aucun exercice</Text>
+          </View>
+        ) : (
+          <FlatList
+            data={paginatedItems}
+            keyExtractor={(item) => String(item.id)}
+            contentContainerStyle={styles.listContent}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+            renderItem={({ item }) => (
+              <ExerciceSimpleCard item={item} onPress={() => handleExerciceSelect(item)} />
+            )}
+            ListFooterComponent={
+              hasMore ? (
+                <TouchableOpacity
+                  style={styles.loadMoreBtn}
+                  onPress={() => setDisplayedItems((p) => p + ITEMS_PER_PAGE)}
+                >
+                  <LinearGradient colors={[TEAL, TEAL2]} style={styles.loadMoreGrad}>
+                    <Text style={styles.loadMoreText}>Voir plus</Text>
+                    <Ionicons name="chevron-down" size={18} color="white" />
+                  </LinearGradient>
+                </TouchableOpacity>
+              ) : null
+            }
+          />
+        )
+      ) : (
+        // TAB MEMBRES
+        loadingMembers ? (
+          <View style={styles.centerFlex}>
+            <ActivityIndicator size="large" color={TEAL} />
+          </View>
+        ) : members.length === 0 ? (
+          <View style={styles.centerFlex}>
+            <Text style={styles.emptyText}>Aucun membre</Text>
+          </View>
+        ) : (
+          <FlatList
+            data={paginatedItems}
+            keyExtractor={(item) => String(item.id)}
+            contentContainerStyle={styles.listContent}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+            renderItem={({ item }) => {
+              // Calculer total du renflouement pour ce membre si on a les données
+              const totalRenflouement = renflouementsMembre.length > 0 && selectedMember?.id === item.id
+                ? renflouementsMembre.reduce((sum, r: any) => sum + (r.montant_du || 0), 0)
+                : memberRenflouementTotals.get(item.id) || 0;
+              
+              return <MemberSimpleCard item={item} totalRenflouement={totalRenflouement} onPress={() => handleMemberSelect(item)} />;
+            }}
+            ListFooterComponent={
+              hasMore ? (
+                <TouchableOpacity
+                  style={styles.loadMoreBtn}
+                  onPress={() => setDisplayedItems((p) => p + ITEMS_PER_PAGE)}
+                >
+                  <LinearGradient colors={[TEAL, TEAL2]} style={styles.loadMoreGrad}>
+                    <Text style={styles.loadMoreText}>Voir plus</Text>
+                    <Ionicons name="chevron-down" size={18} color="white" />
+                  </LinearGradient>
+                </TouchableOpacity>
+              ) : null
+            }
+          />
+        )
+      )}
+
+      {/* Detail Modal - Exercice */}
+      <DetailModal
+        visible={showDetailModal && selectedExercice !== null}
+        title={selectedExercice?.nom || ""}
+        stats={statsExercice}
+        members={membersForDetailModal}
+        isLoading={loadingDetail}
+        isMemberView={false}
+        onClose={() => setShowDetailModal(false)}
+        onSelectMember={(member) => {
+          setShowDetailModal(false);
+          openPaymentModal(member);
+        }}
       />
+
+      {/* Detail Modal - Membre */}
+      <DetailModal
+        visible={showDetailModal && selectedMember !== null}
+        title={selectedMember?.utilisateur?.nom_complet || selectedMember?.nom_complet || ""}
+        stats={statsMembre}
+        members={renflouementsMembre.map((r: any) => ({
+          ...r,
+          membre: {
+            nom_complet: r.cause || r.type_cause_display || "Renflouement",
+            numero_membre: formatDate(r.date_creation),
+          },
+        }))}
+        isLoading={false}
+        isMemberView={true}
+        onClose={() => setShowDetailModal(false)}
+        onSelectMember={(member) => {
+          setShowDetailModal(false);
+          openPaymentModal(member);
+        }}
+      />
+
+      <Modal visible={showPaymentModal} animationType="slide" transparent statusBarTranslucent>
+        <View style={styles.paymentOverlay}>
+          <View style={styles.paymentModalContainer}>
+            <View style={styles.paymentModalHeader}>
+              <Text style={styles.paymentModalTitle}>Paiement de renflouement</Text>
+              <TouchableOpacity onPress={closePaymentModal}>
+                <Ionicons name="close" size={24} color="white" />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.paymentModalBody}>
+              <Text style={styles.paymentLabel}>Membre</Text>
+              <Text style={styles.paymentValue}>{paymentData.member?.nom_complet || paymentData.member?.numero_membre || "—"}</Text>
+              <Text style={styles.paymentLabel}>Montant dû</Text>
+              <Text style={styles.paymentValue}>
+                {formatCurrency(paymentData.renflouement?.montant_du || 0)}
+              </Text>
+              <Text style={styles.paymentLabel}>Montant déjà payé</Text>
+              <Text style={styles.paymentValue}>
+                {formatCurrency(paymentData.renflouement?.montant_paye || 0)}
+              </Text>
+              <Text style={styles.paymentLabel}>Montant à payer</Text>
+              <TextInput
+                style={styles.paymentInput}
+                keyboardType="numeric"
+                value={paymentAmount}
+                onChangeText={setPaymentAmount}
+                placeholder="Entrez le montant"
+                placeholderTextColor="#9CA3AF"
+              />
+              <Text style={styles.paymentLabel}>Notes (optionnel)</Text>
+              <TextInput
+                style={[styles.paymentInput, styles.paymentNotes]}
+                value={paymentNotes}
+                onChangeText={setPaymentNotes}
+                placeholder="Notes sur le paiement"
+                placeholderTextColor="#9CA3AF"
+                multiline
+              />
+            </View>
+            <View style={styles.paymentModalFooter}>
+              <TouchableOpacity style={styles.paymentCancelButton} onPress={closePaymentModal}>
+                <Text style={styles.paymentCancelText}>Annuler</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.paymentSubmitButton} onPress={handleSubmitPayment}>
+                <Text style={styles.paymentSubmitText}>Payer</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
 
-// ─── Styles écran principal ───────────────────────────────────────────────────
-const s = StyleSheet.create({
-  container:      { flex: 1, backgroundColor: "#F0FDFA" },
-  header:         { paddingHorizontal: SPACING.lg, paddingTop: SPACING.xl + 10, paddingBottom: SPACING.lg },
-  backButton:     { width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center", marginBottom: SPACING.md },
-  headerContent:  { alignItems: "center", marginBottom: SPACING.lg },
-  headerTitle:    { fontSize: FONT_SIZES.xxl, fontWeight: "800", color: "white", marginBottom: 4 },
-  headerSubtitle: { fontSize: FONT_SIZES.sm, color: "rgba(255,255,255,0.8)" },
-  pillsRow:       { flexDirection: "row", gap: SPACING.sm },
-  pill:           { flex: 1, alignItems: "center", backgroundColor: "rgba(255,255,255,0.18)", borderRadius: 12, paddingVertical: SPACING.sm, paddingHorizontal: 4 },
-  pillVal:        { fontSize: FONT_SIZES.sm, fontWeight: "800", color: "white" },
-  pillLab:        { fontSize: 9, color: "rgba(255,255,255,0.8)", textAlign: "center" },
-  statsSection:   { marginHorizontal: SPACING.lg, marginTop: SPACING.lg },
-  toolbar:        { flexDirection: "row", paddingHorizontal: SPACING.lg, marginTop: SPACING.sm, gap: SPACING.md },
-  searchBox:      { flex: 1, flexDirection: "row", alignItems: "center", backgroundColor: "white", borderRadius: 12, paddingHorizontal: SPACING.md, gap: SPACING.sm, borderWidth: 1, borderColor: TEAL + "30" },
-  searchInput:    { flex: 1, fontSize: FONT_SIZES.md, color: COLORS.text, paddingVertical: 10 },
-  addBtn:         { borderRadius: 12, overflow: "hidden" },
-  addBtnGrad:     { flexDirection: "row", alignItems: "center", paddingHorizontal: SPACING.md, paddingVertical: 10, gap: 6 },
-  addBtnText:     { color: "white", fontSize: FONT_SIZES.sm, fontWeight: "700" },
-  filters:        { flexDirection: "row", paddingHorizontal: SPACING.lg, marginTop: SPACING.sm, gap: SPACING.sm },
-  filterChip:     { paddingHorizontal: SPACING.md, paddingVertical: 6, borderRadius: 20, backgroundColor: "white", borderWidth: 1, borderColor: TEAL + "30" },
-  filterChipText: { fontSize: FONT_SIZES.sm, fontWeight: "600", color: COLORS.textSecondary },
-  listSection:    { paddingHorizontal: SPACING.lg, marginTop: SPACING.md },
-  counter:        { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: TEAL + "12", borderRadius: 10, paddingHorizontal: SPACING.md, paddingVertical: 8, marginBottom: SPACING.md },
-  counterText:    { fontSize: FONT_SIZES.sm, color: COLORS.textSecondary },
-  counterBold:    { fontWeight: "700", color: TEAL },
-  center:         { alignItems: "center", justifyContent: "center", paddingVertical: 60 },
-  loadingText:    { fontSize: FONT_SIZES.md, color: COLORS.textSecondary, marginTop: SPACING.md },
-  retryBtn:       { marginTop: SPACING.md, backgroundColor: TEAL, paddingHorizontal: SPACING.xl, paddingVertical: SPACING.sm, borderRadius: 12 },
-  retryBtnText:   { color: "white", fontWeight: "700", fontSize: FONT_SIZES.md },
-  empty:          { alignItems: "center", paddingVertical: 60 },
-  emptyIcon:      { width: 90, height: 90, borderRadius: 45, backgroundColor: TEAL + "15", alignItems: "center", justifyContent: "center", marginBottom: SPACING.md },
-  emptyTitle:     { fontSize: FONT_SIZES.lg, fontWeight: "700", color: COLORS.text, marginBottom: SPACING.sm },
-  emptyText:      { fontSize: FONT_SIZES.md, color: COLORS.textSecondary, textAlign: "center", paddingHorizontal: SPACING.xl },
-  loadMore:       { marginTop: SPACING.md, marginBottom: SPACING.md, borderRadius: 14, overflow: "hidden" },
-  loadMoreGrad:   { flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: SPACING.md, gap: SPACING.sm },
-  loadMoreText:   { fontSize: FONT_SIZES.md, fontWeight: "600", color: "white" },
+// ─────────────────────────────────────────────
+// 🎨 STYLES
+// ─────────────────────────────────────────────
+const styles = StyleSheet.create({
+  screenContainer: {
+    flex: 1,
+    backgroundColor: "#F9FAFB",
+  },
+  topBar: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    backgroundColor: COLORS.primary,
+  },
+  screenTitle: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: "800",
+    color: "white",
+  },
+  screenSubtitle: {
+    fontSize: FONT_SIZES.xs,
+    color: "#FFFFFF80",
+    marginTop: 2,
+  },
+  container: {
+    flex: 1,
+    backgroundColor: "#F9FAFB",
+  },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    backgroundColor: "white",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E5E7EB",
+  },
+  backBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginRight: SPACING.md,
+  },
+  backBtnText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.primary,
+    marginLeft: 4,
+    fontWeight: "600",
+  },
+  modalTitle: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: "800",
+    color: COLORS.text,
+  },
+
+  // ── Tabs ──
+  tabContainer: {
+    flexDirection: "row",
+    backgroundColor: "white",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E5E7EB",
+  },
+  tab: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: SPACING.md,
+    gap: SPACING.sm,
+  },
+  tabActive: {
+    borderBottomWidth: 3,
+    borderBottomColor: TEAL,
+  },
+  tabText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: "600",
+    color: COLORS.textSecondary,
+  },
+  tabTextActive: {
+    color: TEAL,
+  },
+  tabDivider: {
+    width: 1,
+    backgroundColor: "#E5E7EB",
+  },
+
+  // ── Search ──
+  searchBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "white",
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    marginHorizontal: SPACING.lg,
+    marginVertical: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    gap: SPACING.sm,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.text,
+    paddingVertical: 0,
+  },
+
+  // ── Stats ──
+  statCard: {
+    backgroundColor: "white",
+    borderRadius: BORDER_RADIUS.md,
+    padding: SPACING.sm,
+    borderLeftWidth: 3,
+    marginBottom: SPACING.xs,
+    elevation: 1,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 2,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.sm,
+  },
+  statIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  statLabel: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.textSecondary,
+  },
+  statValue: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: "700",
+    marginTop: 1,
+  },
+  statsScroll: {
+    borderBottomWidth: 1,
+    borderBottomColor: "#E5E7EB",
+  },
+  statsContainer: {
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    gap: SPACING.md,
+  },
+  statsVertical: {
+    backgroundColor: "white",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E5E7EB",
+    paddingVertical: SPACING.sm,
+  },
+  statsVerticalGrid: {
+    gap: SPACING.xs,
+    paddingHorizontal: SPACING.lg,
+  },
+
+  // ── Simple Cards ──
+  simpleCard: {
+    backgroundColor: "white",
+    borderRadius: BORDER_RADIUS.md,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    marginBottom: SPACING.sm,
+    elevation: 1,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
+  },
+  simpleCardHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: SPACING.xs,
+  },
+  simpleCardTitle: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: "700",
+    color: COLORS.text,
+  },
+  simpleCardDate: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.textSecondary,
+    marginTop: 2,
+  },
+  simpleBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: BORDER_RADIUS.full,
+  },
+  simpleBadgeText: {
+    fontSize: FONT_SIZES.xs,
+    fontWeight: "700",
+  },
+  simpleCardAmounts: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingTop: SPACING.sm,
+    borderTopWidth: 1,
+    borderTopColor: "#F0F0F0",
+  },
+  simpleAmount: {
+    alignItems: "center",
+    flex: 1,
+  },
+  simpleAmountLabel: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.textSecondary,
+    marginBottom: 2,
+  },
+  simpleAmountValue: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: "700",
+    color: TEAL,
+  },
+  memberCardTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.sm,
+  },
+  smallAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  smallInitials: {
+    color: "white",
+    fontWeight: "800",
+    fontSize: FONT_SIZES.sm,
+  },
+  memberCardFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingTop: SPACING.xs,
+    borderTopWidth: 1,
+    borderTopColor: "#F0F0F0",
+    marginTop: SPACING.xs,
+  },
+  memberTotalLabel: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.textSecondary,
+  },
+  memberTotalValue: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: "800",
+  },
+
+  // ── Detail Cards ──
+  detailCard: {
+    backgroundColor: "white",
+    borderRadius: BORDER_RADIUS.md,
+    overflow: "hidden",
+    marginBottom: SPACING.md,
+    elevation: 1,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    flexDirection: "row",
+  },
+  detailStripe: {
+    width: 4,
+  },
+  detailBody: {
+    flex: 1,
+    padding: SPACING.md,
+  },
+  detailTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: SPACING.sm,
+  },
+  detailAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: SPACING.sm,
+  },
+  detailInitials: {
+    color: "white",
+    fontWeight: "800",
+    fontSize: FONT_SIZES.sm,
+  },
+  detailName: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: "700",
+    color: COLORS.text,
+  },
+  detailNumero: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.textSecondary,
+    marginTop: 2,
+  },
+  detailPercent: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: "800",
+  },
+  detailAmounts: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    borderTopWidth: 1,
+    borderTopColor: "#F0F0F0",
+    paddingTop: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+  detailAmount: {
+    alignItems: "center",
+  },
+  detailLabel: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.textSecondary,
+    marginBottom: 2,
+  },
+  detailValue: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: "800",
+  },
+  detailProgress: {
+    marginTop: SPACING.sm,
+  },
+  progressBg: {
+    height: 4,
+    backgroundColor: "#F0F0F0",
+    borderRadius: 2,
+    overflow: "hidden",
+  },
+  progressFill: {
+    height: 4,
+    borderRadius: 2,
+  },
+
+  // ── Misc ──
+  listContent: {
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+  },
+  centerFlex: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  emptyText: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.textSecondary,
+    marginTop: SPACING.md,
+  },
+  loadMoreBtn: {
+    marginVertical: SPACING.md,
+  },
+  loadMoreGrad: {
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    borderRadius: BORDER_RADIUS.md,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: SPACING.sm,
+  },
+  loadMoreText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: "700",
+    color: "white",
+  },
+  paymentOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.35)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: SPACING.lg,
+  },
+  paymentModalContainer: {
+    width: "100%",
+    maxWidth: 520,
+    backgroundColor: "white",
+    borderRadius: BORDER_RADIUS.xl,
+    overflow: "hidden",
+    elevation: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+  },
+  paymentModalHeader: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  paymentModalTitle: {
+    color: "white",
+    fontSize: FONT_SIZES.lg,
+    fontWeight: "800",
+  },
+  paymentModalBody: {
+    padding: SPACING.lg,
+  },
+  paymentLabel: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.textSecondary,
+    marginBottom: SPACING.xs,
+    marginTop: SPACING.sm,
+  },
+  paymentValue: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.text,
+    fontWeight: "700",
+  },
+  paymentInput: {
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    borderRadius: BORDER_RADIUS.sm,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.text,
+    marginTop: SPACING.xs,
+  },
+  paymentNotes: {
+    minHeight: 80,
+    textAlignVertical: "top",
+  },
+  paymentModalFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: SPACING.sm,
+    padding: SPACING.lg,
+    borderTopWidth: 1,
+    borderTopColor: "#E5E7EB",
+    backgroundColor: "#FAFAFA",
+  },
+  paymentCancelButton: {
+    flex: 1,
+    backgroundColor: "#F3F4F6",
+    borderRadius: BORDER_RADIUS.sm,
+    paddingVertical: SPACING.sm,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  paymentCancelText: {
+    color: COLORS.textSecondary,
+    fontWeight: "700",
+  },
+  paymentSubmitButton: {
+    flex: 1,
+    backgroundColor: COLORS.primary,
+    borderRadius: BORDER_RADIUS.sm,
+    paddingVertical: SPACING.sm,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  paymentSubmitText: {
+    color: "white",
+    fontWeight: "700",
+  },
 });

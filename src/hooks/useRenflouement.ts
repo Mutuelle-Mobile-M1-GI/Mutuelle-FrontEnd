@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { fetchRenflouements, fetchRenflouementPayments, fetchRenflouementStats, createRenflouementPayment, payRenflouementWithSavings, calculateRenflouements } from "../services/renflouement.service";
+import { fetchRenflouements, fetchRenflouementPayments, fetchRenflouementExerciceDetail, fetchRenflouementHistoryByMember, fetchRenflouementStats, createRenflouementPayment, payRenflouementWithSavings, calculateRenflouements } from "../services/renflouement.service";
 import { Renflouement, RenflouementPayment } from "../types/renflouement.types";
 import { getStoredAccessToken } from "../services/auth.service";
 
@@ -23,6 +23,32 @@ export function useRenflouementsByMembre(membreId: string | null) {
       const token = await getStoredAccessToken();
       if (!token) throw new Error("Token manquant");
       return fetchRenflouements(token, { membre: membreId });
+    },
+    staleTime: 0,
+  });
+}
+
+export function useRenfloulementExerciceDetail(exerciceId: string | null) {
+  return useQuery<any>({
+    queryKey: ["renflouement-exercice-detail", exerciceId],
+    enabled: !!exerciceId,
+    queryFn: async () => {
+      const token = await getStoredAccessToken();
+      if (!token) throw new Error("Token manquant");
+      return fetchRenflouementExerciceDetail(token, exerciceId!);
+    },
+    staleTime: 0,
+  });
+}
+
+export function useRenfloulementHistoryByMember(membreId: string | null) {
+  return useQuery<any>({
+    queryKey: ["renflouement-history-member", membreId],
+    enabled: !!membreId,
+    queryFn: async () => {
+      const token = await getStoredAccessToken();
+      if (!token) throw new Error("Token manquant");
+      return fetchRenflouementHistoryByMember(token, membreId!);
     },
     staleTime: 0,
   });
