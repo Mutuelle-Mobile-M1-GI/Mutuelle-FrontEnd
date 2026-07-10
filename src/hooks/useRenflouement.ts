@@ -99,6 +99,7 @@ export function useCreateRenflouementPayment() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["renflouements"] });
+      queryClient.invalidateQueries({ queryKey: ["renflouement-payments"] });
       queryClient.invalidateQueries({ queryKey: ["renflouement-stats"] });
       queryClient.invalidateQueries({ queryKey: ["caisse-inscription-current"] });
     },
@@ -115,6 +116,7 @@ export function usePayRenflouementWithSavings() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["renflouements"] });
+      queryClient.invalidateQueries({ queryKey: ["renflouement-payments"] });
       queryClient.invalidateQueries({ queryKey: ["renflouement-stats"] });
       queryClient.invalidateQueries({ queryKey: ["savings"] });
       queryClient.invalidateQueries({ queryKey: ["member"] });

@@ -7,7 +7,7 @@ import { COLORS, SPACING, BORDER_RADIUS, FONT_SIZES } from "../../constants/conf
 import { Ionicons } from "@expo/vector-icons";
 import { useLoans, useRepayments } from "../../hooks/useLoan";
 import { useSolidarityPayments } from "../../hooks/useSolidarity";
-import { useRenflouements } from "../../hooks/useRenflouement";
+import { useRenflouementPayments } from "../../hooks/useRenflouement";
 import { useSavings } from "../../hooks/useSaving";
 import { useAssistances } from "../../hooks/useAssistance";
 import { LinearGradient } from "expo-linear-gradient";
@@ -124,6 +124,41 @@ const extractMemberNumero = (obj: any): string | undefined =>
   obj?.membre?.numero_membre            ||
   obj?.membre_numero                    ||
   undefined;
+
+const appendRenflouementPaymentsToTimeline = (
+  items: TimelineItem[],
+  paymentsRaw: any,
+  sessionId?: string | number | null
+) => {
+  arr(paymentsRaw)
+    .filter((pay: any) => !sessionId || String(pay.session) === String(sessionId))
+    .forEach((pay: any) => {
+      items.push({
+        id: `renf-pay-${pay.id}`,
+        type: "renflouement",
+        date: pay.date_paiement,
+        amount: parseFloat(pay.montant) || 0,
+        data: {
+          ...pay,
+          montant_du: pay.renflouement_info?.montant_du,
+          montant_paye: pay.montant,
+          montant_restant: pay.renflouement_info?.montant_restant,
+          cause: pay.notes || pay.renflouement_info?.type_cause,
+          session_nom: pay.session_info?.nom,
+          is_solde: (pay.renflouement_info?.montant_restant ?? 0) <= 0,
+          pourcentage_paye: pay.renflouement_info?.montant_du
+            ? Math.round(
+                ((pay.renflouement_info?.montant_paye ?? (parseFloat(pay.montant) || 0)) /
+                  pay.renflouement_info.montant_du) *
+                  100
+              )
+            : 100,
+        },
+        memberName: pay.membre_nom || extractMemberName(pay),
+        memberNumero: pay.membre_numero || extractMemberNumero(pay),
+      });
+    });
+};
 
 // ─── Breadcrumb ───────────────────────────────────────────────────────────────
 
@@ -562,12 +597,11 @@ const OperationDetailModal = ({ item, onClose, children }: { item: TimelineItem 
               <DetailRow label="Notes"   value={item.data.notes || "Aucune note"} />
             </>)}
             {item.type === "renflouement" && (<>
-              <DetailRow label="Montant du"      value={formatMoney(item.data.montant_du    ?? item.data.montant)} />
-              <DetailRow label="Montant paye"    value={formatMoney(item.data.montant_paye  ?? item.data.montant)} />
-              <DetailRow label="Restant"         value={formatMoney(item.data.montant_restant ?? 0)} />
-              <DetailRow label="Cause"           value={item.data.cause || item.data.type_cause_display || "N/A"} />
-              <DetailRow label="Session"         value={item.data.session_nom || "N/A"} />
-              <DetailRow label="Statut"          value={item.data.is_solde ? "Solde" : `${item.data.pourcentage_paye ?? 0}% paye`} />
+              <DetailRow label="Montant payé"    value={formatMoney(item.data.montant ?? item.data.montant_paye)} />
+              <DetailRow label="Renflouement dû" value={formatMoney(item.data.renflouement_info?.montant_du ?? item.data.montant_du ?? 0)} />
+              <DetailRow label="Restant"         value={formatMoney(item.data.renflouement_info?.montant_restant ?? item.data.montant_restant ?? 0)} />
+              <DetailRow label="Session"         value={item.data.session_info?.nom || item.data.session_nom || "N/A"} />
+              <DetailRow label="Notes"           value={item.data.notes || "Aucune note"} />
             </>)}
             {item.type === "epargne" && (<>
               <DetailRow label="Montant"  value={formatMoney(item.data.montant)} />
@@ -708,7 +742,7 @@ const OperationsView = ({ session, initialFilters }: { session: Session; initial
   const { data: loansRaw }        = useLoans({ session: session.id });
   const { data: repaymentsRaw }   = useRepayments({ session: session.id });
   const { data: solidarityRaw }   = useSolidarityPayments({ session: session.id });
-  const { data: renflouementRaw } = useRenflouements({ session: session.id });
+  const { data: renflouementPaymentsRaw } = useRenflouementPayments({ session: session.id });
   const { data: savingsRaw }      = useSavings({ session: session.id });
   const { data: assistancesRaw }  = useAssistances({ session: session.id });
   const { data: depensesRaw }     = useSessionDepenses(session.id);
@@ -784,37 +818,7 @@ const OperationsView = ({ session, initialFilters }: { session: Session; initial
       memberName: extractMemberName(sol), memberNumero: extractMemberNumero(sol),
     }));
 
-    arr(renflouementRaw)
-      // ✅ Filtre par session (champ "session" direct sur le renflouement)
-      .filter((renf: any) => !session.id || String(renf.session) === String(session.id))
-      .forEach((renf: any) => {
-        // Structure plate : montant_paye directement sur l'objet renflouement
-        // Les paiements_details sont des sous-remboursements optionnels
-        const paiements = renf.paiements_details;
-        if (Array.isArray(paiements) && paiements.length > 0) {
-          // Si paiements_details existe et est non vide, on les affiche un par un
-          paiements.forEach((pay: any) => items.push({
-            id: `renf-${renf.id}-${pay.id}`, type: "renflouement",
-            date: pay.date_paiement || renf.date_creation,
-            amount: parseFloat(pay.montant) || 0,
-            data: { ...pay, cause: renf.cause, session_nom: renf.session_nom },
-            memberName: extractMemberName(renf), memberNumero: extractMemberNumero(renf),
-          }));
-        } else {
-          // ✅ Ne pas afficher si aucun paiement n'a encore été effectué
-          const montantPaye = parseFloat(renf.montant_paye) || 0;
-          if (montantPaye <= 0) return; // ← ajouter cette ligne
-
-          items.push({
-            id: `renf-${renf.id}`, type: "renflouement",
-            date: renf.date_creation,
-            amount: montantPaye,
-            data: renf,
-            status: renf.is_solde ? "Soldé" : `${renf.pourcentage_paye ?? 0}% payé`,
-            memberName: extractMemberName(renf), memberNumero: extractMemberNumero(renf),
-          });
-        }
-      });
+    appendRenflouementPaymentsToTimeline(items, renflouementPaymentsRaw, session.id);
 
     arr(savingsRaw).forEach((sv: any) => items.push({
       id: `sav-${sv.id}`, type: "epargne",
@@ -865,7 +869,7 @@ const OperationsView = ({ session, initialFilters }: { session: Session; initial
       });
 
     return items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [loansRaw, repaymentsRaw, solidarityRaw, renflouementRaw, savingsRaw, assistancesRaw, membersRaw, retraitsEpargneRaw, session.id]);
+  }, [loansRaw, repaymentsRaw, solidarityRaw, renflouementPaymentsRaw, savingsRaw, assistancesRaw, membersRaw, retraitsEpargneRaw, session.id]);
 
   // ── Filtrage : d'abord par type, ensuite par nom de membre ──
   const filteredTimeline = useMemo(() => {
@@ -997,7 +1001,9 @@ export default function AdminHistoryScreen() {
   const { data: loansRaw }        = useLoans({ exercice: selectedExercice?.id });
   const { data: repaymentsRaw }   = useRepayments({ exercice: selectedExercice?.id });
   const { data: solidarityRaw }   = useSolidarityPayments({ exercice: selectedExercice?.id });
-  const { data: renflouementRaw } = useRenflouements({ exercice: selectedExercice?.id });
+  const { data: renflouementPaymentsRaw } = useRenflouementPayments(
+    selectedExercice?.id ? { exercice: selectedExercice.id } : undefined
+  );
   const { data: savingsRaw }      = useSavings({ exercice: selectedExercice?.id });
   const { data: assistancesRaw }  = useAssistances({ exercice: selectedExercice?.id });
   const { data: membersRaw }      = useMembers();
@@ -1038,29 +1044,7 @@ export default function AdminHistoryScreen() {
         memberName: extractMemberName(sol), memberNumero: extractMemberNumero(sol),
       }));
 
-      arr(renflouementRaw)
-        .filter((renf: any) => !session.id || String(renf.session) === String(session.id))
-        .forEach((renf: any) => {
-          const paiements = renf.paiements_details;
-          if (Array.isArray(paiements) && paiements.length > 0) {
-            paiements.forEach((pay: any) => items.push({
-              id: `renf-${renf.id}-${pay.id}`, type: "renflouement",
-              date: pay.date_paiement || renf.date_creation,
-              amount: parseFloat(pay.montant) || 0,
-              data: { ...pay, cause: renf.cause, session_nom: renf.session_nom },
-              memberName: extractMemberName(renf), memberNumero: extractMemberNumero(renf),
-            }));
-          } else {
-            items.push({
-              id: `renf-${renf.id}`, type: "renflouement",
-              date: renf.date_creation,
-              amount: parseFloat(renf.montant_paye) || parseFloat(renf.montant_du) || 0,
-              data: renf,
-              status: renf.is_solde ? "Soldé" : `${renf.pourcentage_paye ?? 0}% payé`,
-              memberName: extractMemberName(renf), memberNumero: extractMemberNumero(renf),
-            });
-          }
-        });
+      appendRenflouementPaymentsToTimeline(items, renflouementPaymentsRaw, session.id);
 
       arr(savingsRaw).forEach((sv: any) => items.push({
         id: `sav-${sv.id}`, type: "epargne",

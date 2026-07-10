@@ -3,26 +3,53 @@ import { API_BASE_URL, API_ENDPOINTS } from "../constants/api";
 import { Renflouement, RenflouementPayment } from "../types/renflouement.types";
 
 export const fetchRenflouements = async (accessToken: string, params?: Record<string, any>): Promise<Renflouement[]> => {
-  const { data } = await axios.get<Renflouement[] | { results: Renflouement[] }>(
-    `${API_BASE_URL}${API_ENDPOINTS.renflouements}`,
-    {
-      params,
-      headers: { Authorization: `Bearer ${accessToken}` }
+  const all: Renflouement[] = [];
+  let page = 1;
+  let hasNext = true;
+
+  while (hasNext) {
+    const { data } = await axios.get<
+      Renflouement[] | { results: Renflouement[]; next?: string | null }
+    >(`${API_BASE_URL}${API_ENDPOINTS.renflouements}`, {
+      params: { ...params, page },
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    if (Array.isArray(data)) {
+      return data;
     }
-  );
-  return Array.isArray(data) ? data : data?.results ?? [];
+
+    all.push(...(data?.results ?? []));
+    hasNext = Boolean(data?.next);
+    page += 1;
+  }
+
+  return all;
 };
 
 export const fetchRenflouementPayments = async (accessToken: string, params?: Record<string, any>): Promise<RenflouementPayment[]> => {
-  const { data } = await axios.get<{ results: RenflouementPayment[] } | RenflouementPayment[]>(
-    `${API_BASE_URL}${API_ENDPOINTS.renflouementPayments}`,
-    {
-      params,
-      headers: { Authorization: `Bearer ${accessToken}` }
+  const all: RenflouementPayment[] = [];
+  let page = 1;
+  let hasNext = true;
+
+  while (hasNext) {
+    const { data } = await axios.get<
+      RenflouementPayment[] | { results: RenflouementPayment[]; next?: string | null }
+    >(`${API_BASE_URL}${API_ENDPOINTS.renflouementPayments}`, {
+      params: { ...params, page },
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    if (Array.isArray(data)) {
+      return data;
     }
-  );
-  // Normaliser la réponse (peut être un tableau ou {results: [...]})
-  return Array.isArray(data) ? data : data?.results ?? [];
+
+    all.push(...(data?.results ?? []));
+    hasNext = Boolean(data?.next);
+    page += 1;
+  }
+
+  return all;
 };
 
 export const fetchRenflouementExerciceDetail = async (accessToken: string, exerciceId: string): Promise<any> => {

@@ -77,7 +77,7 @@ export default function TresorierNavigator() {
       <Stack.Screen
         name="Notifications"
         component={NotificationsScreen}
-        options={{ presentation: "modal", headerShown: true, title: "Notifications" }}
+        options={{ presentation: "modal", headerShown: false, title: "Notifications" }}
       />
       <Stack.Screen
         name="Chatbot"

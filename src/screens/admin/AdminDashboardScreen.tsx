@@ -37,6 +37,7 @@ import { ExerciseEditModal } from "./ExerciseEditModal";
 import { SessionEditModal } from "./SessionEditModal";
 import ExerciseModal from "../../components/ExerciseModal";
 import { useEmpruntTiers } from "../../hooks/useEmpruntTiers";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 const { width } = Dimensions.get("window");
 
 // 🎯 Configuration de la pagination
@@ -749,6 +750,7 @@ const NewSessionModal = ({ visible, onClose, onSubmit, loading }: NewSessionModa
 // ─────────────────────────────────────────────
 export default function AdminDashboardScreen() {
 const navigation = useNavigation<any>();
+  const insets = useSafeAreaInsets();
   const { user } = useAuthContext();
   const readOnly = !user?.can_write; // true pour Trésorier et Président
 
@@ -1169,7 +1171,7 @@ const navigation = useNavigation<any>();
 
   if (isLoading) {
     return (
-      <View style={styles.loadingContainer}>
+      <View style={[styles.loadingContainer, { paddingTop: insets.top }]}>
         <ActivityIndicator size="large" color={COLORS.primary} />
         <Text style={styles.loadingText}>Chargement du tableau de bord...</Text>
       </View>
@@ -1178,7 +1180,7 @@ const navigation = useNavigation<any>();
 
   if (error) {
     return (
-      <View style={styles.errorContainer}>
+      <View style={[styles.errorContainer, { paddingTop: insets.top }]}>
         <Ionicons name="alert-circle" size={64} color={COLORS.error} />
         <Text style={styles.errorTitle}>Erreur de chargement</Text>
         <Text style={styles.errorText}>
@@ -1198,40 +1200,89 @@ const navigation = useNavigation<any>();
     user?.email?.split("@")[0] ||
     "Utilisateur";
 
-  const showBureauNotifications = user?.role === "TRESORIER" || user?.role === "PRESIDENT";
-
   return (
     <>
-      <StatusBar barStyle="dark-content" backgroundColor={COLORS.background} />
+      <StatusBar barStyle="light-content" backgroundColor="#2563EB" />
 
-      {/* ══ HEADER FIGÉ ══ */}
-      <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <Text style={styles.greeting}>Bonjour </Text>
-          <Text style={styles.userName}>{userName}</Text>
-          {/* ✅ Affiche le vrai rôle */}
-          <Text style={styles.userRole}>{roleLabel}</Text>
+      {/* ══ EN-TÊTE GRADIENT ══ */}
+      <LinearGradient
+        colors={["#4361EE", "#3A86FF", "#2563EB"]}
+        style={[styles.dashboardHeader, { paddingTop: insets.top + SPACING.sm }]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      >
+        <View style={styles.dashboardHeaderTop}>
+          <View style={styles.dashboardWelcome}>
+            <Text style={styles.dashboardGreeting}>Bonjour,</Text>
+            <Text style={styles.dashboardUserName} numberOfLines={1}>
+              {userName}
+            </Text>
+            <Text style={styles.dashboardSubtitle}>Tableau de bord administrateur</Text>
+          </View>
+
+          <View style={styles.dashboardHeaderActions}>
+            <View style={styles.dashboardNotificationWrap}>
+              <NotificationButton />
+            </View>
+            <TouchableOpacity
+              style={styles.dashboardProfileBtn}
+              onPress={() => navigation.navigate("Profile")}
+              activeOpacity={0.85}
+            >
+              <View style={styles.dashboardAvatar}>
+                <Text style={styles.dashboardAvatarText}>
+                  {userName.substring(0, 2).toUpperCase()}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          </View>
         </View>
-        <View style={styles.headerRight}>
-          {showBureauNotifications && <NotificationButton />}
-          <TouchableOpacity
-            style={styles.headerButton}
-            onPress={() => navigation.navigate("Profile")}
-          >
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>
-                {userName.substring(0, 2).toUpperCase()}
+
+        <View style={styles.dashboardHeaderMeta}>
+          <View style={styles.dashboardRoleBadge}>
+            <Ionicons name="shield-checkmark-outline" size={13} color="#4361EE" />
+            <Text style={styles.dashboardRoleText}>{roleLabel}</Text>
+          </View>
+
+          {(stats?.membres ?? 0) > 0 && (
+            <View style={styles.dashboardMetaChip}>
+              <Ionicons name="people-outline" size={13} color="rgba(255,255,255,0.95)" />
+              <Text style={styles.dashboardMetaText}>{stats?.membres} membres</Text>
+            </View>
+          )}
+
+          {hasCurrentExercise && (
+            <View style={styles.dashboardMetaChip}>
+              <Ionicons name="calendar-outline" size={13} color="rgba(255,255,255,0.95)" />
+              <Text style={styles.dashboardMetaText} numberOfLines={1}>
+                {currentExercise.nom}
               </Text>
             </View>
-          </TouchableOpacity>
+          )}
+
+          {(stats?.alertesCount ?? 0) > 0 && (
+            <View style={[styles.dashboardMetaChip, styles.dashboardAlertChip]}>
+              <Ionicons name="warning-outline" size={13} color="#FEF3C7" />
+              <Text style={styles.dashboardMetaText}>
+                {stats?.alertesCount} alerte{(stats?.alertesCount ?? 0) > 1 ? "s" : ""}
+              </Text>
+            </View>
+          )}
         </View>
-      </View>
+      </LinearGradient>
 
       {/* ══ CONTENU SCROLLABLE ══ */}
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.scrollContent}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor="#4361EE"
+            colors={["#4361EE"]}
+          />
+        }
         showsVerticalScrollIndicator={false}
       >
 
@@ -1605,7 +1656,7 @@ const navigation = useNavigation<any>();
 // ─────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-  scrollContent: { paddingBottom: SPACING.xxl },
+  scrollContent: { paddingTop: SPACING.md, paddingBottom: SPACING.xxl },
 
   loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: COLORS.background },
   loadingText: { fontSize: FONT_SIZES.md, color: COLORS.textSecondary, marginTop: SPACING.md },
@@ -1616,17 +1667,122 @@ const styles = StyleSheet.create({
   retryButton: { backgroundColor: COLORS.primary, paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md, borderRadius: BORDER_RADIUS.md },
   retryButtonText: { color: "white", fontWeight: "600", fontSize: FONT_SIZES.md },
 
-  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md, marginTop: SPACING.lg, backgroundColor: COLORS.background },
-  headerLeft: { flex: 1 },
-  greeting: { fontSize: FONT_SIZES.md, color: COLORS.textSecondary, marginBottom: SPACING.xs },
-  userName: { fontSize: FONT_SIZES.xxl, fontWeight: "bold", color: COLORS.text, marginBottom: SPACING.xs },
-  userRole: { fontSize: FONT_SIZES.sm, color: COLORS.primary, fontWeight: "500" },
-  headerRight: { flexDirection: "row", alignItems: "center", gap: SPACING.sm },
-  headerButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.surface, alignItems: "center", justifyContent: "center", position: "relative" },
-  notificationBadge: { position: "absolute", top: -2, right: -2, backgroundColor: COLORS.error, borderRadius: 10, minWidth: 20, height: 20, alignItems: "center", justifyContent: "center" },
-  notificationBadgeText: { color: "white", fontSize: 10, fontWeight: "bold" },
-  avatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.primary, alignItems: "center", justifyContent: "center" },
-  avatarText: { color: "white", fontSize: FONT_SIZES.md, fontWeight: "bold" },
+  dashboardHeader: {
+    paddingHorizontal: SPACING.lg,
+    paddingBottom: SPACING.lg,
+    borderBottomLeftRadius: BORDER_RADIUS.xl,
+    borderBottomRightRadius: BORDER_RADIUS.xl,
+    elevation: 6,
+    shadowColor: "#2563EB",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.22,
+    shadowRadius: 8,
+  },
+  dashboardHeaderTop: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    marginBottom: SPACING.md,
+    gap: SPACING.md,
+  },
+  dashboardWelcome: {
+    flex: 1,
+    minWidth: 0,
+  },
+  dashboardGreeting: {
+    fontSize: FONT_SIZES.sm,
+    color: "rgba(255,255,255,0.85)",
+    fontWeight: "500",
+  },
+  dashboardUserName: {
+    fontSize: FONT_SIZES.xxl,
+    fontWeight: "800",
+    color: "white",
+    marginTop: 2,
+  },
+  dashboardSubtitle: {
+    fontSize: FONT_SIZES.xs,
+    color: "rgba(255,255,255,0.75)",
+    marginTop: 4,
+    fontWeight: "500",
+  },
+  dashboardHeaderActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.sm,
+    flexShrink: 0,
+  },
+  dashboardNotificationWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: "rgba(255,255,255,0.95)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dashboardProfileBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.35)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dashboardAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dashboardAvatarText: {
+    color: "white",
+    fontSize: FONT_SIZES.sm,
+    fontWeight: "800",
+  },
+  dashboardHeaderMeta: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: SPACING.xs,
+  },
+  dashboardRoleBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "white",
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 5,
+    borderRadius: BORDER_RADIUS.lg,
+  },
+  dashboardRoleText: {
+    fontSize: FONT_SIZES.xs,
+    fontWeight: "700",
+    color: "#4361EE",
+  },
+  dashboardMetaChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(255,255,255,0.16)",
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 5,
+    borderRadius: BORDER_RADIUS.lg,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
+    maxWidth: "100%",
+  },
+  dashboardAlertChip: {
+    backgroundColor: "rgba(239,68,68,0.25)",
+    borderColor: "rgba(255,255,255,0.25)",
+  },
+  dashboardMetaText: {
+    fontSize: FONT_SIZES.xs,
+    fontWeight: "600",
+    color: "white",
+    flexShrink: 1,
+  },
 
   section: { paddingHorizontal: SPACING.lg, marginBottom: SPACING.xl },
   sectionTitle: { fontSize: FONT_SIZES.lg, fontWeight: "bold", color: COLORS.text, marginBottom: SPACING.md },

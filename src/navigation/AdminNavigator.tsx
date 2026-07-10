@@ -116,7 +116,7 @@ export default function AdminNavigator() {
         component={NotificationsScreen}
         options={{
           presentation: "modal",
-          headerShown: true,
+          headerShown: false,
           title: "Notifications",
         }}
       />

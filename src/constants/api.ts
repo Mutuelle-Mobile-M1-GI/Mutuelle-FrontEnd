@@ -3,7 +3,7 @@
 import { useEmpruntTiers } from "../hooks/useEmpruntTiers";
 import { createLoan } from "../services/loan.service";
 
-export const API_BASE_URL = "http://172.20.10.3:8000/api";
+export const API_BASE_URL = "http://192.168.0.200:8000/api";
 
 export const API_ENDPOINTS = {
   // Auth
@@ -48,7 +48,7 @@ export const API_ENDPOINTS = {
   // Épargne
   savings: "/transactions/epargne-transactions/",
   savingsStats: "/transactions/epargne-transactions/statistiques/",
-  savingsAvailable: (memberId: string) => `/transactions/epargne_disponible/?membre_id=${memberId}`,
+  savingsAvailable: (memberId: string) => `/transactions/retraits-epargne/epargne_disponible/?membre_id=${memberId}`,
 
   // Retraits d'épargne
   withdrawals: "/transactions/retraits-epargne/",
