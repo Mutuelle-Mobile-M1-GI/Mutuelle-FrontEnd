@@ -1093,7 +1093,7 @@ export default function SavingsScreen() {
             }}
             activeOpacity={0.7}
           >
-            <View style={[styles.modalMemberAvatar, { backgroundColor: COLORS.success }]}>
+            <View style={[styles.modalMemberAvatar, { backgroundColor: "#B5179E" }]}>
               <Text style={styles.modalMemberAvatarText}>
                 {getInitials(member.nom_complet)}
               </Text>
@@ -1124,7 +1124,7 @@ export default function SavingsScreen() {
               Voir plus ({withdrawalFilteredMembers.length - withdrawalMemberPage} restant
               {withdrawalFilteredMembers.length - withdrawalMemberPage !== 1 ? "s" : ""})
             </Text>
-            <Ionicons name="chevron-down" size={16} color={COLORS.success} />
+            <Ionicons name="chevron-down" size={16} color="#B5179E" />
           </TouchableOpacity>
         )}
         <View style={{ height: 20 }} />
@@ -1192,10 +1192,10 @@ export default function SavingsScreen() {
       {/* Épargne actuelle */}
       {selectedWithdrawalMember && (
         <View style={styles.infoBox}>
-          <Ionicons name="wallet-outline" size={20} color={COLORS.success} />
+          <Ionicons name="wallet-outline" size={20} color="#B5179E" />
           <View style={styles.infoBoxContent}>
             <Text style={styles.infoBoxLabel}>Épargne disponible</Text>
-            <Text style={[styles.infoBoxValue, { color: COLORS.success }]}>
+            <Text style={[styles.infoBoxValue, { color: "#B5179E" }]}>
               {formatCurrency(selectedWithdrawalMember.total_epargne)}
             </Text>
           </View>
@@ -1234,16 +1234,16 @@ export default function SavingsScreen() {
         <>
           {Number(withdrawalAmount) > (selectedWithdrawalMember?.total_epargne ?? 0) && (
             <View style={styles.warnBox}>
-              <Ionicons name="alert-circle" size={16} color={COLORS.error} />
+              <Ionicons name="alert-circle" size={16} color="#B5179E" />
               <Text style={styles.warnText}>
                 Dépasse l'épargne disponible ({formatCurrency(selectedWithdrawalMember?.total_epargne ?? 0)})
               </Text>
             </View>
           )}
           {Number(withdrawalAmount) <= (selectedWithdrawalMember?.total_epargne ?? 0) && Number(withdrawalAmount) > 0 && (
-            <View style={[styles.warnBox, { backgroundColor: COLORS.success + "15" }]}>
-              <Ionicons name="checkmark-circle" size={16} color={COLORS.success} />
-              <Text style={[styles.warnText, { color: COLORS.success }]}>
+            <View style={[styles.warnBox, { backgroundColor: "#B5179E15" }]}>
+              <Ionicons name="checkmark-circle" size={16} color="#B5179E" />
+              <Text style={[styles.warnText, { color: "#B5179E" }]}>
                 Montant valide • Nouveau solde : {formatCurrency((selectedWithdrawalMember?.total_epargne ?? 0) - Number(withdrawalAmount))}
               </Text>
             </View>
@@ -1305,7 +1305,7 @@ export default function SavingsScreen() {
           <Text style={styles.recapSectionTitle}>Retrait</Text>
           <View style={styles.recapRow}>
             <Text style={styles.recapLabel}>Montant</Text>
-            <Text style={[styles.recapValueLarge, { color: COLORS.success }]}>
+            <Text style={[styles.recapValueLarge, { color: "#B5179E" }]}>
               {formatCurrency(Number(withdrawalAmount))}
             </Text>
           </View>
@@ -1336,7 +1336,7 @@ export default function SavingsScreen() {
           </View>
           <View style={styles.recapRow}>
             <Text style={styles.recapLabel}>Nouveau solde estimé</Text>
-            <Text style={[styles.recapValueLarge, { color: COLORS.success }]}>
+            <Text style={[styles.recapValueLarge, { color: "#B5179E" }]}>
               {formatCurrency(
                 (selectedWithdrawalMember?.total_epargne ?? 0) - Number(withdrawalAmount)
               )}
@@ -1716,7 +1716,7 @@ export default function SavingsScreen() {
             <View style={styles.modalContainer}>
               {/* En-tête modal */}
               <LinearGradient
-                colors={["#059669", "#10B981"]}
+                colors={["#B5179E", "#F72585"]}
                 style={styles.modalHeader}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
@@ -2412,7 +2412,7 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.sm,
   },
   required: {
-    color: COLORS.error,
+    color: "#B5179E",
   },
   input: {
     borderWidth: 1,
@@ -2454,7 +2454,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#B5179E",
   },
   stepNavBtnConfirm: {
-    backgroundColor: COLORS.success,
+    backgroundColor: "#B5179E",
   },
   stepNavBtnTextSecondary: {
     fontSize: FONT_SIZES.md,

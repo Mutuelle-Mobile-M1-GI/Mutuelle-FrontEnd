@@ -401,6 +401,153 @@ const SessionSummaryGrid = ({
   );
 };
 
+// ─── Options de tri ────────────────────────────────────────────────────────────
+
+const SORT_OPTIONS = [
+  { key: "date-desc",  label: "Date ↓",     icon: "calendar-outline"  },
+  { key: "member-asc", label: "Membre A→Z", icon: "people-outline"    },
+  { key: "operation",  label: "Opération",   icon: "list-outline"      },
+] as const;
+
+const SortChips = ({ selected, onChange }: { selected: string; onChange: (k: string) => void }) => (
+  <View style={s.sortRow}>
+    <Ionicons name="swap-vertical" size={14} color={THEME.colors.neutral[400]} />
+    {SORT_OPTIONS.map((opt) => {
+      const active = selected === opt.key;
+      return (
+        <TouchableOpacity
+          key={opt.key}
+          style={[s.sortChip, active && s.sortChipActive]}
+          onPress={() => onChange(opt.key)}
+        >
+          <Ionicons name={opt.icon as any} size={12} color={active ? "white" : THEME.colors.neutral[500]} />
+          <Text style={[s.sortChipText, active && { color: "white" }]}>{opt.label}</Text>
+        </TouchableOpacity>
+      );
+    })}
+  </View>
+);
+
+// ─── Modal de sélection du format d'export ──────────────────────────────────
+
+const FormatSelectionModal = ({ visible, exportData, sessionExport, onClose, isExercice }: {
+  visible: boolean;
+  exportData: ExportData;
+  sessionExport?: ExportSession;
+  onClose: () => void;
+  isExercice?: boolean;
+}) => {
+  const { exportExcel, exportPdf } = useHistoryExport();
+  const label = sessionExport ? sessionExport.nom : exportData.exerciceNom;
+  const count = sessionExport
+    ? sessionExport.operations.length
+    : exportData.sessions.reduce((s, x) => s + x.operations.length, 0);
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={s.modalOverlay}>
+        <View style={s.typeModalContainer}>
+          <View style={s.typeModalHeader}>
+            <Ionicons name="download-outline" size={22} color={COLORS.primary} />
+            <Text style={s.typeModalTitle}>Exporter</Text>
+          </View>
+          <Text style={s.typeModalSub}>
+            {label} · {count} opération{count > 1 ? "s" : ""}{isExercice ? " (toutes sessions)" : ""}
+          </Text>
+          <View style={s.formatModalList}>
+            <TouchableOpacity
+              style={s.formatModalItem}
+              onPress={() => { onClose(); exportExcel(exportData, sessionExport); }}
+              activeOpacity={0.7}
+            >
+              <LinearGradient colors={["#22C55E", "#16A34A"]} style={s.formatModalIcon}>
+                <Ionicons name="grid-outline" size={22} color="white" />
+              </LinearGradient>
+              <View style={s.formatModalTextBlock}>
+                <Text style={s.formatModalItemText}>Excel (.xls)</Text>
+                <Text style={s.formatModalItemSub}>Tableau avec mise en forme complète</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={s.formatModalItem}
+              onPress={() => { onClose(); exportPdf(exportData, sessionExport); }}
+              activeOpacity={0.7}
+            >
+              <LinearGradient colors={["#EF4444", "#DC2626"]} style={s.formatModalIcon}>
+                <Ionicons name="document-outline" size={22} color="white" />
+              </LinearGradient>
+              <View style={s.formatModalTextBlock}>
+                <Text style={s.formatModalItemText}>PDF</Text>
+                <Text style={s.formatModalItemSub}>Document portable, idéal pour impression</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+            </TouchableOpacity>
+          </View>
+          <TouchableOpacity style={s.typeModalCancel} onPress={onClose}>
+            <Text style={s.typeModalCancelText}>Annuler</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
+// ─── Modal de sélection du type d'opération ──────────────────────────────────
+
+const TypeSelectionModal = ({ visible, onClose, onSelect }: {
+  visible: boolean;
+  onClose: () => void;
+  onSelect: (key: string) => void;
+}) => {
+  const types = [
+    { key: "emprunt",              label: "Emprunts",             icon: "trending-up"       },
+    { key: "remboursement",        label: "Remboursements",       icon: "arrow-down-circle" },
+    { key: "solidarite",           label: "Solidarité",           icon: "people"            },
+    { key: "renflouement",         label: "Renflouements",        icon: "refresh-circle"    },
+    { key: "epargne",              label: "Épargnes",             icon: "wallet"            },
+    { key: "assistance",           label: "Assistances",          icon: "heart"             },
+    { key: "paiement-inscription", label: "Inscriptions",         icon: "school"            },
+    { key: "retrait-epargne",      label: "Retraits d'épargne",   icon: "arrow-up-circle"   },
+  ];
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={s.modalOverlay}>
+        <View style={s.typeModalContainer}>
+          <View style={s.typeModalHeader}>
+            <Ionicons name="filter" size={22} color={COLORS.primary} />
+            <Text style={s.typeModalTitle}>Choisissez le type</Text>
+          </View>
+          <Text style={s.typeModalSub}>
+            Le rapport inclura uniquement les opérations du type sélectionné (tri alphabétique par membre)
+          </Text>
+          <ScrollView style={s.typeModalList} showsVerticalScrollIndicator={false}>
+            {types.map((t) => (
+              <TouchableOpacity
+                key={t.key}
+                style={s.typeModalItem}
+                onPress={() => { onSelect(t.key); onClose(); }}
+                activeOpacity={0.7}
+              >
+                <LinearGradient colors={["#3B82F6", "#2563EB"]} style={s.typeModalIcon}>
+                  <Ionicons name={t.icon as any} size={18} color="white" />
+                </LinearGradient>
+                <Text style={s.typeModalItemText}>{t.label}</Text>
+                <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+          <TouchableOpacity style={s.typeModalCancel} onPress={onClose}>
+            <Text style={s.typeModalCancelText}>Annuler</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
 // ─── Filtre chips ─────────────────────────────────────────────────────────────
 
 const FilterChips = ({ selected, onChange }: { selected: string; onChange: (k: string) => void }) => {
@@ -688,8 +835,9 @@ const ExportButton = ({ onPress, label = "Exporter" }: { onPress: () => void; la
     style={s.exportBtn}
     onPress={onPress}
     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+    activeOpacity={0.8}
   >
-    <Ionicons name="download-outline" size={15} color={COLORS.primary} />
+    <Ionicons name="download" size={16} color="#fff" />
     <Text style={s.exportBtnText}>{label}</Text>
   </TouchableOpacity>
 );
@@ -757,37 +905,83 @@ const OperationsView = ({ session, initialFilters }: { session: Session; initial
   const [selectedItem,   setSelectedItem]   = useState<TimelineItem | null>(null);
   const [searchText,     setSearchText]     = useState("");
   const [selectedFilter, setSelectedFilter] = useState("all");
+  const [sortBy,         setSortBy]         = useState<string>("date-desc");
   const [page,           setPage]           = useState(1);
 
-  const { showExportMenu, exporting } = useHistoryExport();
+  const { exporting } = useHistoryExport();
+  const [typeModalVisible, setTypeModalVisible] = useState(false);
+  const [formatModalVisible, setFormatModalVisible] = useState(false);
+  const [pendingExport, setPendingExport] = useState<{ data: ExportData; session: ExportSession } | null>(null);
 
-  // Construit les données d'export pour cette session
-  const buildSessionExport = (): ExportSession => ({
-    id:           String(session.id),
-    nom:          session.nom || "Session",
-    date:         (session as any).date_session || "",
-    collation,
-    autreDepense,
-    motifDepense,
-    totals,
-    operations:   timeline.map((i) => ({
-      type:         i.type,
-      typeLabel:    OPERATION_CONFIG[i.type]?.label ?? i.type,
-      memberName:   i.memberName || "",
-      memberNumero: i.memberNumero || "",
-      amount:       i.amount,
-      date:         i.date,
-    })),
-  });
+  // Construit les données d'export pour cette session (tri + filtre paramétrables)
+  const buildSessionExport = (sortKey?: string, typeFilter?: string): ExportSession => {
+    let ops = [...timeline];
+    // Filtre par type si spécifié
+    if (typeFilter && typeFilter !== "all") {
+      ops = ops.filter(i => i.type === typeFilter);
+    }
+    // Tri
+    switch (sortKey || sortBy) {
+      case "member-asc":
+        ops.sort((a, b) => (a.memberName || "").localeCompare(b.memberName || ""));
+        break;
+      case "operation":
+        ops.sort((a, b) => a.type.localeCompare(b.type));
+        break;
+      case "date-desc":
+      default:
+        ops.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        break;
+    }
+    const filterLabel = typeFilter && typeFilter !== "all"
+      ? (OPERATION_CONFIG[typeFilter as keyof typeof OPERATION_CONFIG]?.label ?? typeFilter)
+      : undefined;
+    return {
+      id:           String(session.id),
+      nom:          session.nom || "Session",
+      date:         (session as any).date_session || "",
+      collation,
+      autreDepense,
+      motifDepense,
+      totals,
+      filterLabel,
+      operations:   ops.map((i) => ({
+        type:         i.type,
+        typeLabel:    OPERATION_CONFIG[i.type]?.label ?? i.type,
+        memberName:   i.memberName || "",
+        memberNumero: i.memberNumero || "",
+        amount:       i.amount,
+        date:         i.date,
+      })),
+    };
+  };
 
-  const handleExportSession = () => {
-    const sessionExport = buildSessionExport();
+  const proceedToExport = (sortKey: string, typeFilter?: string) => {
+    const sessionExport = buildSessionExport(sortKey, typeFilter);
     const exportData: ExportData = {
       exerciceNom:  (session as any).exercice_nom || "Exercice",
       exerciceDate: "",
       sessions:     [sessionExport],
     };
-    showExportMenu(exportData, sessionExport);
+    setPendingExport({ data: exportData, session: sessionExport });
+    setFormatModalVisible(true);
+  };
+
+  const showTypeSelection = () => {
+    setTypeModalVisible(true);
+  };
+
+  const handleExportSession = () => {
+    Alert.alert(
+      "Ordre de tri",
+      "Choisissez l'ordre des opérations pour l'export :",
+      [
+        { text: "👤 Membre A→Z (recommandé)", onPress: () => proceedToExport("member-asc") },
+        { text: "📅 Date ↓ (récent → ancien)", onPress: () => proceedToExport("date-desc") },
+        { text: "📁 Par type d'opération",     onPress: showTypeSelection },
+        { text: "Annuler",                     style: "cancel" },
+      ]
+    );
   };
 
   // ── Construire timeline ──
@@ -868,12 +1062,33 @@ const OperationsView = ({ session, initialFilters }: { session: Session; initial
         });
       });
 
-    return items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    //return items; // tri appliqué dans sortedTimeline ci-dessous
+  //}, [loansRaw, repaymentsRaw, solidarityRaw, renflouementRaw, savingsRaw, assistancesRaw, membersRaw, retraitsEpargneRaw, session.id]);
+
+      return items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [loansRaw, repaymentsRaw, solidarityRaw, renflouementPaymentsRaw, savingsRaw, assistancesRaw, membersRaw, retraitsEpargneRaw, session.id]);
+
+  // ── Tri selon le choix utilisateur ──
+  const sortedTimeline = useMemo(() => {
+    const sorted = [...timeline];
+    switch (sortBy) {
+      case "member-asc":
+        sorted.sort((a, b) => (a.memberName || "").localeCompare(b.memberName || ""));
+        break;
+      case "operation":
+        sorted.sort((a, b) => a.type.localeCompare(b.type));
+        break;
+      case "date-desc":
+      default:
+        sorted.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        break;
+    }
+    return sorted;
+  }, [timeline, sortBy]);
 
   // ── Filtrage : d'abord par type, ensuite par nom de membre ──
   const filteredTimeline = useMemo(() => {
-    let f = timeline;
+    let f = sortedTimeline;
     // 1. Filtre par type d'opération
     if (selectedFilter !== "all") f = f.filter((i) => i.type === selectedFilter);
     // 2. Recherche par nom ou numéro de membre
@@ -885,9 +1100,9 @@ const OperationsView = ({ session, initialFilters }: { session: Session; initial
       );
     }
     return f;
-  }, [timeline, selectedFilter, searchText]);
+  }, [sortedTimeline, selectedFilter, searchText]);
 
-  useMemo(() => setPage(1), [searchText, selectedFilter]);
+  useMemo(() => setPage(1), [searchText, selectedFilter, sortBy]);
 
   const totalPages    = Math.max(1, Math.ceil(filteredTimeline.length / OPS_PER_PAGE));
   const pagedTimeline = filteredTimeline.slice((page - 1) * OPS_PER_PAGE, page * OPS_PER_PAGE);
@@ -976,6 +1191,21 @@ const OperationsView = ({ session, initialFilters }: { session: Session; initial
           <DetailRow label="Session"           value={selectedItem.data.session_nom || "N/A"} />
         </>)}
       </OperationDetailModal>
+
+      <TypeSelectionModal
+        visible={typeModalVisible}
+        onClose={() => setTypeModalVisible(false)}
+        onSelect={(key) => proceedToExport("member-asc", key)}
+      />
+
+      {pendingExport && (
+        <FormatSelectionModal
+          visible={formatModalVisible}
+          exportData={pendingExport.data}
+          sessionExport={pendingExport.session}
+          onClose={() => setFormatModalVisible(false)}
+        />
+      )}
     </>
   );
 };
@@ -1013,13 +1243,15 @@ export default function AdminHistoryScreen() {
 
   const showDashboard = !!selectedExercice && !selectedSession;
 
-  // ── Fonction pour construire les exports complets avec opérations ──
-  const buildExerciceExportData = (exercice: Exercise, sessions: Session[]): ExportData => {
+  // ── Fonction pour construire les exports complets avec opérations (tri + filtre) ──
+  const buildExerciceExportData = (exercice: Exercise, sessions: Session[], sortKey?: string, typeFilter?: string): ExportData => {
     const exportSessions: ExportSession[] = [];
+    const exerciceFilterLabel = typeFilter && typeFilter !== "all"
+      ? (OPERATION_CONFIG[typeFilter as keyof typeof OPERATION_CONFIG]?.label ?? typeFilter)
+      : undefined;
 
     for (const session of sessions) {
-      // Construire la timeline pour cette session
-      const items: TimelineItem[] = [];
+      let items: TimelineItem[] = [];
 
       arr(loansRaw)
         .filter((l: any) => !session.id || String(l.session_emprunt) === String(session.id))
@@ -1091,11 +1323,28 @@ export default function AdminHistoryScreen() {
           });
         });
 
-      items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
-      // Calculer les totaux
+      // Calculer les totaux AVANT le filtre (bilan complet toujours affiché)
       const totals: Record<string, number> = {};
       items.forEach((i) => { totals[i.type] = (totals[i.type] || 0) + i.amount; });
+
+      // Filtre par type si spécifié
+      if (typeFilter && typeFilter !== "all") {
+        items = items.filter(i => i.type === typeFilter);
+      }
+
+      // Tri
+      switch (sortKey || "member-asc") {
+        case "member-asc":
+          items.sort((a, b) => (a.memberName || "").localeCompare(b.memberName || ""));
+          break;
+        case "operation":
+          items.sort((a, b) => a.type.localeCompare(b.type));
+          break;
+        case "date-desc":
+        default:
+          items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+          break;
+      }
 
       exportSessions.push({
         id:           String(session.id),
@@ -1105,6 +1354,7 @@ export default function AdminHistoryScreen() {
         autreDepense: 0,
         motifDepense: "",
         totals,
+        filterLabel:  exerciceFilterLabel,
         operations:   items.map((i) => ({
           type:         i.type,
           typeLabel:    OPERATION_CONFIG[i.type]?.label ?? i.type,
@@ -1120,17 +1370,43 @@ export default function AdminHistoryScreen() {
       exerciceNom:  exercice.nom,
       exerciceDate: (exercice as any).date_debut || "",
       sessions:     exportSessions,
+      filterLabel:  exerciceFilterLabel,
     };
   };
 
+  const [exFormatModalVisible, setExFormatModalVisible] = useState(false);
+  const [exExportData, setExExportData] = useState<ExportData | null>(null);
+  const [exSessions, setExSessions] = useState<Session[] | null>(null);
+  const [exTypeModalVisible, setExTypeModalVisible] = useState(false);
+
+  const proceedToExerciceExport = (sortKey: string, typeFilter?: string) => {
+    if (!selectedExercice || !exSessions) return;
+    const exportData = buildExerciceExportData(selectedExercice, exSessions, sortKey, typeFilter);
+    setExExportData(exportData);
+    setExFormatModalVisible(true);
+  };
+
+  const showExerciceTypeSelection = () => {
+    setExTypeModalVisible(true);
+  };
+
+  const handleExerciceExportStart = (sessions: Session[]) => {
+    if (!selectedExercice) return;
+    setExSessions(sessions);
+    Alert.alert(
+      "Ordre de tri",
+      "Choisissez l'ordre des opérations pour l'export de l'exercice :",
+      [
+        { text: "👤 Membre A→Z (recommandé)", onPress: () => proceedToExerciceExport("member-asc") },
+        { text: "📅 Date ↓ (récent → ancien)", onPress: () => proceedToExerciceExport("date-desc") },
+        { text: "📁 Par type d'opération",     onPress: showExerciceTypeSelection },
+        { text: "Annuler",                     style: "cancel" },
+      ]
+    );
+  };
+
   const handleExportExercice = (sessions: Session[]) => {
-    try {
-      if (!selectedExercice) return;
-      const exportData = buildExerciceExportData(selectedExercice, sessions);
-      showExportMenuExercice(exportData);
-    } catch (e: any) {
-      Alert.alert("Erreur", e?.message ?? "Erreur lors de la construction de l'export");
-    }
+    handleExerciceExportStart(sessions);
   };
 
   if (isLoading && !selectedExercice) return <LoadingView message="Chargement des exercices…" />;
@@ -1218,6 +1494,21 @@ export default function AdminHistoryScreen() {
       {selectedExercice && selectedSession && (
         <OperationsView session={selectedSession} />
       )}
+
+      <TypeSelectionModal
+        visible={exTypeModalVisible}
+        onClose={() => setExTypeModalVisible(false)}
+        onSelect={(key) => proceedToExerciceExport("member-asc", key)}
+      />
+
+      {exExportData && (
+        <FormatSelectionModal
+          visible={exFormatModalVisible}
+          exportData={exExportData}
+          onClose={() => setExFormatModalVisible(false)}
+          isExercice
+        />
+      )}
     </View>
   );
 }
@@ -1297,6 +1588,12 @@ const s = StyleSheet.create({
   filterChipActive: { backgroundColor: COLORS.primary },
   filterChipText: { fontSize: 12, fontWeight: "600", color: THEME.colors.neutral[600] },
 
+  // Sort chips
+  sortRow:      { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: SPACING.md, paddingHorizontal: SPACING.lg },
+  sortChip:     { flexDirection: "row", alignItems: "center", backgroundColor: "white", borderRadius: 16, paddingHorizontal: 10, paddingVertical: 5, gap: 3, elevation: 1, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 2 },
+  sortChipActive: { backgroundColor: COLORS.primary },
+  sortChipText: { fontSize: 11, fontWeight: "600", color: THEME.colors.neutral[600] },
+
   // Recherche
   searchWrapper: { marginBottom: SPACING.md },
   searchBox:     { flexDirection: "row", alignItems: "center", backgroundColor: "white", borderRadius: 14, paddingHorizontal: SPACING.md, paddingVertical: 10, gap: SPACING.sm, elevation: 1, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 3 },
@@ -1346,9 +1643,32 @@ const s = StyleSheet.create({
   summaryDepSepText: { fontSize: 10, fontWeight: "700", color: THEME.colors.neutral[400], textTransform: "uppercase", letterSpacing: 0.5 },
   summaryDepMotif:   { fontSize: 10, color: THEME.colors.neutral[400], marginTop: 2, fontStyle: "italic" },
 
+  // Modal type
+  modalOverlay:      { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center", padding: SPACING.lg },
+  typeModalContainer:{ backgroundColor: "white", borderRadius: 20, width: "100%", maxHeight: SCREEN_HEIGHT * 0.7, overflow: "hidden", elevation: 10, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 12 },
+  typeModalHeader:   { flexDirection: "row", alignItems: "center", gap: SPACING.sm, padding: SPACING.lg, paddingBottom: SPACING.sm },
+  typeModalTitle:    { fontSize: FONT_SIZES.lg, fontWeight: "800", color: THEME.colors.neutral[800] },
+  typeModalSub:      { fontSize: FONT_SIZES.xs, color: THEME.colors.neutral[500], paddingHorizontal: SPACING.lg, paddingBottom: SPACING.md, lineHeight: 16 },
+  typeModalList:     { paddingHorizontal: SPACING.lg, maxHeight: SCREEN_HEIGHT * 0.4 },
+  typeModalItem:     { flexDirection: "row", alignItems: "center", paddingVertical: SPACING.md, borderBottomWidth: 1, borderBottomColor: "#F1F5F9", gap: SPACING.md },
+  typeModalIcon:     { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
+  typeModalItemText: { flex: 1, fontSize: FONT_SIZES.md, fontWeight: "600", color: THEME.colors.neutral[800] },
+  typeModalCancel:   { paddingVertical: SPACING.md, alignItems: "center", borderTopWidth: 1, borderTopColor: "#F1F5F9", marginTop: SPACING.sm },
+  typeModalCancelText:{ fontSize: FONT_SIZES.md, fontWeight: "700", color: COLORS.primary },
+
+  // Format modal
+  formatModalList:      { paddingHorizontal: SPACING.lg, gap: SPACING.md },
+  formatModalItem:      { flexDirection: "row", alignItems: "center", padding: SPACING.md, backgroundColor: "#F8FAFC", borderRadius: 14, gap: SPACING.md },
+  formatModalIcon:      { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
+  formatModalTextBlock: { flex: 1 },
+  formatModalItemText:  { fontSize: FONT_SIZES.md, fontWeight: "700", color: THEME.colors.neutral[800] },
+  formatModalItemSub:   { fontSize: FONT_SIZES.xs, color: THEME.colors.neutral[500], marginTop: 2 },
+
   // Bouton export
-  exportBtn:     { flexDirection: "row", alignItems: "center", gap: 4, marginLeft: "auto",
-                   backgroundColor: THEME.colors.primary[50], borderRadius: 20,
-                   paddingHorizontal: SPACING.sm, paddingVertical: 4 },
-  exportBtnText: { fontSize: 11, fontWeight: "700", color: COLORS.primary },
+  exportBtn:     { flexDirection: "row", alignItems: "center", gap: 6, marginLeft: "auto",
+                   backgroundColor: COLORS.primary, borderRadius: 20,
+                   paddingHorizontal: SPACING.md, paddingVertical: 7, elevation: 3,
+                   shadowColor: COLORS.primary, shadowOffset: { width: 0, height: 2 },
+                   shadowOpacity: 0.3, shadowRadius: 4 },
+  exportBtnText: { fontSize: 12, fontWeight: "800", color: "#fff" },
 });
