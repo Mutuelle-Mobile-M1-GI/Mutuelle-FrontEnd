@@ -12,9 +12,9 @@ import { COLORS } from "../constants/config";
 
 export default function AppNavigator() {
   const { user, isLoading } = useAuthContext();
-  const { requirePinSetup, requirePinEntry } = usePinContext();
+  const { requirePinSetup, requirePinEntry, isPinLoading } = usePinContext();
 
-  if (isLoading) {
+  if (isLoading || isPinLoading) {
     return (
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: COLORS.background }}>
         <ActivityIndicator size="large" color={COLORS.primary} />

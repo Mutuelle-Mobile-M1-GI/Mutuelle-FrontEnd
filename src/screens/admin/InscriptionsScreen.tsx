@@ -53,10 +53,10 @@ const FinancialCard = ({ title, icon, value, subtitle, color, progress, trend }:
         {subtitle && <Text style={styles.cardSubtitle}>{subtitle}</Text>}
       </View>
       {trend && (
-        <Ionicons 
-          name={trend === "up" ? "trending-up" : trend === "down" ? "trending-down" : "remove"} 
-          size={16} 
-          color={trend === "up" ? COLORS.success : trend === "down" ? COLORS.error : COLORS.textSecondary} 
+        <Ionicons
+          name={trend === "up" ? "trending-up" : trend === "down" ? "trending-down" : "remove"}
+          size={16}
+          color={trend === "up" ? COLORS.success : trend === "down" ? COLORS.error : COLORS.textSecondary}
         />
       )}
     </View>
@@ -212,21 +212,38 @@ interface MemberDetailModalProps {
 const MemberDetailModal = ({ visible, member, onClose, financialData, loading }: MemberDetailModalProps) => {
   if (!member) return null;
 
- const formatCurrency = (amount: number) => {
-  return new Intl.NumberFormat('fr-FR', {
-    style: 'currency',
-    currency: 'XAF',
-    minimumFractionDigits: 0,
-  }).format(amount);
-};
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('fr-FR', {
+      style: 'currency',
+      currency: 'XAF',
+      minimumFractionDigits: 0,
+    }).format(amount);
+  };
+  const getStatusColor = () => {
+    switch (member.statut) {
+      case "EN_REGLE": return COLORS.success;
+      case "NON_EN_REGLE": return COLORS.warning;
+      case "SUSPENDU": return COLORS.error;
+      default: return COLORS.textSecondary;
+    }
+  };
 
+  const getStatusLabel = () => {
+    switch (member.statut) {
+      case "EN_REGLE": return "En règle";
+      case "NON_EN_REGLE": return "Non en règle";
+      case "SUSPENDU": return "Suspendu";
+      default: return member.statut;
+    }
+  };
+  
   return (
     <Modal visible={visible} transparent animationType="fade" statusBarTranslucent>
       <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)' }}> 
         <BlurView intensity={20} style={StyleSheet.absoluteFillObject} />
         <View style={styles.modalOverlay}>
           <View style={styles.detailModalContainer}>
-            
+
             {/* Header du modal */}
             <LinearGradient
               colors={[COLORS.primary, "#3A86FF"]}
@@ -249,8 +266,10 @@ const MemberDetailModal = ({ visible, member, onClose, financialData, loading }:
                 <View style={styles.detailMemberInfo}>
                   <Text style={styles.detailMemberName}>{member.utilisateur.nom_complet}</Text>
                   <Text style={styles.detailMemberNumber}>{member.numero_membre}</Text>
-                  <View style={styles.detailStatusBadge}>
-                    <Text style={styles.detailStatusText}>{member.statut}</Text>
+                  <View style={[styles.statusTextBadge, { backgroundColor: "#FFFFFF", alignSelf: 'flex-start', marginTop: 6, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2, elevation: 2 }]}>
+                    <Text style={[styles.statusTextBadgeLabel, { color: getStatusColor(), fontWeight: 'bold' }]}>
+                      {getStatusLabel()}
+                    </Text>
                   </View>
                 </View>
                 <TouchableOpacity onPress={onClose} style={styles.closeButton}>
@@ -298,11 +317,11 @@ const MemberDetailModal = ({ visible, member, onClose, financialData, loading }:
                   {/* Résumé financier ultra-complet */}
                   <View style={styles.sectionContainer}>
                     <Text style={styles.sectionTitle}>
-                      <Ionicons name="pie-chart" size={16} color={COLORS.primary} /> Résumé financier complet
+                      <Ionicons name="pie-chart" size={16} color={COLORS.primary} /> Résumé financier
                     </Text>
-                    
+
                     {/* Vue d'ensemble */}
-                    <View style={styles.summaryContainer}>
+                    {/* <View style={styles.summaryContainer}>
                       <View style={[styles.summaryCard, { backgroundColor: COLORS.success + "15" }]}>
                         <Ionicons name="trending-up" size={20} color={COLORS.success} />
                         <Text style={styles.summaryLabel}>Patrimoine</Text>
@@ -332,11 +351,11 @@ const MemberDetailModal = ({ visible, member, onClose, financialData, loading }:
                           {formatCurrency(financialData.resume_financier.situation_nette)}
                         </Text>
                       </View>
-                    </View>
+                    </View> */}
 
                     {/* Détails par catégorie */}
                     <View style={styles.detailsGrid}>
-                      
+
                       {/* Inscription détaillée */}
                       <View style={styles.detailCard}>
                         <View style={styles.detailHeader}>
@@ -361,9 +380,9 @@ const MemberDetailModal = ({ visible, member, onClose, financialData, loading }:
                         </View>
                         <View style={styles.progressContainer}>
                           <View style={styles.progressTrack}>
-                            <View style={[styles.progressBar, { 
-                              width: `${financialData.inscription.pourcentage_inscription}%`, 
-                              backgroundColor: financialData.inscription.inscription_complete ? COLORS.success : COLORS.warning 
+                            <View style={[styles.progressBar, {
+                              width: `${financialData.inscription.pourcentage_inscription}%`,
+                              backgroundColor: financialData.inscription.inscription_complete ? COLORS.success : COLORS.warning
                             }]} />
                           </View>
                           <Text style={styles.progressText}>{financialData.inscription.pourcentage_inscription.toFixed(1)}%</Text>
@@ -387,9 +406,9 @@ const MemberDetailModal = ({ visible, member, onClose, financialData, loading }:
                           </Text>
                         </View>
                         <View style={styles.detailRow}>
-                          <Text style={styles.detailLabel}>Retraits pour prêts</Text>
+                          <Text style={styles.detailLabel}>Retraits</Text>
                           <Text style={[styles.detailValue, { color: COLORS.warning }]}>
-                            {formatCurrency(financialData.epargne.retraits_pour_prets)}
+                            {formatCurrency(financialData.epargne.total_retraits_epargne)}
                           </Text>
                         </View>
                         <View style={styles.detailRow}>
@@ -438,9 +457,9 @@ const MemberDetailModal = ({ visible, member, onClose, financialData, loading }:
                               </View>
                               <View style={styles.progressContainer}>
                                 <View style={styles.progressTrack}>
-                                  <View style={[styles.progressBar, { 
-                                    width: `${financialData.emprunt.pourcentage_rembourse}%`, 
-                                    backgroundColor: COLORS.success 
+                                  <View style={[styles.progressBar, {
+                                    width: `${financialData.emprunt.pourcentage_rembourse}%`,
+                                    backgroundColor: COLORS.success
                                   }]} />
                                 </View>
                                 <Text style={styles.progressText}>{financialData.emprunt.pourcentage_rembourse}% remboursé</Text>
@@ -484,9 +503,9 @@ const MemberDetailModal = ({ visible, member, onClose, financialData, loading }:
                           </View>
                           <View style={styles.detailRow}>
                             <Text style={[styles.detailLabel, { fontWeight: "bold" }]}>Solde restant</Text>
-                            <Text style={[styles.detailValue, { 
-                              fontWeight: "bold", 
-                              color: financialData.renflouement.solde_renflouement_du > 0 ? COLORS.error : COLORS.success 
+                            <Text style={[styles.detailValue, {
+                              fontWeight: "bold",
+                              color: financialData.renflouement.solde_renflouement_du > 0 ? COLORS.error : COLORS.success
                             }]}>
                               {formatCurrency(financialData.renflouement.solde_renflouement_du)}
                             </Text>
@@ -624,13 +643,13 @@ const AddMemberModal = ({ visible, onClose, onSubmit, loading, session }: AddMem
     <Modal visible={visible} transparent animationType="slide" statusBarTranslucent>
       <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)' }}>
         <BlurView intensity={20} style={StyleSheet.absoluteFillObject} />
-        <KeyboardAvoidingView 
+        <KeyboardAvoidingView
           style={styles.modalOverlay}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
         >
           <View style={styles.addModalContainer}>
-            
+
             {/* Header */}
             <LinearGradient
               colors={[COLORS.success, "#57CC99"]}
@@ -649,7 +668,7 @@ const AddMemberModal = ({ visible, onClose, onSubmit, loading, session }: AddMem
 
             {/* Formulaire */}
             <ScrollView style={styles.addModalBody} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-              
+
               {/* Sélecteur de photo */}
               <View style={styles.photoSection}>
                 <Text style={styles.photoLabel}>Photo de profil (optionnel)</Text>
@@ -753,7 +772,7 @@ const AddMemberModal = ({ visible, onClose, onSubmit, loading, session }: AddMem
               >
                 <Text style={styles.cancelButtonText}>Annuler</Text>
               </TouchableOpacity>
-              
+
               <TouchableOpacity
                 style={[styles.submitButton, loading && styles.submitButtonDisabled]}
                 onPress={handleSubmit}
@@ -796,13 +815,13 @@ export default function InscriptionsScreen() {
   const [paymentNotes, setPaymentNotes] = useState("");
   const [displayedItems, setDisplayedItems] = useState(ITEMS_PER_PAGE);
   const navigation = useNavigation();
-  
+
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive' | 'inscription_complete' | 'inscription_incomplete' | 'up_to_date'>('all');
 
   // API hooks
   const { data: membersRaw, isLoading, refetch } = useMembers();
   const { data: session } = useCurrentSession();
-  const {data: config } = useMutuelleConfig();
+  const { data: config } = useMutuelleConfig();
   const createMember = useCreateFullMember();
   const addPayment = useAddInscriptionPayment(session?.id || "");
   const activateMutation = useActivateMember();
@@ -979,9 +998,9 @@ export default function InscriptionsScreen() {
 
     if (amount > restant) {
       Alert.alert(
-        "Attention", 
+        "Attention",
         `Le montant saisi (${amount.toLocaleString()} FCFA) dépasse le restant à payer (${restant.toLocaleString()} FCFA)`);
-        return;
+      return;
     } else {
       submitPayment();
     }
@@ -989,7 +1008,7 @@ export default function InscriptionsScreen() {
 
   const submitPayment = () => {
     if (!selectedMember) return;
-    
+
     addPayment.mutate({
       membre_id: selectedMember.id,
       montant: Number(paymentAmount),
@@ -1005,7 +1024,7 @@ export default function InscriptionsScreen() {
       },
       onError: (error: any) => {
         let errorMessage = "Impossible d'ajouter le paiement";
-        
+
         // Gestion spécifique de l'erreur 400 (montant insuffisant)
         if (error?.response?.status === 400) {
           errorMessage = "Le montant est insuffisant pour compléter l'inscription. Veuillez vérifier le montant saisi.";
@@ -1014,7 +1033,7 @@ export default function InscriptionsScreen() {
         } else if (error?.message) {
           errorMessage = error.message;
         }
-        
+
         Alert.alert("Erreur", errorMessage);
       }
     });
@@ -1031,7 +1050,7 @@ export default function InscriptionsScreen() {
 
   return (
     <View style={styles.container}>
-      
+
       {/* Header style SolidarityScreen */}
       <LinearGradient
         colors={[COLORS.primary, "#3A86FF"]}
@@ -1074,7 +1093,7 @@ export default function InscriptionsScreen() {
           )}
         </View>
 
-        
+
         {!readOnly && (
           <TouchableOpacity style={styles.addButton} onPress={() => setShowAddModal(true)}>
             <LinearGradient
@@ -1189,7 +1208,7 @@ export default function InscriptionsScreen() {
           </View>
         )}
 
-        <View style={{height: 70}}></View>
+        <View style={{ height: 70 }}></View>
       </ScrollView>
 
       {/* Modals */}
@@ -1214,15 +1233,15 @@ export default function InscriptionsScreen() {
 
       {/* Modal de paiement */}
       <Modal visible={showPaymentModal} transparent animationType="fade" statusBarTranslucent>
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)' }}> 
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)' }}>
           <BlurView intensity={20} style={StyleSheet.absoluteFillObject} />
-          <KeyboardAvoidingView 
+          <KeyboardAvoidingView
             style={styles.modalOverlay}
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
           >
             <View style={styles.paymentModalContainer}>
-              
+
               {/* Header */}
               <LinearGradient
                 colors={[COLORS.warning, "#FCBF49"]}
@@ -1311,7 +1330,7 @@ export default function InscriptionsScreen() {
                 >
                   <Text style={styles.cancelButtonText}>Annuler</Text>
                 </TouchableOpacity>
-                
+
                 <TouchableOpacity
                   style={[styles.submitButton, addPayment.isPending && styles.submitButtonDisabled]}
                   onPress={handleAddPayment}

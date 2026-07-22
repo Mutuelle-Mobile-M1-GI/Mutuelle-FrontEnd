@@ -46,6 +46,7 @@ export interface MemberFinancialData {
     interets_recus: number;
     retours_remboursements: number;
     epargne_totale: number;
+    total_retraits_epargne:number;
     epargne_plus_interets: number;
     montant_interets_separe: number;
     derniere_transaction_date: string | undefined;

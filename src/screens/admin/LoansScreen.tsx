@@ -121,7 +121,7 @@ const LoanCard = ({ loan }: { loan: LoanWithStats }) => {
         {/* Montants */}
         <View style={lc.amountsRow}>
           <View style={lc.amountItem}>
-            <Text style={lc.amountLabel}>Emprunté</Text>
+            <Text style={lc.amountLabel}>Reçu</Text>
             <Text style={[lc.amountValue, { color: YELLOW }]}>
               {formatCurrency(loan.montant_emprunte)}
             </Text>
@@ -710,7 +710,7 @@ export default function LoansScreen() {
   const [search, setSearch]             = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "EN_COURS" | "REMBOURSE" | "EN_RETARD">("all");
   const [displayedItems, setDisplayedItems] = useState(ITEMS_PER_PAGE);
-  const [statsOpen, setStatsOpen]       = useState(true); // toggle stats
+  const [statsOpen, setStatsOpen]       = useState(false); // toggle stats
 
   // Données
   const { data: loansData,   isLoading: loadingLoans,   refetch: refetchLoans }  = useLoans();

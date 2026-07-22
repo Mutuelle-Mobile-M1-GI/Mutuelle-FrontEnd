@@ -8,6 +8,7 @@ const PIN_KEY = "user_app_pin";
 type PinContextType = {
   isPinDefined: boolean;
   isPinValidated: boolean;
+  isPinLoading: boolean;
   requirePinSetup: boolean;
   requirePinEntry: boolean;
   definePin: (pin: string) => Promise<void>;
@@ -19,6 +20,7 @@ type PinContextType = {
 const PinContext = createContext<PinContextType>({
   isPinDefined: false,
   isPinValidated: false,
+  isPinLoading: true,
   requirePinSetup: false,
   requirePinEntry: false,
   definePin: async () => {},
@@ -33,6 +35,7 @@ export const PinProvider = ({ children }: { children: React.ReactNode }) => {
   const { user, logout, isFirstLogin } = useAuthContext(); // Ajouter isFirstLogin dans AuthContext
   const [isPinDefined, setIsPinDefined] = useState(false);
   const [isPinValidated, setIsPinValidated] = useState(false);
+  const [isPinLoading, setIsPinLoading] = useState(true);
   const [appState, setAppState] = useState(AppState.currentState);
 
   // Gérer les changements d'état de l'app (premier plan/arrière-plan)
@@ -54,6 +57,8 @@ export const PinProvider = ({ children }: { children: React.ReactNode }) => {
   // Vérifier si un PIN est défini au démarrage ET gérer la logique après login
   useEffect(() => {
     const checkPin = async () => {
+      setIsPinLoading(true);
+
       if (user) {
         try {
           const pin = await SecureStore.getItemAsync(PIN_KEY);
@@ -66,7 +71,6 @@ export const PinProvider = ({ children }: { children: React.ReactNode }) => {
             // Premier login = effacer ancien PIN et demander nouveau
             if (pin) {
               await SecureStore.deleteItemAsync(PIN_KEY);
-              
             }
             setIsPinDefined(false);
             setIsPinValidated(false);
@@ -76,11 +80,10 @@ export const PinProvider = ({ children }: { children: React.ReactNode }) => {
           }
         } catch (error) {
           console.log("Erreur lecture PIN:", error);
-          try{
+          try {
             await SecureStore.deleteItemAsync(PIN_KEY);
-          }
-          catch(eror2){
-            console.log(eror2)
+          } catch (error2) {
+            console.log(error2);
           }
           
           setIsPinDefined(false);
@@ -91,6 +94,8 @@ export const PinProvider = ({ children }: { children: React.ReactNode }) => {
         setIsPinDefined(false);
         setIsPinValidated(false);
       }
+
+      setIsPinLoading(false);
     };
     
     checkPin();
@@ -146,6 +151,7 @@ export const PinProvider = ({ children }: { children: React.ReactNode }) => {
       value={{
         isPinDefined,
         isPinValidated,
+        isPinLoading,
         requirePinSetup,
         requirePinEntry,
         definePin,
